@@ -1,12 +1,13 @@
 """CLI Typer para Football Moneyball Analytics.
 
 Interface de linha de comando com saida Rich para analise de futebol.
+Camada fina: argument parsing (Typer) + output formatting (Rich).
+Toda logica de negocio e delegada para use cases e adapters.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -17,7 +18,12 @@ from rich.progress import Progress
 from rich.table import Table
 from rich import print as rprint
 
-from football_moneyball import db, player_metrics, network_analysis, pressing
+from football_moneyball.config import get_provider, get_repository, get_visualizer
+from football_moneyball.use_cases.analyze_match import AnalyzeMatch
+from football_moneyball.use_cases.analyze_season import AnalyzeSeason
+from football_moneyball.use_cases.compare_players import ComparePlayers
+from football_moneyball.use_cases.find_similar import FindSimilar
+from football_moneyball.use_cases.generate_report import GenerateReport
 
 # ---------------------------------------------------------------------------
 # App & globals
@@ -27,23 +33,39 @@ app = typer.Typer(name="moneyball", help="Football Moneyball Analytics CLI")
 
 console = Console()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://moneyball:moneyball@localhost:5432/moneyball",
-)
+_provider_name: str = "statsbomb"
+
+
+@app.callback()
+def main(
+    provider: str = typer.Option(
+        "statsbomb", help="Data provider (statsbomb/sofascore)"
+    ),
+) -> None:
+    """Football Moneyball Analytics — CLI de analytics de futebol."""
+    global _provider_name
+    _provider_name = provider
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_session():
-    """Retorna uma sessao do banco de dados e exibe status de conexao."""
+def _get_repo():
+    """Retorna um MatchRepository conectado ao banco de dados."""
     try:
-        session = db.get_session()
-        return session
+        return get_repository()
     except Exception as exc:
         console.print(f"[red]Erro ao conectar ao banco de dados: {exc}[/red]")
+        raise typer.Exit(1)
+
+
+def _get_provider():
+    """Retorna o DataProvider configurado."""
+    try:
+        return get_provider(_provider_name)
+    except Exception as exc:
+        console.print(f"[red]Erro ao criar provider '{_provider_name}': {exc}[/red]")
         raise typer.Exit(1)
 
 
@@ -64,53 +86,28 @@ def analyze_match(
     refresh: bool = typer.Option(False, "--refresh", help="Forca reprocessamento mesmo que ja exista no banco"),
 ) -> None:
     """Analisa uma partida especifica e exibe metricas dos jogadores."""
-    session = _get_session()
+    provider = _get_provider()
+    repo = _get_repo()
 
     try:
-        if not refresh and db.match_exists(session, match_id):
+        use_case = AnalyzeMatch(provider, repo)
+
+        with console.status("[bold green]Analisando partida..."):
+            result = use_case.execute(match_id, refresh)
+
+        if "error" in result:
+            console.print(f"[red]Erro: {result['error']}[/red]")
+            raise typer.Exit(1)
+
+        metrics_df = result["metrics_df"]
+
+        if metrics_df.empty:
+            console.print(f"[red]Erro: nenhum dado encontrado para a partida {match_id}.[/red]")
+            raise typer.Exit(1)
+
+        if result.get("from_cache"):
             console.print(f"[cyan]Carregando partida {match_id} do banco de dados...[/cyan]")
-            metrics_rows = (
-                session.query(db.PlayerMatchMetrics)
-                .filter_by(match_id=match_id)
-                .all()
-            )
-            columns = [c.key for c in db.PlayerMatchMetrics.__table__.columns]
-            metrics_data = [{col: getattr(r, col) for col in columns} for r in metrics_rows]
-
-            import pandas as pd
-            metrics_df = pd.DataFrame(metrics_data)
         else:
-            with console.status("[bold green]Extraindo metricas da partida..."):
-                metrics_df = player_metrics.extract_match_metrics(match_id)
-
-            if metrics_df.empty:
-                console.print(f"[red]Erro: nenhum dado encontrado para a partida {match_id}.[/red]")
-                raise typer.Exit(1)
-
-            with console.status("[bold green]Construindo rede de passes..."):
-                graph, edges_df = network_analysis.build_pass_network(match_id)
-                edge_features = network_analysis.compute_edge_features(graph)
-                feat_list = []
-                for _, row in edges_df.iterrows():
-                    key = (row["passer_id"], row["receiver_id"])
-                    feat_list.append(edge_features.get(key, {}))
-                edges_df["features"] = feat_list
-
-            with console.status("[bold green]Salvando no banco de dados..."):
-                match_info = player_metrics.extract_match_info(match_id)
-                db.upsert_match(session, match_info)
-                db.upsert_player_metrics(session, metrics_df, match_id)
-                db.upsert_pass_network(session, edges_df, match_id)
-
-            # v0.2.0 — Pressing metrics
-            try:
-                with console.status("[bold green]Calculando metricas de pressing..."):
-                    pressing_df = pressing.compute_match_pressing(match_id)
-                    if not pressing_df.empty:
-                        db.upsert_pressing_metrics(session, pressing_df, match_id)
-            except Exception as exc:
-                console.print(f"[yellow]Aviso: falha ao calcular pressing: {exc}[/yellow]")
-
             console.print("[green]Dados persistidos com sucesso.[/green]")
 
         # Display player metrics table sorted by xG contribution
@@ -147,38 +144,28 @@ def analyze_match(
         console.print(table)
 
         # Display top passing partnerships
+        partnerships = result.get("partnerships")
+        if partnerships:
+            partner_table = Table(title="Principais Parcerias de Passe")
+            partner_table.add_column("Passador", style="bold")
+            partner_table.add_column("Receptor", style="bold")
+            partner_table.add_column("Passes", justify="right")
+            partner_table.add_column("% do Total", justify="right")
+
+            for p in partnerships:
+                partner_table.add_row(
+                    p["passer"],
+                    p["receiver"],
+                    str(int(p["weight"])),
+                    f"{p['normalized_weight'] * 100:.1f}%",
+                )
+
+            console.print(partner_table)
+
+        # Pressing metrics display
+        pressing_df = result.get("pressing_df")
         try:
-            if "graph" not in dir():
-                graph, _ = network_analysis.build_pass_network(match_id)
-            partnerships = network_analysis.identify_key_partnerships(graph, top_n=5)
-
-            if partnerships:
-                partner_table = Table(title="Principais Parcerias de Passe")
-                partner_table.add_column("Passador", style="bold")
-                partner_table.add_column("Receptor", style="bold")
-                partner_table.add_column("Passes", justify="right")
-                partner_table.add_column("% do Total", justify="right")
-
-                for p in partnerships:
-                    partner_table.add_row(
-                        p["passer"],
-                        p["receiver"],
-                        str(int(p["weight"])),
-                        f"{p['normalized_weight'] * 100:.1f}%",
-                    )
-
-                console.print(partner_table)
-        except Exception as exc:
-            console.print(f"[yellow]Aviso: nao foi possivel exibir parcerias de passe: {exc}[/yellow]")
-
-        # v0.2.0 — Pressing metrics display
-        try:
-            pressing_rows = (
-                session.query(db.PressingMetrics)
-                .filter_by(match_id=match_id)
-                .all()
-            )
-            if pressing_rows:
+            if pressing_df is not None and not pressing_df.empty:
                 press_table = Table(title="Metricas de Pressing")
                 press_table.add_column("Time", style="bold")
                 press_table.add_column("PPDA", justify="right")
@@ -186,15 +173,35 @@ def analyze_match(
                 press_table.add_column("Counter-press %", justify="right")
                 press_table.add_column("High Turnovers", justify="right")
 
-                for pr in pressing_rows:
+                for _, pr in pressing_df.iterrows():
                     press_table.add_row(
-                        str(pr.team),
-                        f"{pr.ppda:.1f}" if pr.ppda else "-",
-                        f"{pr.pressing_success_rate:.0f}%" if pr.pressing_success_rate else "-",
-                        f"{pr.counter_pressing_fraction:.0f}%" if pr.counter_pressing_fraction else "-",
-                        str(pr.high_turnovers or 0),
+                        str(pr.get("team", "")),
+                        f"{float(pr.get('ppda', 0)):.1f}" if pr.get("ppda") else "-",
+                        f"{float(pr.get('pressing_success_rate', 0)):.0f}%" if pr.get("pressing_success_rate") else "-",
+                        f"{float(pr.get('counter_pressing_fraction', 0)):.0f}%" if pr.get("counter_pressing_fraction") else "-",
+                        str(int(pr.get("high_turnovers", 0) or 0)),
                     )
                 console.print(press_table)
+            elif result.get("from_cache"):
+                # When loaded from cache, try fetching pressing from repo
+                pressing_rows = repo.get_pressing_metrics_for_match(match_id)
+                if pressing_rows:
+                    press_table = Table(title="Metricas de Pressing")
+                    press_table.add_column("Time", style="bold")
+                    press_table.add_column("PPDA", justify="right")
+                    press_table.add_column("Sucesso %", justify="right")
+                    press_table.add_column("Counter-press %", justify="right")
+                    press_table.add_column("High Turnovers", justify="right")
+
+                    for pr in pressing_rows:
+                        press_table.add_row(
+                            str(pr.team),
+                            f"{pr.ppda:.1f}" if pr.ppda else "-",
+                            f"{pr.pressing_success_rate:.0f}%" if pr.pressing_success_rate else "-",
+                            f"{pr.counter_pressing_fraction:.0f}%" if pr.counter_pressing_fraction else "-",
+                            str(pr.high_turnovers or 0),
+                        )
+                    console.print(press_table)
         except Exception:
             pass
 
@@ -204,7 +211,7 @@ def analyze_match(
         console.print(f"[red]Erro ao analisar partida: {exc}[/red]")
         raise typer.Exit(1)
     finally:
-        session.close()
+        repo.close()
 
 
 @app.command("analyze-season")
@@ -215,14 +222,13 @@ def analyze_season(
     refresh: bool = typer.Option(False, "--refresh", help="Forca reprocessamento de todas as partidas"),
 ) -> None:
     """Processa todas as partidas de um time em uma competicao/temporada."""
-    session = _get_session()
+    provider = _get_provider()
+    repo = _get_repo()
 
     try:
-        from statsbombpy import sb
-        import pandas as pd
-
+        # Resolve competition_id and season_id
         with console.status("[bold green]Buscando competicoes e partidas..."):
-            comps = sb.competitions()
+            comps = provider.get_competitions()
             comp_match = comps[
                 (comps["competition_name"] == competition)
                 & (comps["season_name"] == season)
@@ -235,111 +241,54 @@ def analyze_season(
                 raise typer.Exit(1)
 
             comp_row = comp_match.iloc[0]
-            matches = sb.matches(
-                competition_id=int(comp_row["competition_id"]),
-                season_id=int(comp_row["season_id"]),
-            )
+            competition_id = int(comp_row["competition_id"])
+            season_id = int(comp_row["season_id"])
 
-        team_matches = matches[
-            (matches["home_team"] == team) | (matches["away_team"] == team)
-        ]
+        use_case = AnalyzeSeason(provider, repo)
 
-        if team_matches.empty:
-            console.print(f"[red]Erro: nenhuma partida encontrada para o time '{team}'.[/red]")
-            raise typer.Exit(1)
+        # Progress callback for Rich progress bar
+        progress_ctx = Progress()
+        task_id = None
+
+        def on_progress(i, total, match_row):
+            nonlocal task_id
+            if task_id is None:
+                task_id = progress_ctx.add_task(
+                    "[green]Processando partidas...", total=total
+                )
+            progress_ctx.advance(task_id)
 
         console.print(
-            f"[cyan]Encontradas {len(team_matches)} partidas para {team} em {competition} {season}.[/cyan]"
+            f"[cyan]Processando partidas para {team} em {competition} {season}...[/cyan]"
         )
 
-        all_metrics = []
+        with progress_ctx:
+            # Initialize task before execute so the bar shows
+            result = {}
 
-        with Progress() as progress:
-            task = progress.add_task(
-                "[green]Processando partidas...",
-                total=len(team_matches),
+            def on_progress_with_init(i, total, match_row):
+                nonlocal task_id
+                if task_id is None:
+                    task_id = progress_ctx.add_task(
+                        "[green]Processando partidas...", total=total
+                    )
+                progress_ctx.advance(task_id)
+
+            result = use_case.execute(
+                competition=competition,
+                season=season,
+                team=team,
+                competition_id=competition_id,
+                season_id=season_id,
+                refresh=refresh,
+                on_progress=on_progress_with_init,
             )
 
-            for _, match_row in team_matches.iterrows():
-                mid = int(match_row["match_id"])
-
-                if not refresh and db.match_exists(session, mid):
-                    rows = (
-                        session.query(db.PlayerMatchMetrics)
-                        .filter_by(match_id=mid)
-                        .all()
-                    )
-                    columns = [c.key for c in db.PlayerMatchMetrics.__table__.columns]
-                    match_metrics = pd.DataFrame(
-                        [{col: getattr(r, col) for col in columns} for r in rows]
-                    )
-                else:
-                    try:
-                        match_metrics = player_metrics.extract_match_metrics(mid)
-                        if not match_metrics.empty:
-                            match_info = {
-                                "match_id": mid,
-                                "competition": competition,
-                                "season": season,
-                                "match_date": str(match_row.get("match_date", "")),
-                                "home_team": match_row.get("home_team", ""),
-                                "away_team": match_row.get("away_team", ""),
-                                "home_score": int(match_row.get("home_score", 0)),
-                                "away_score": int(match_row.get("away_score", 0)),
-                            }
-                            db.upsert_match(session, match_info)
-                            db.upsert_player_metrics(session, match_metrics, mid)
-
-                            graph, edges_df = network_analysis.build_pass_network(mid, team=team)
-                            edge_features = network_analysis.compute_edge_features(graph)
-                            feat_list = []
-                            for _, erow in edges_df.iterrows():
-                                key = (erow["passer_id"], erow["receiver_id"])
-                                feat_list.append(edge_features.get(key, {}))
-                            edges_df["features"] = feat_list
-                            db.upsert_pass_network(session, edges_df, mid)
-
-                            # v0.2.0 — Pressing per match
-                            try:
-                                pressing_df = pressing.compute_match_pressing(mid)
-                                if not pressing_df.empty:
-                                    db.upsert_pressing_metrics(session, pressing_df, mid)
-                            except Exception:
-                                pass
-                    except Exception as exc:
-                        console.print(f"[yellow]Aviso: falha na partida {mid}: {exc}[/yellow]")
-                        progress.advance(task)
-                        continue
-
-                if not match_metrics.empty:
-                    all_metrics.append(match_metrics)
-
-                progress.advance(task)
-
-        if not all_metrics:
-            console.print("[red]Erro: nenhuma metrica extraida.[/red]")
+        if "error" in result:
+            console.print(f"[red]Erro: {result['error']}[/red]")
             raise typer.Exit(1)
 
-        combined = pd.concat(all_metrics, ignore_index=True)
-
-        # Filter for the target team only
-        team_data = combined[combined["team"] == team]
-
-        if team_data.empty:
-            console.print("[red]Erro: nenhuma metrica encontrada para o time especificado.[/red]")
-            raise typer.Exit(1)
-
-        # Aggregate player stats
-        numeric_cols = team_data.select_dtypes(include="number").columns.tolist()
-        numeric_cols = [c for c in numeric_cols if c not in ("player_id", "match_id")]
-
-        agg_stats = (
-            team_data.groupby(["player_id", "player_name"])[numeric_cols]
-            .sum()
-            .reset_index()
-        )
-        agg_stats["partidas"] = team_data.groupby("player_id").size().values
-        agg_stats = agg_stats.sort_values("xg", ascending=False)
+        agg_stats = result["agg_stats"]
 
         # Display aggregated stats table
         agg_table = Table(title=f"Estatisticas Agregadas - {team} ({competition} {season})")
@@ -370,41 +319,27 @@ def analyze_season(
 
         console.print(agg_table)
 
-        # Generate embeddings and compute RAPM
+        # Generate embeddings
         try:
-            from football_moneyball import player_embeddings
-
             with console.status("[bold green]Gerando embeddings dos jogadores..."):
-                profiles = player_embeddings.build_player_profiles(session, competition, season)
-                if not profiles.empty:
-                    emb_df, pca = player_embeddings.generate_embeddings(profiles)
-                    emb_df = player_embeddings.cluster_players(emb_df, pca=pca)
-                    emb_df["season"] = season
-                    emb_df["competition"] = competition
-                    db.upsert_embeddings(session, emb_df)
+                if use_case.generate_embeddings(competition, season):
                     console.print("[green]Embeddings gerados e salvos com sucesso.[/green]")
-        except ImportError:
-            console.print("[yellow]Aviso: modulo player_embeddings nao disponivel. Embeddings nao gerados.[/yellow]")
         except Exception as exc:
             console.print(f"[yellow]Aviso: falha ao gerar embeddings: {exc}[/yellow]")
 
+        # Compute RAPM
         try:
-            from football_moneyball import rapm as rapm_mod
-
             with console.status("[bold green]Calculando RAPM..."):
-                rapm_results = rapm_mod.compute_season_rapm(session, competition, season)
-                if not rapm_results.empty:
+                if use_case.compute_rapm(competition, season):
                     console.print("[green]RAPM calculado com sucesso.[/green]")
-        except ImportError:
-            console.print("[yellow]Aviso: modulo RAPM nao disponivel.[/yellow]")
         except Exception as exc:
             console.print(f"[yellow]Aviso: falha ao calcular RAPM: {exc}[/yellow]")
 
         # Season summary panel
         total_goals = int(agg_stats["goals"].sum()) if "goals" in agg_stats.columns else 0
         total_xg = float(agg_stats["xg"].sum()) if "xg" in agg_stats.columns else 0.0
-        total_matches = len(team_matches)
-        total_players = len(agg_stats)
+        total_matches = result["team_matches_count"]
+        total_players = result["total_players"]
 
         summary_text = (
             f"[bold]{team}[/bold] - {competition} {season}\n\n"
@@ -422,7 +357,7 @@ def analyze_season(
         console.print(f"[red]Erro ao analisar temporada: {exc}[/red]")
         raise typer.Exit(1)
     finally:
-        session.close()
+        repo.close()
 
 
 @app.command("compare-players")
@@ -432,30 +367,18 @@ def compare_players(
     season: Optional[str] = typer.Option(None, "--season", help="Filtrar por temporada"),
 ) -> None:
     """Compara metricas de dois jogadores lado a lado."""
-    session = _get_session()
+    repo = _get_repo()
 
     try:
-        import pandas as pd
-        import numpy as np
+        use_case = ComparePlayers(repo)
+        result = use_case.execute(player_a, player_b, season)
 
-        metrics_a = db.get_player_metrics(session, player_a, season)
-        metrics_b = db.get_player_metrics(session, player_b, season)
-
-        if metrics_a.empty:
-            console.print(f"[red]Erro: jogador '{player_a}' nao encontrado no banco de dados.[/red]")
-            raise typer.Exit(1)
-        if metrics_b.empty:
-            console.print(f"[red]Erro: jogador '{player_b}' nao encontrado no banco de dados.[/red]")
+        if "error" in result:
+            console.print(f"[red]Erro: {result['error']}[/red]")
             raise typer.Exit(1)
 
-        # Aggregate metrics across matches
-        numeric_cols = metrics_a.select_dtypes(include="number").columns.tolist()
-        numeric_cols = [c for c in numeric_cols if c not in ("player_id", "match_id")]
-
-        agg_a = metrics_a[numeric_cols].sum()
-        agg_a["partidas"] = len(metrics_a)
-        agg_b = metrics_b[numeric_cols].sum()
-        agg_b["partidas"] = len(metrics_b)
+        agg_a = result["agg_a"]
+        agg_b = result["agg_b"]
 
         # Display comparison table
         compare_table = Table(title=f"Comparacao: {player_a} vs {player_b}")
@@ -515,7 +438,9 @@ def compare_players(
 
         # Radar comparison
         try:
-            from football_moneyball import viz
+            viz = get_visualizer()
+            numeric_cols = result["metrics_a_df"].select_dtypes(include="number").columns.tolist()
+            numeric_cols = [c for c in numeric_cols if c not in ("player_id", "match_id")]
 
             radar_a = {"name": player_a}
             radar_b = {"name": player_b}
@@ -525,53 +450,23 @@ def compare_players(
 
             viz.plot_radar_comparison(radar_a, radar_b)
             console.print("[green]Grafico radar gerado.[/green]")
-        except ImportError:
-            console.print("[yellow]Aviso: modulo viz nao disponivel para gerar radar.[/yellow]")
         except Exception as exc:
             console.print(f"[yellow]Aviso: falha ao gerar grafico radar: {exc}[/yellow]")
 
-        # Similarity score (cosine distance from embeddings)
-        try:
-            emb_a = (
-                session.query(db.PlayerEmbedding)
-                .filter_by(player_name=player_a)
+        # Similarity score
+        similarity = result.get("similarity")
+        if similarity is not None:
+            cosine_dist = 1 - similarity
+            console.print(
+                Panel(
+                    f"Similaridade cosseno: [bold]{similarity:.4f}[/bold]\n"
+                    f"Distancia cosseno: [bold]{cosine_dist:.4f}[/bold]",
+                    title="Similaridade entre Jogadores",
+                    border_style="cyan",
+                )
             )
-            emb_b = (
-                session.query(db.PlayerEmbedding)
-                .filter_by(player_name=player_b)
-            )
-
-            if season:
-                emb_a = emb_a.filter_by(season=season)
-                emb_b = emb_b.filter_by(season=season)
-
-            emb_a = emb_a.first()
-            emb_b = emb_b.first()
-
-            if emb_a and emb_b and emb_a.embedding is not None and emb_b.embedding is not None:
-                vec_a = np.array(emb_a.embedding)
-                vec_b = np.array(emb_b.embedding)
-
-                dot = np.dot(vec_a, vec_b)
-                norm_a = np.linalg.norm(vec_a)
-                norm_b = np.linalg.norm(vec_b)
-
-                if norm_a > 0 and norm_b > 0:
-                    cosine_sim = dot / (norm_a * norm_b)
-                    cosine_dist = 1 - cosine_sim
-
-                    console.print(
-                        Panel(
-                            f"Similaridade cosseno: [bold]{cosine_sim:.4f}[/bold]\n"
-                            f"Distancia cosseno: [bold]{cosine_dist:.4f}[/bold]",
-                            title="Similaridade entre Jogadores",
-                            border_style="cyan",
-                        )
-                    )
-            else:
-                console.print("[yellow]Aviso: embeddings nao encontrados para calcular similaridade.[/yellow]")
-        except Exception as exc:
-            console.print(f"[yellow]Aviso: falha ao calcular similaridade: {exc}[/yellow]")
+        else:
+            console.print("[yellow]Aviso: embeddings nao encontrados para calcular similaridade.[/yellow]")
 
     except typer.Exit:
         raise
@@ -579,7 +474,7 @@ def compare_players(
         console.print(f"[red]Erro ao comparar jogadores: {exc}[/red]")
         raise typer.Exit(1)
     finally:
-        session.close()
+        repo.close()
 
 
 @app.command("find-similar")
@@ -589,36 +484,27 @@ def find_similar(
     limit: int = typer.Option(10, "--limit", help="Numero maximo de resultados"),
 ) -> None:
     """Busca jogadores similares usando busca vetorial pgvector."""
-    session = _get_session()
+    repo = _get_repo()
 
     try:
-        if season is None:
-            # Try to get the latest season for this player
-            latest = (
-                session.query(db.PlayerEmbedding)
-                .filter_by(player_name=player)
-                .order_by(db.PlayerEmbedding.season.desc())
-                .first()
-            )
-            if latest is None:
-                console.print(f"[red]Erro: jogador '{player}' nao encontrado nos embeddings.[/red]")
-                raise typer.Exit(1)
-            season = latest.season
-            console.print(f"[cyan]Usando temporada mais recente: {season}[/cyan]")
+        use_case = FindSimilar(repo)
+        result = use_case.execute(player, season, limit)
 
-        # Try dedicated module first, fall back to db function
-        try:
-            from football_moneyball import player_embeddings
+        if "error" in result:
+            console.print(f"[red]Erro: {result['error']}[/red]")
+            raise typer.Exit(1)
 
-            similar_df = player_embeddings.find_similar(session, player, season, limit)
-        except (ImportError, AttributeError):
-            similar_df = db.find_similar_players(session, player, season, limit)
+        similar_df = result["similar_df"]
+        resolved_season = result["season"]
+
+        if resolved_season != season and season is None:
+            console.print(f"[cyan]Usando temporada mais recente: {resolved_season}[/cyan]")
 
         if similar_df.empty:
             console.print(f"[yellow]Nenhum jogador similar encontrado para '{player}'.[/yellow]")
             raise typer.Exit(0)
 
-        table = Table(title=f"Jogadores Similares a {player} ({season})")
+        table = Table(title=f"Jogadores Similares a {player} ({resolved_season})")
         table.add_column("#", justify="right", style="dim")
         table.add_column("Jogador", style="bold")
         table.add_column("Posicao")
@@ -642,7 +528,7 @@ def find_similar(
         console.print(f"[red]Erro ao buscar jogadores similares: {exc}[/red]")
         raise typer.Exit(1)
     finally:
-        session.close()
+        repo.close()
 
 
 @app.command("recommend")
@@ -667,14 +553,19 @@ def recommend(
         console.print(f"[red]Erro: arquivo JSON invalido: {exc}[/red]")
         raise typer.Exit(1)
 
-    session = _get_session()
+    repo = _get_repo()
 
     try:
-        from football_moneyball import player_embeddings
+        from football_moneyball.domain import embeddings as emb_mod
 
         with console.status("[bold green]Buscando recomendacoes..."):
-            recommendations = player_embeddings.recommend_by_profile(
-                session, profile, season=season, limit=limit
+            # Build synthetic embedding from profile using PCA/scaler
+            embedding = emb_mod.profile_to_embedding(profile)
+            recommendations = repo.recommend_by_profile(
+                embedding=embedding,
+                season=season or "",
+                limit=limit,
+                position_group=profile.get("position_group"),
             )
 
         if recommendations.empty:
@@ -700,15 +591,46 @@ def recommend(
         console.print(table)
 
     except ImportError:
-        console.print("[red]Erro: modulo player_embeddings nao disponivel.[/red]")
-        raise typer.Exit(1)
+        # Fallback: use legacy player_embeddings module
+        try:
+            from football_moneyball import player_embeddings
+
+            with console.status("[bold green]Buscando recomendacoes..."):
+                recommendations = player_embeddings.recommend_by_profile(
+                    repo.session, profile, season=season, limit=limit
+                )
+
+            if recommendations.empty:
+                console.print("[yellow]Nenhuma recomendacao encontrada para o perfil informado.[/yellow]")
+                raise typer.Exit(0)
+
+            table = Table(title="Recomendacoes de Jogadores")
+            table.add_column("#", justify="right", style="dim")
+            table.add_column("Jogador", style="bold")
+            table.add_column("Temporada")
+            table.add_column("Score", justify="right")
+            table.add_column("Arquetipo")
+
+            for rank, (_, row) in enumerate(recommendations.iterrows(), start=1):
+                table.add_row(
+                    str(rank),
+                    str(row.get("player_name", "")),
+                    str(row.get("season", "")),
+                    f"{float(row.get('score', row.get('distance', 0))):.4f}",
+                    str(row.get("archetype", "-")),
+                )
+
+            console.print(table)
+        except ImportError:
+            console.print("[red]Erro: modulo de embeddings nao disponivel.[/red]")
+            raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as exc:
         console.print(f"[red]Erro ao gerar recomendacoes: {exc}[/red]")
         raise typer.Exit(1)
     finally:
-        session.close()
+        repo.close()
 
 
 @app.command("scout-report")
@@ -719,88 +641,21 @@ def scout_report(
     output: Optional[str] = typer.Option(None, "--output", help="Caminho do arquivo de saida (markdown ou JSON)"),
 ) -> None:
     """Gera relatorio completo de scouting de um jogador."""
-    session = _get_session()
+    repo = _get_repo()
 
     try:
-        import numpy as np
+        use_case = GenerateReport(repo)
+        report = use_case.execute(player, season, team_target)
 
-        # Fetch player metrics
-        metrics_df = db.get_player_metrics(session, player, season)
-        if metrics_df.empty:
-            console.print(f"[red]Erro: jogador '{player}' nao encontrado no banco de dados.[/red]")
+        if "error" in report:
+            console.print(f"[red]Erro: {report['error']}[/red]")
             raise typer.Exit(1)
 
-        # Aggregate metrics
-        numeric_cols = metrics_df.select_dtypes(include="number").columns.tolist()
-        numeric_cols = [c for c in numeric_cols if c not in ("player_id", "match_id")]
-        agg = metrics_df[numeric_cols].sum()
-        matches_played = len(metrics_df)
-        per90 = {k: round(float(v) / (float(agg.get("minutes_played", 1) or 1) / 90), 2) for k, v in agg.items()}
+        percentiles = report.get("percentis", {})
+        similar_list = report.get("similares", [])
 
-        # Percentiles (compared to all players in the same season)
-        percentiles = {}
-        try:
-            from sqlalchemy import func
-
-            if season:
-                all_players_q = (
-                    session.query(db.PlayerMatchMetrics)
-                    .join(db.Match, db.Match.match_id == db.PlayerMatchMetrics.match_id)
-                    .filter(db.Match.season == season)
-                )
-            else:
-                all_players_q = session.query(db.PlayerMatchMetrics)
-
-            import pandas as pd
-            all_rows = all_players_q.all()
-            columns = [c.key for c in db.PlayerMatchMetrics.__table__.columns]
-            all_data = pd.DataFrame([{col: getattr(r, col) for col in columns} for r in all_rows])
-
-            if not all_data.empty:
-                all_agg = (
-                    all_data.groupby("player_id")[numeric_cols].sum()
-                )
-                for col in numeric_cols:
-                    if col in all_agg.columns and col in agg.index:
-                        rank = (all_agg[col] < float(agg[col])).sum()
-                        percentiles[col] = round(rank / len(all_agg) * 100, 1)
-        except Exception:
-            pass
-
-        # Player embedding / archetype
-        emb = session.query(db.PlayerEmbedding).filter_by(player_name=player)
-        if season:
-            emb = emb.filter_by(season=season)
-        emb = emb.first()
-        archetype = emb.archetype if emb else "N/A"
-
-        # Top 5 similar players
-        similar_df = db.find_similar_players(session, player, season or "", limit=5)
-
-        # Build report data
-        report = {
-            "jogador": player,
-            "temporada": season or "Todas",
-            "partidas": matches_played,
-            "arquetipo": archetype,
-            "metricas_totais": {k: float(v) for k, v in agg.items()},
-            "metricas_por_90": per90,
-            "percentis": percentiles,
-            "similares": similar_df.to_dict("records") if not similar_df.empty else [],
-        }
-
-        # Compatibility analysis
-        if team_target:
-            report["time_alvo"] = team_target
-            try:
-                from football_moneyball import player_embeddings
-
-                compat_df = player_embeddings.find_complementary(
-                    session, player, season or "", limit=10
-                )
-                report["compatibilidade"] = compat_df.to_dict("records") if not compat_df.empty else []
-            except (ImportError, AttributeError):
-                report["compatibilidade"] = "Analise de compatibilidade nao disponivel."
+        import pandas as pd
+        similar_df = pd.DataFrame(similar_list) if similar_list else pd.DataFrame()
 
         # Output handling
         if output:
@@ -814,15 +669,17 @@ def scout_report(
                 try:
                     from football_moneyball import export
 
-                    full_report = export.generate_scout_report(session, player, season, team_target)
+                    full_report = export.generate_scout_report(
+                        repo.session, player, season, team_target
+                    )
                     export.save_report(full_report, str(output_path), format="markdown")
                 except ImportError:
                     # Fallback: write basic markdown
                     lines = [
                         f"# Relatorio de Scouting: {player}",
                         f"\n**Temporada:** {report['temporada']}",
-                        f"**Partidas:** {matches_played}",
-                        f"**Arquetipo:** {archetype}",
+                        f"**Partidas:** {report['partidas']}",
+                        f"**Arquetipo:** {report['arquetipo']}",
                         "\n## Metricas Totais",
                     ]
                     for k, v in report["metricas_totais"].items():
@@ -848,8 +705,8 @@ def scout_report(
             header_text = (
                 f"[bold]{player}[/bold]\n"
                 f"Temporada: {report['temporada']}\n"
-                f"Partidas: {matches_played}\n"
-                f"Arquetipo: [bold cyan]{archetype}[/bold cyan]"
+                f"Partidas: {report['partidas']}\n"
+                f"Arquetipo: [bold cyan]{report['arquetipo']}[/bold cyan]"
             )
             console.print(Panel(header_text, title="Relatorio de Scouting", border_style="blue"))
 
@@ -933,13 +790,12 @@ def scout_report(
 
             # Generate radar
             try:
-                from football_moneyball import viz
-
+                viz = get_visualizer()
                 radar_data = {"name": player}
                 for k, v in percentiles.items():
                     radar_data[k] = v
                 viz.plot_radar_comparison(radar_data, radar_data)
-            except (ImportError, AttributeError):
+            except Exception:
                 pass
 
     except typer.Exit:
@@ -948,15 +804,17 @@ def scout_report(
         console.print(f"[red]Erro ao gerar relatorio de scouting: {exc}[/red]")
         raise typer.Exit(1)
     finally:
-        session.close()
+        repo.close()
 
 
 @app.command("list-competitions")
 def list_competitions() -> None:
     """Lista as competicoes disponiveis nos dados abertos do StatsBomb."""
     try:
+        provider = _get_provider()
+
         with console.status("[bold green]Buscando competicoes..."):
-            comps = player_metrics.get_free_competitions()
+            comps = provider.get_competitions()
 
         if comps.empty:
             console.print("[yellow]Nenhuma competicao encontrada.[/yellow]")
@@ -994,8 +852,10 @@ def list_matches(
 ) -> None:
     """Lista as partidas de uma competicao/temporada."""
     try:
+        provider = _get_provider()
+
         with console.status("[bold green]Buscando partidas..."):
-            matches = player_metrics.get_competition_matches(competition_id, season_id)
+            matches = provider.get_matches(competition_id, season_id)
 
         if matches.empty:
             console.print("[yellow]Nenhuma partida encontrada.[/yellow]")

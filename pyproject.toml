@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "football-moneyball"
-version = "0.1.0"
-description = "Football analytics CLI powered by StatsBomb data, pgvector, and network analysis"
+version = "0.3.0"
+description = "Football analytics CLI — hexagonal architecture with StatsBomb and Sofascore providers"
 requires-python = ">=3.12"
 dependencies = [
     "statsbombpy>=1.13",
+    "requests>=2.31",
     "pandas>=2.2",
     "numpy>=1.26",
     "networkx>=3.2",
