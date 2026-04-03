@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: football-moneyball
+data:
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+
+    CREATE TABLE IF NOT EXISTS matches (
+        match_id INTEGER PRIMARY KEY,
+        competition VARCHAR(100),
+        season VARCHAR(20),
+        match_date DATE,
+        home_team VARCHAR(100),
+        away_team VARCHAR(100),
+        home_score INTEGER,
+        away_score INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS player_match_metrics (
+        match_id INTEGER REFERENCES matches(match_id),
+        player_id INTEGER,
+        player_name VARCHAR(100),
+        team VARCHAR(100),
+        minutes_played REAL,
+        goals REAL, assists REAL, shots REAL, shots_on_target REAL, xg REAL, xa REAL,
+        passes REAL, passes_completed REAL, pass_pct REAL,
+        progressive_passes REAL, progressive_carries REAL,
+        key_passes REAL, through_balls REAL, crosses REAL,
+        tackles REAL, interceptions REAL, blocks REAL, clearances REAL,
+        aerials_won REAL, aerials_lost REAL,
+        fouls_committed REAL, fouls_won REAL,
+        dribbles_attempted REAL, dribbles_completed REAL,
+        touches REAL, carries REAL, dispossessed REAL,
+        pressures REAL, pressure_regains REAL,
+        PRIMARY KEY (match_id, player_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS pass_networks (
+        match_id INTEGER REFERENCES matches(match_id),
+        passer_id INTEGER,
+        receiver_id INTEGER,
+        passer_name VARCHAR(100),
+        receiver_name VARCHAR(100),
+        weight INTEGER,
+        features JSONB DEFAULT '{}',
+        PRIMARY KEY (match_id, passer_id, receiver_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS player_embeddings (
+        player_id INTEGER,
+        player_name VARCHAR(100),
+        team VARCHAR(100),
+        competition VARCHAR(100),
+        season VARCHAR(20),
+        embedding vector(16),
+        cluster_label INTEGER,
+        archetype VARCHAR(50),
+        PRIMARY KEY (player_id, season)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw ON player_embeddings
+        USING hnsw (embedding vector_cosine_ops);
+
+    CREATE TABLE IF NOT EXISTS stints (
+        match_id INTEGER REFERENCES matches(match_id),
+        stint_number INTEGER,
+        home_player_ids INTEGER[],
+        away_player_ids INTEGER[],
+        duration_minutes REAL,
+        home_xg REAL,
+        away_xg REAL,
+        xg_diff REAL,
+        PRIMARY KEY (match_id, stint_number)
+    );

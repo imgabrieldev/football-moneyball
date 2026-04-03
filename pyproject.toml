@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "football-moneyball"
+version = "0.1.0"
+description = "Football analytics CLI powered by StatsBomb data, pgvector, and network analysis"
+requires-python = ">=3.12"
+dependencies = [
+    "statsbombpy>=1.13",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "networkx>=3.2",
+    "scikit-learn>=1.4",
+    "matplotlib>=3.8",
+    "mplsoccer>=1.4",
+    "rich>=13.7",
+    "typer>=0.12",
+    "sqlalchemy>=2.0",
+    "psycopg2-binary>=2.9",
+    "pgvector>=0.3",
+]
+
+[project.scripts]
+moneyball = "football_moneyball.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["football_moneyball*"]
