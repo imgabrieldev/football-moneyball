@@ -211,6 +211,80 @@ class PressingMetrics(Base):
     pressing_zone_6: Mapped[Optional[float]] = mapped_column(Float)
 
 
+class MatchOdds(Base):
+    """Odds de casas de apostas por partida."""
+
+    __tablename__ = "match_odds"
+
+    match_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bookmaker: Mapped[str] = mapped_column(String, primary_key=True)
+    market: Mapped[str] = mapped_column(String, primary_key=True)
+    outcome: Mapped[str] = mapped_column(String, primary_key=True)
+    point: Mapped[float] = mapped_column(Float, primary_key=True, default=0.0)
+    odds: Mapped[Optional[float]] = mapped_column(Float)
+    implied_prob: Mapped[Optional[float]] = mapped_column(Float)
+    fetched_at: Mapped[Optional[str]] = mapped_column(String)
+
+
+class MatchPrediction(Base):
+    """Previsoes do modelo por partida."""
+
+    __tablename__ = "match_predictions"
+
+    match_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    home_team: Mapped[Optional[str]] = mapped_column(String)
+    away_team: Mapped[Optional[str]] = mapped_column(String)
+    home_xg_expected: Mapped[Optional[float]] = mapped_column(Float)
+    away_xg_expected: Mapped[Optional[float]] = mapped_column(Float)
+    home_win_prob: Mapped[Optional[float]] = mapped_column(Float)
+    draw_prob: Mapped[Optional[float]] = mapped_column(Float)
+    away_win_prob: Mapped[Optional[float]] = mapped_column(Float)
+    over_25_prob: Mapped[Optional[float]] = mapped_column(Float)
+    btts_prob: Mapped[Optional[float]] = mapped_column(Float)
+    most_likely_score: Mapped[Optional[str]] = mapped_column(String)
+    simulations: Mapped[Optional[int]] = mapped_column(Integer)
+    predicted_at: Mapped[Optional[str]] = mapped_column(String)
+
+
+class ValueBet(Base):
+    """Value bets identificadas pelo modelo."""
+
+    __tablename__ = "value_bets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[Optional[int]] = mapped_column(Integer)
+    market: Mapped[Optional[str]] = mapped_column(String)
+    outcome: Mapped[Optional[str]] = mapped_column(String)
+    model_prob: Mapped[Optional[float]] = mapped_column(Float)
+    best_odds: Mapped[Optional[float]] = mapped_column(Float)
+    bookmaker: Mapped[Optional[str]] = mapped_column(String)
+    implied_prob: Mapped[Optional[float]] = mapped_column(Float)
+    edge: Mapped[Optional[float]] = mapped_column(Float)
+    kelly_fraction: Mapped[Optional[float]] = mapped_column(Float)
+    recommended_stake: Mapped[Optional[float]] = mapped_column(Float)
+    actual_result: Mapped[Optional[str]] = mapped_column(String)
+    profit: Mapped[Optional[float]] = mapped_column(Float)
+    created_at: Mapped[Optional[str]] = mapped_column(String)
+
+
+class BacktestResult(Base):
+    """Resultados de backtesting."""
+
+    __tablename__ = "backtest_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_date: Mapped[Optional[str]] = mapped_column(String)
+    matches_analyzed: Mapped[Optional[int]] = mapped_column(Integer)
+    bets_placed: Mapped[Optional[int]] = mapped_column(Integer)
+    total_staked: Mapped[Optional[float]] = mapped_column(Float)
+    total_return: Mapped[Optional[float]] = mapped_column(Float)
+    roi: Mapped[Optional[float]] = mapped_column(Float)
+    hit_rate: Mapped[Optional[float]] = mapped_column(Float)
+    brier_score: Mapped[Optional[float]] = mapped_column(Float)
+    max_drawdown: Mapped[Optional[float]] = mapped_column(Float)
+    config = mapped_column(JSONB)
+
+
 # ---------------------------------------------------------------------------
 # Engine / Session
 # ---------------------------------------------------------------------------

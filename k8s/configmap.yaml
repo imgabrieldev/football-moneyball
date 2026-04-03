@@ -114,4 +114,66 @@ data:
         PRIMARY KEY (match_id, team)
     );
 
+    CREATE TABLE IF NOT EXISTS match_odds (
+        match_id INTEGER REFERENCES matches(match_id),
+        bookmaker VARCHAR(100),
+        market VARCHAR(50),
+        outcome VARCHAR(50),
+        point REAL DEFAULT 0.0,
+        odds REAL,
+        implied_prob REAL,
+        fetched_at VARCHAR(50),
+        PRIMARY KEY (match_id, bookmaker, market, outcome, point)
+    );
+
+    CREATE TABLE IF NOT EXISTS match_predictions (
+        match_id INTEGER PRIMARY KEY REFERENCES matches(match_id),
+        home_team VARCHAR(100),
+        away_team VARCHAR(100),
+        home_xg_expected REAL,
+        away_xg_expected REAL,
+        home_win_prob REAL,
+        draw_prob REAL,
+        away_win_prob REAL,
+        over_25_prob REAL,
+        btts_prob REAL,
+        most_likely_score VARCHAR(10),
+        simulations INTEGER,
+        predicted_at VARCHAR(50)
+    );
+
+    CREATE TABLE IF NOT EXISTS value_bets (
+        id SERIAL PRIMARY KEY,
+        match_id INTEGER REFERENCES matches(match_id),
+        market VARCHAR(50),
+        outcome VARCHAR(50),
+        model_prob REAL,
+        best_odds REAL,
+        bookmaker VARCHAR(100),
+        implied_prob REAL,
+        edge REAL,
+        kelly_fraction REAL,
+        recommended_stake REAL,
+        actual_result VARCHAR(50),
+        profit REAL,
+        created_at VARCHAR(50)
+    );
+
+    CREATE TABLE IF NOT EXISTS backtest_results (
+        id SERIAL PRIMARY KEY,
+        run_date VARCHAR(50),
+        matches_analyzed INTEGER,
+        bets_placed INTEGER,
+        total_staked REAL,
+        total_return REAL,
+        roi REAL,
+        hit_rate REAL,
+        brier_score REAL,
+        max_drawdown REAL,
+        config JSONB DEFAULT '{}'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_value_bets_match ON value_bets(match_id);
+    CREATE INDEX IF NOT EXISTS idx_match_odds_match ON match_odds(match_id);
+
     CREATE INDEX IF NOT EXISTS idx_action_values_player ON action_values(player_id);

@@ -891,6 +891,162 @@ def list_matches(
 
 
 # ---------------------------------------------------------------------------
+# v0.4.0 — Betting commands
+# ---------------------------------------------------------------------------
+
+@app.command("predict")
+def predict(
+    match_id: int = typer.Argument(..., help="ID da partida"),
+    home_team: str = typer.Option(..., "--home", help="Nome do time da casa"),
+    away_team: str = typer.Option(..., "--away", help="Nome do time visitante"),
+    simulations: int = typer.Option(10_000, "--sims", help="Numero de simulacoes Monte Carlo"),
+) -> None:
+    """Preve resultado de uma partida via Monte Carlo + Poisson."""
+    from football_moneyball.use_cases.predict_match import PredictMatch
+
+    repo = get_repository()
+    try:
+        with console.status("[bold green]Rodando simulacao Monte Carlo..."):
+            result = PredictMatch(repo).execute(match_id, home_team, away_team, simulations)
+
+        if "error" in result:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(1)
+
+        # Header
+        console.print(Panel(
+            f"[bold]{home_team}[/bold] vs [bold]{away_team}[/bold]\n"
+            f"xG esperado: {result['home_xg']:.2f} - {result['away_xg']:.2f}\n"
+            f"Simulacoes: {result['simulations']:,}",
+            title="Previsao Monte Carlo", border_style="cyan",
+        ))
+
+        # 1X2 probabilities
+        prob_table = Table(title="Probabilidades 1X2")
+        prob_table.add_column("Resultado", style="bold")
+        prob_table.add_column("Probabilidade", justify="right")
+        prob_table.add_column("Odds justo", justify="right")
+        for label, key in [("Casa", "home_win_prob"), ("Empate", "draw_prob"), ("Fora", "away_win_prob")]:
+            prob = result[key]
+            fair_odds = round(1 / prob, 2) if prob > 0 else 0
+            prob_table.add_row(label, f"{prob*100:.1f}%", f"{fair_odds:.2f}")
+        console.print(prob_table)
+
+        # Markets
+        market_table = Table(title="Outros Mercados")
+        market_table.add_column("Mercado", style="bold")
+        market_table.add_column("Probabilidade", justify="right")
+        for label, key in [
+            ("Over 0.5 gols", "over_05"), ("Over 1.5 gols", "over_15"),
+            ("Over 2.5 gols", "over_25"), ("Over 3.5 gols", "over_35"),
+            ("Ambas marcam", "btts_prob"),
+        ]:
+            prob = result.get(key, 0)
+            market_table.add_row(label, f"{prob*100:.1f}%")
+        console.print(market_table)
+
+        # Most likely scores
+        console.print(f"\n[cyan]Placar mais provavel:[/cyan] [bold]{result['most_likely_score']}[/bold]")
+        if result.get("score_matrix"):
+            score_table = Table(title="Top 5 Placares")
+            score_table.add_column("Placar", style="bold")
+            score_table.add_column("Probabilidade", justify="right")
+            for score, prob in list(result["score_matrix"].items())[:5]:
+                score_table.add_row(score, f"{prob*100:.1f}%")
+            console.print(score_table)
+
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro na previsao: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+@app.command("backtest")
+def backtest(
+    season: str = typer.Option("2026", "--season", help="Temporada"),
+    competition: str = typer.Option("Brasileirão Série A", "--competition", help="Competicao"),
+    bankroll: float = typer.Option(1000.0, "--bankroll", help="Bankroll inicial"),
+    min_edge: float = typer.Option(0.03, "--min-edge", help="Edge minimo (0.03 = 3%)"),
+) -> None:
+    """Roda backtesting com dados historicos do Brasileirao."""
+    from football_moneyball.use_cases.backtest import Backtest
+
+    repo = get_repository()
+    try:
+        with console.status("[bold green]Rodando backtesting..."):
+            result = Backtest(repo).execute(
+                competition=competition,
+                season=season,
+                initial_bankroll=bankroll,
+                min_edge=min_edge,
+            )
+
+        if "error" in result:
+            console.print(f"[yellow]{result['error']}[/yellow]")
+            if "predictions" in result:
+                console.print(f"Partidas analisadas: {result.get('matches_analyzed', 0)}")
+            raise typer.Exit(0)
+
+        # Results panel
+        roi_color = "green" if result["roi"] > 0 else "red"
+        console.print(Panel(
+            f"[bold]Backtesting — {competition} {season}[/bold]\n\n"
+            f"Bankroll inicial: R$ {result['initial_bankroll']:.2f}\n"
+            f"Bankroll final: R$ {result['final_bankroll']:.2f}\n"
+            f"[{roi_color}]ROI: {result['roi']:+.2f}%[/{roi_color}]\n\n"
+            f"Partidas analisadas: {result['matches_analyzed']}\n"
+            f"Apostas realizadas: {result['bets_placed']}\n"
+            f"Apostas ganhas: {result['bets_won']}\n"
+            f"Hit rate: {result['hit_rate']:.1f}%\n"
+            f"Edge medio: {result['avg_edge']:.2f}%\n"
+            f"Odds media: {result['avg_odds']:.2f}\n\n"
+            f"Brier score: {result['brier_score']:.4f} (< 0.25 = melhor que aleatorio)\n"
+            f"Max drawdown: {result['max_drawdown']:.1f}%\n"
+            f"Total apostado: R$ {result['total_staked']:.2f}\n"
+            f"Retorno total: R$ {result['total_return']:.2f}",
+            title="Resultados do Backtesting", border_style=roi_color,
+        ))
+
+        # Top bets
+        if result.get("bets"):
+            bets_table = Table(title="Ultimas 10 Apostas")
+            bets_table.add_column("Partida", style="bold")
+            bets_table.add_column("Mercado")
+            bets_table.add_column("Aposta")
+            bets_table.add_column("Odds", justify="right")
+            bets_table.add_column("Edge", justify="right")
+            bets_table.add_column("Stake", justify="right")
+            bets_table.add_column("Resultado")
+            bets_table.add_column("Lucro", justify="right")
+
+            for bet in result["bets"][-10:]:
+                won_str = "[green]✓[/green]" if bet["won"] else "[red]✗[/red]"
+                profit_str = f"[green]+{bet['profit']:.2f}[/green]" if bet["profit"] > 0 else f"[red]{bet['profit']:.2f}[/red]"
+                bets_table.add_row(
+                    str(bet["match"])[:30],
+                    bet["market"],
+                    bet["outcome"],
+                    f"{bet['odds']:.2f}",
+                    f"{bet['edge']*100:.1f}%",
+                    f"R$ {bet['stake']:.2f}",
+                    won_str,
+                    profit_str,
+                )
+            console.print(bets_table)
+
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro no backtesting: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

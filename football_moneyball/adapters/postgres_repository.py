@@ -230,9 +230,18 @@ class PostgresRepository:
         data = [{col: getattr(r, col) for col in columns} for r in rows]
         return pd.DataFrame(data)
 
-    def get_match_data(self, match_id: int) -> Optional[Match]:
-        """Retorna os dados de uma partida pelo ID."""
-        return self._session.get(Match, match_id)
+    def get_match_data(self, match_id: int) -> pd.DataFrame:
+        """Retorna metricas dos jogadores de uma partida como DataFrame."""
+        rows = (
+            self._session.query(PlayerMatchMetrics)
+            .filter_by(match_id=match_id)
+            .all()
+        )
+        if not rows:
+            return pd.DataFrame()
+        columns = [c.key for c in PlayerMatchMetrics.__table__.columns]
+        data = [{col: getattr(r, col) for col in columns} for r in rows]
+        return pd.DataFrame(data)
 
     def get_season_matches(
         self,

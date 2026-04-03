@@ -10,7 +10,8 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[hexagonal-architecture]] — v0.3.0: Hexagonal architecture, ports & adapters, clean code, multi-provider (StatsBomb + Sofascore)
+- [[betting-value-finder]] — v0.4.0: Monte Carlo + Poisson + Kelly Criterion, odds API, backtesting, value bets
+- ~~[[hexagonal-architecture]]~~ — v0.3.0: shipped ✓
 - ~~[[state-of-the-art-engine]]~~ — v0.2.0: shipped ✓
 
 ## Template
