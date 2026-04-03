@@ -21,6 +21,7 @@ from football_moneyball.db import (
     PlayerMatchMetrics,
     PlayerEmbedding,
     PassNetwork,
+    PressingMetrics,
     Stint,
     find_similar_players,
     get_player_metrics,
@@ -34,20 +35,30 @@ _METRIC_CATEGORIES = {
     "Ataque": [
         "goals", "shots", "shots_on_target", "xg",
         "dribbles_attempted", "dribbles_completed",
+        "big_chances", "big_chances_missed",
     ],
     "Criação": [
         "assists", "xa", "key_passes", "through_balls", "crosses",
         "progressive_passes", "progressive_carries",
+        "progressive_receptions", "switches_of_play",
     ],
     "Defesa": [
         "tackles", "interceptions",
         "blocks", "clearances", "aerials_won", "aerials_lost",
         "pressures", "pressure_regains",
+        "ground_duels_won", "ground_duels_total", "tackle_success_rate",
+    ],
+    "Valor de Posse": [
+        "xt_generated", "vaep_generated",
     ],
     "Posse": [
         "passes", "passes_completed", "pass_pct",
         "touches", "carries", "dispossessed",
         "fouls_committed", "fouls_won",
+        "passes_short", "passes_short_completed",
+        "passes_medium", "passes_medium_completed",
+        "passes_long", "passes_long_completed",
+        "passes_under_pressure", "passes_under_pressure_completed",
     ],
 }
 
@@ -353,6 +364,31 @@ def generate_scout_report(
     report["rapm"] = rapm_value
 
     # ------------------------------------------------------------------
+    # Pressing profile (team-level)
+    # ------------------------------------------------------------------
+    pressing_data = None
+    player_team = report["player_info"].get("team")
+    if player_team:
+        pressing_rows = (
+            session.query(PressingMetrics)
+            .filter(PressingMetrics.team == player_team)
+        )
+        if season:
+            pressing_rows = pressing_rows.join(
+                Match, Match.match_id == PressingMetrics.match_id
+            ).filter(Match.season == season)
+        pressing_results = pressing_rows.all()
+        if pressing_results:
+            pressing_data = {
+                "ppda": round(np.mean([p.ppda for p in pressing_results if p.ppda]), 2),
+                "pressing_success_rate": round(np.mean([p.pressing_success_rate for p in pressing_results if p.pressing_success_rate]), 1),
+                "counter_pressing_fraction": round(np.mean([p.counter_pressing_fraction for p in pressing_results if p.counter_pressing_fraction]), 1),
+                "high_turnovers_avg": round(np.mean([p.high_turnovers for p in pressing_results if p.high_turnovers is not None]), 1),
+            }
+
+    report["pressing"] = pressing_data
+
+    # ------------------------------------------------------------------
     # Compatibility with target team
     # ------------------------------------------------------------------
     if target_team and effective_season and embedding_row:
@@ -612,6 +648,18 @@ def report_to_markdown(report: dict) -> str:
     else:
         lines.append("Dados de RAPM indisponíveis.")
     lines.append("")
+
+    # -- Perfil de Pressing ------------------------------------------------
+    pressing = report.get("pressing")
+    if pressing:
+        lines.append("## Perfil de Pressing\n")
+        lines.append(f"| Metrica | Valor |")
+        lines.append(f"|---------|-------|")
+        lines.append(f"| PPDA | {pressing.get('ppda', 'N/A')} |")
+        lines.append(f"| Taxa de Sucesso | {pressing.get('pressing_success_rate', 'N/A')}% |")
+        lines.append(f"| Counter-pressing | {pressing.get('counter_pressing_fraction', 'N/A')}% |")
+        lines.append(f"| High Turnovers (media) | {pressing.get('high_turnovers_avg', 'N/A')} |")
+        lines.append("")
 
     # -- Compatibilidade ---------------------------------------------------
     compatibility = report.get("compatibility")

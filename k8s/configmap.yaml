@@ -34,6 +34,14 @@ data:
         dribbles_attempted REAL, dribbles_completed REAL,
         touches REAL, carries REAL, dispossessed REAL,
         pressures REAL, pressure_regains REAL,
+        progressive_receptions REAL, big_chances REAL, big_chances_missed REAL,
+        passes_short REAL, passes_short_completed REAL,
+        passes_medium REAL, passes_medium_completed REAL,
+        passes_long REAL, passes_long_completed REAL,
+        passes_under_pressure REAL, passes_under_pressure_completed REAL,
+        switches_of_play REAL,
+        ground_duels_won REAL, ground_duels_total REAL, tackle_success_rate REAL,
+        xt_generated REAL, vaep_generated REAL, pressing_success_rate_individual REAL,
         PRIMARY KEY (match_id, player_id)
     );
 
@@ -57,6 +65,7 @@ data:
         embedding vector(16),
         cluster_label INTEGER,
         archetype VARCHAR(50),
+        position_group VARCHAR(10),
         PRIMARY KEY (player_id, season)
     );
 
@@ -72,5 +81,37 @@ data:
         home_xg REAL,
         away_xg REAL,
         xg_diff REAL,
+        boundary_type VARCHAR(20),
         PRIMARY KEY (match_id, stint_number)
     );
+
+    CREATE TABLE IF NOT EXISTS action_values (
+        match_id INTEGER REFERENCES matches(match_id),
+        event_index INTEGER,
+        player_id INTEGER,
+        player_name VARCHAR(100),
+        team VARCHAR(100),
+        action_type VARCHAR(50),
+        start_x REAL, start_y REAL,
+        end_x REAL, end_y REAL,
+        xt_value REAL,
+        vaep_value REAL,
+        vaep_offensive REAL,
+        vaep_defensive REAL,
+        PRIMARY KEY (match_id, event_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS pressing_metrics (
+        match_id INTEGER REFERENCES matches(match_id),
+        team VARCHAR(100),
+        ppda REAL,
+        pressing_success_rate REAL,
+        counter_pressing_fraction REAL,
+        high_turnovers INTEGER,
+        shot_ending_high_turnovers INTEGER,
+        pressing_zone_1 REAL, pressing_zone_2 REAL, pressing_zone_3 REAL,
+        pressing_zone_4 REAL, pressing_zone_5 REAL, pressing_zone_6 REAL,
+        PRIMARY KEY (match_id, team)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_action_values_player ON action_values(player_id);

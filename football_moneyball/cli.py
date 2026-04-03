@@ -17,7 +17,7 @@ from rich.progress import Progress
 from rich.table import Table
 from rich import print as rprint
 
-from football_moneyball import db, player_metrics, network_analysis
+from football_moneyball import db, player_metrics, network_analysis, pressing
 
 # ---------------------------------------------------------------------------
 # App & globals
@@ -101,6 +101,15 @@ def analyze_match(
                 db.upsert_player_metrics(session, metrics_df, match_id)
                 db.upsert_pass_network(session, edges_df, match_id)
 
+            # v0.2.0 — Pressing metrics
+            try:
+                with console.status("[bold green]Calculando metricas de pressing..."):
+                    pressing_df = pressing.compute_match_pressing(match_id)
+                    if not pressing_df.empty:
+                        db.upsert_pressing_metrics(session, pressing_df, match_id)
+            except Exception as exc:
+                console.print(f"[yellow]Aviso: falha ao calcular pressing: {exc}[/yellow]")
+
             console.print("[green]Dados persistidos com sucesso.[/green]")
 
         # Display player metrics table sorted by xG contribution
@@ -160,6 +169,33 @@ def analyze_match(
                 console.print(partner_table)
         except Exception as exc:
             console.print(f"[yellow]Aviso: nao foi possivel exibir parcerias de passe: {exc}[/yellow]")
+
+        # v0.2.0 — Pressing metrics display
+        try:
+            pressing_rows = (
+                session.query(db.PressingMetrics)
+                .filter_by(match_id=match_id)
+                .all()
+            )
+            if pressing_rows:
+                press_table = Table(title="Metricas de Pressing")
+                press_table.add_column("Time", style="bold")
+                press_table.add_column("PPDA", justify="right")
+                press_table.add_column("Sucesso %", justify="right")
+                press_table.add_column("Counter-press %", justify="right")
+                press_table.add_column("High Turnovers", justify="right")
+
+                for pr in pressing_rows:
+                    press_table.add_row(
+                        str(pr.team),
+                        f"{pr.ppda:.1f}" if pr.ppda else "-",
+                        f"{pr.pressing_success_rate:.0f}%" if pr.pressing_success_rate else "-",
+                        f"{pr.counter_pressing_fraction:.0f}%" if pr.counter_pressing_fraction else "-",
+                        str(pr.high_turnovers or 0),
+                    )
+                console.print(press_table)
+        except Exception:
+            pass
 
     except typer.Exit:
         raise
@@ -260,6 +296,14 @@ def analyze_season(
                                 if key in edge_features:
                                     edges_df.at[idx, "features"] = edge_features[key]
                             db.upsert_pass_network(session, edges_df, mid)
+
+                            # v0.2.0 — Pressing per match
+                            try:
+                                pressing_df = pressing.compute_match_pressing(mid)
+                                if not pressing_df.empty:
+                                    db.upsert_pressing_metrics(session, pressing_df, mid)
+                            except Exception:
+                                pass
                     except Exception as exc:
                         console.print(f"[yellow]Aviso: falha na partida {mid}: {exc}[/yellow]")
                         progress.advance(task)
@@ -424,14 +468,23 @@ def compare_players(
             ("Assistencias", "assists"),
             ("xG", "xg"),
             ("xA", "xa"),
+            ("Big Chances", "big_chances"),
             ("Passes", "passes"),
             ("Passes Completados", "passes_completed"),
+            ("Passes Curtos", "passes_short"),
+            ("Passes Medios", "passes_medium"),
+            ("Passes Longos", "passes_long"),
+            ("Passes sob Pressao", "passes_under_pressure"),
             ("Passes Progressivos", "progressive_passes"),
+            ("Recepcoes Progressivas", "progressive_receptions"),
             ("Passes Decisivos", "key_passes"),
+            ("Mudancas de Jogo", "switches_of_play"),
             ("Finalizacoes", "shots"),
             ("Finalizacoes no Alvo", "shots_on_target"),
             ("Dribles Completados", "dribbles_completed"),
             ("Desarmes", "tackles"),
+            ("Taxa Sucesso Desarme", "tackle_success_rate"),
+            ("Duelos Terrestres", "ground_duels_total"),
             ("Interceptacoes", "interceptions"),
             ("Bloqueios", "blocks"),
             ("Pressoes", "pressures"),
@@ -566,7 +619,7 @@ def find_similar(
         table = Table(title=f"Jogadores Similares a {player} ({season})")
         table.add_column("#", justify="right", style="dim")
         table.add_column("Jogador", style="bold")
-        table.add_column("Temporada")
+        table.add_column("Posicao")
         table.add_column("Distancia", justify="right")
         table.add_column("Arquetipo")
 
@@ -574,7 +627,7 @@ def find_similar(
             table.add_row(
                 str(idx + 1 if isinstance(idx, int) else idx),
                 str(row.get("player_name", "")),
-                str(row.get("season", "")),
+                str(row.get("position_group", row.get("season", ""))),
                 f"{float(row.get('distance', 0)):.4f}",
                 str(row.get("archetype", "-")),
             )
@@ -810,16 +863,26 @@ def scout_report(
                 ("Assistencias", "assists"),
                 ("xG", "xg"),
                 ("xA", "xa"),
+                ("Big Chances", "big_chances"),
                 ("Passes", "passes"),
                 ("Passes Completados", "passes_completed"),
+                ("Passes Curtos", "passes_short"),
+                ("Passes Longos", "passes_long"),
+                ("Passes sob Pressao", "passes_under_pressure"),
                 ("Passes Progressivos", "progressive_passes"),
+                ("Recepcoes Progressivas", "progressive_receptions"),
                 ("Passes Decisivos", "key_passes"),
+                ("Mudancas de Jogo", "switches_of_play"),
                 ("Finalizacoes", "shots"),
                 ("Dribles Completados", "dribbles_completed"),
                 ("Desarmes", "tackles"),
+                ("Taxa Sucesso Desarme %", "tackle_success_rate"),
+                ("Duelos Terrestres", "ground_duels_total"),
                 ("Interceptacoes", "interceptions"),
                 ("Pressoes", "pressures"),
                 ("Conducoes Progressivas", "progressive_carries"),
+                ("xT Gerado", "xt_generated"),
+                ("VAEP Gerado", "vaep_generated"),
             ]
 
             for label, key in display_keys:

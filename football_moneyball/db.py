@@ -104,6 +104,26 @@ class PlayerMatchMetrics(Base):
     pressures: Mapped[Optional[float]] = mapped_column(Float)
     pressure_regains: Mapped[Optional[float]] = mapped_column(Float)
 
+    # v0.2.0 — expanded metrics
+    progressive_receptions: Mapped[Optional[float]] = mapped_column(Float)
+    big_chances: Mapped[Optional[float]] = mapped_column(Float)
+    big_chances_missed: Mapped[Optional[float]] = mapped_column(Float)
+    passes_short: Mapped[Optional[float]] = mapped_column(Float)
+    passes_short_completed: Mapped[Optional[float]] = mapped_column(Float)
+    passes_medium: Mapped[Optional[float]] = mapped_column(Float)
+    passes_medium_completed: Mapped[Optional[float]] = mapped_column(Float)
+    passes_long: Mapped[Optional[float]] = mapped_column(Float)
+    passes_long_completed: Mapped[Optional[float]] = mapped_column(Float)
+    passes_under_pressure: Mapped[Optional[float]] = mapped_column(Float)
+    passes_under_pressure_completed: Mapped[Optional[float]] = mapped_column(Float)
+    switches_of_play: Mapped[Optional[float]] = mapped_column(Float)
+    ground_duels_won: Mapped[Optional[float]] = mapped_column(Float)
+    ground_duels_total: Mapped[Optional[float]] = mapped_column(Float)
+    tackle_success_rate: Mapped[Optional[float]] = mapped_column(Float)
+    xt_generated: Mapped[Optional[float]] = mapped_column(Float)
+    vaep_generated: Mapped[Optional[float]] = mapped_column(Float)
+    pressing_success_rate_individual: Mapped[Optional[float]] = mapped_column(Float)
+
 
 class PassNetwork(Base):
     """Arestas da rede de passes entre jogadores em uma partida."""
@@ -132,6 +152,7 @@ class PlayerEmbedding(Base):
     embedding = mapped_column(Vector(16))
     cluster_label: Mapped[Optional[int]] = mapped_column(Integer)
     archetype: Mapped[Optional[str]] = mapped_column(String)
+    position_group: Mapped[Optional[str]] = mapped_column(String)
 
 
 class Stint(Base):
@@ -147,6 +168,48 @@ class Stint(Base):
     home_xg: Mapped[Optional[float]] = mapped_column(Float)
     away_xg: Mapped[Optional[float]] = mapped_column(Float)
     xg_diff: Mapped[Optional[float]] = mapped_column(Float)
+    boundary_type: Mapped[Optional[str]] = mapped_column(String)
+
+
+class ActionValue(Base):
+    """Valores de ação (xT e VAEP) por evento de uma partida."""
+
+    __tablename__ = "action_values"
+
+    match_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_id: Mapped[Optional[int]] = mapped_column(Integer)
+    player_name: Mapped[Optional[str]] = mapped_column(String)
+    team: Mapped[Optional[str]] = mapped_column(String)
+    action_type: Mapped[Optional[str]] = mapped_column(String)
+    start_x: Mapped[Optional[float]] = mapped_column(Float)
+    start_y: Mapped[Optional[float]] = mapped_column(Float)
+    end_x: Mapped[Optional[float]] = mapped_column(Float)
+    end_y: Mapped[Optional[float]] = mapped_column(Float)
+    xt_value: Mapped[Optional[float]] = mapped_column(Float)
+    vaep_value: Mapped[Optional[float]] = mapped_column(Float)
+    vaep_offensive: Mapped[Optional[float]] = mapped_column(Float)
+    vaep_defensive: Mapped[Optional[float]] = mapped_column(Float)
+
+
+class PressingMetrics(Base):
+    """Métricas de pressing por time por partida."""
+
+    __tablename__ = "pressing_metrics"
+
+    match_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team: Mapped[str] = mapped_column(String, primary_key=True)
+    ppda: Mapped[Optional[float]] = mapped_column(Float)
+    pressing_success_rate: Mapped[Optional[float]] = mapped_column(Float)
+    counter_pressing_fraction: Mapped[Optional[float]] = mapped_column(Float)
+    high_turnovers: Mapped[Optional[int]] = mapped_column(Integer)
+    shot_ending_high_turnovers: Mapped[Optional[int]] = mapped_column(Integer)
+    pressing_zone_1: Mapped[Optional[float]] = mapped_column(Float)
+    pressing_zone_2: Mapped[Optional[float]] = mapped_column(Float)
+    pressing_zone_3: Mapped[Optional[float]] = mapped_column(Float)
+    pressing_zone_4: Mapped[Optional[float]] = mapped_column(Float)
+    pressing_zone_5: Mapped[Optional[float]] = mapped_column(Float)
+    pressing_zone_6: Mapped[Optional[float]] = mapped_column(Float)
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +341,38 @@ def upsert_stints(session: Session, stints_df: pd.DataFrame, match_id: int) -> N
         else:
             session.add(Stint(**data))
 
+    session.commit()
+
+
+def upsert_action_values(session: Session, values_df: pd.DataFrame, match_id: int) -> None:
+    """Insere ou atualiza valores de ação (xT/VAEP) de uma partida."""
+    values_df = values_df.copy()
+    values_df["match_id"] = match_id
+    columns = {c.key for c in ActionValue.__table__.columns}
+    for _, row in values_df.iterrows():
+        data = {k: v for k, v in row.to_dict().items() if k in columns}
+        existing = session.get(ActionValue, (data["match_id"], data["event_index"]))
+        if existing:
+            for key, value in data.items():
+                setattr(existing, key, value)
+        else:
+            session.add(ActionValue(**data))
+    session.commit()
+
+
+def upsert_pressing_metrics(session: Session, metrics_df: pd.DataFrame, match_id: int) -> None:
+    """Insere ou atualiza métricas de pressing de uma partida."""
+    metrics_df = metrics_df.copy()
+    metrics_df["match_id"] = match_id
+    columns = {c.key for c in PressingMetrics.__table__.columns}
+    for _, row in metrics_df.iterrows():
+        data = {k: v for k, v in row.to_dict().items() if k in columns}
+        existing = session.get(PressingMetrics, (data["match_id"], data["team"]))
+        if existing:
+            for key, value in data.items():
+                setattr(existing, key, value)
+        else:
+            session.add(PressingMetrics(**data))
     session.commit()
 
 

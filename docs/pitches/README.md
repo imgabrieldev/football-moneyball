@@ -10,7 +10,7 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-(nenhum pitch ativo)
+- [[state-of-the-art-engine]] — v0.2.0: xT, VAEP, pressing, position-aware embeddings, RAPM bayesiano, métricas detalhadas
 
 ## Template
 

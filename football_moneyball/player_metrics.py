@@ -326,6 +326,131 @@ def extract_match_metrics(match_id: int) -> pd.DataFrame:
         metrics.setdefault(player_name, {})["pressure_regains"] = int(count)
 
     # ------------------------------------------------------------------
+    # v0.2.0 — Progressive Receptions
+    # ------------------------------------------------------------------
+    receipt_mask = events["type"] == "Ball Receipt*"
+    if receipt_mask.any() and "location" in events.columns:
+        # Find the preceding pass for each receipt to check progressiveness
+        for player_name, grp in events[receipt_mask].groupby("player"):
+            prog_rec = 0
+            for _, row in grp.iterrows():
+                try:
+                    rec_loc = row["location"]
+                    if not isinstance(rec_loc, list) or len(rec_loc) < 2:
+                        continue
+                    # Find the pass that led to this receipt (same possession)
+                    poss = row.get("possession", None)
+                    if poss is None:
+                        continue
+                    poss_passes = passes[
+                        (passes["possession"] == poss)
+                        & (passes.index < row.name)
+                    ]
+                    if poss_passes.empty:
+                        continue
+                    last_pass = poss_passes.iloc[-1]
+                    pass_loc = last_pass.get("location")
+                    if isinstance(pass_loc, list) and len(pass_loc) >= 1:
+                        start_dist = 120 - pass_loc[0]
+                        end_dist = 120 - rec_loc[0]
+                        if start_dist - end_dist >= 10:
+                            prog_rec += 1
+                except (TypeError, IndexError, KeyError):
+                    continue
+            metrics.setdefault(player_name, {})["progressive_receptions"] = prog_rec
+
+    # ------------------------------------------------------------------
+    # v0.2.0 — Shot Quality (Big Chances)
+    # ------------------------------------------------------------------
+    for player_name, grp in shots.groupby("player"):
+        if "shot_statsbomb_xg" in grp.columns:
+            big = grp["shot_statsbomb_xg"].fillna(0) >= 0.3
+            metrics.setdefault(player_name, {})["big_chances"] = int(big.sum())
+            if "shot_outcome" in grp.columns:
+                big_missed = big & ~grp["shot_outcome"].isin(["Goal"])
+                metrics[player_name]["big_chances_missed"] = int(big_missed.sum())
+            else:
+                metrics[player_name]["big_chances_missed"] = int(big.sum())
+        else:
+            metrics.setdefault(player_name, {})["big_chances"] = 0
+            metrics[player_name]["big_chances_missed"] = 0
+
+    # ------------------------------------------------------------------
+    # v0.2.0 — Pass Breakdown (short/medium/long) + under pressure + switches
+    # ------------------------------------------------------------------
+    for player_name, grp in passes.groupby("player"):
+        p_short = p_short_c = p_med = p_med_c = p_long = p_long_c = 0
+        p_under = p_under_c = 0
+        switches = 0
+
+        has_locs = all(c in grp.columns for c in ["location", "pass_end_location"])
+        has_outcome = "pass_outcome" in grp.columns
+
+        for _, row in grp.iterrows():
+            try:
+                start = row["location"] if has_locs else None
+                end = row["pass_end_location"] if has_locs else None
+
+                if isinstance(start, list) and isinstance(end, list):
+                    dist = np.sqrt((end[0] - start[0]) ** 2 + (end[1] - start[1]) ** 2)
+                    is_complete = (
+                        pd.isna(row["pass_outcome"]) or row["pass_outcome"] == "Complete"
+                    ) if has_outcome else True
+
+                    # Short / medium / long
+                    if dist < 15:
+                        p_short += 1
+                        p_short_c += int(is_complete)
+                    elif dist < 30:
+                        p_med += 1
+                        p_med_c += int(is_complete)
+                    else:
+                        p_long += 1
+                        p_long_c += int(is_complete)
+
+                    # Switches of play (lateral > 30 yards)
+                    if abs(end[1] - start[1]) > 30:
+                        switches += 1
+
+                # Under pressure
+                if row.get("under_pressure") is True:
+                    p_under += 1
+                    if has_outcome:
+                        is_c = pd.isna(row["pass_outcome"]) or row["pass_outcome"] == "Complete"
+                        p_under_c += int(is_c)
+            except (TypeError, IndexError, KeyError):
+                continue
+
+        m = metrics.setdefault(player_name, {})
+        m["passes_short"] = p_short
+        m["passes_short_completed"] = p_short_c
+        m["passes_medium"] = p_med
+        m["passes_medium_completed"] = p_med_c
+        m["passes_long"] = p_long
+        m["passes_long_completed"] = p_long_c
+        m["passes_under_pressure"] = p_under
+        m["passes_under_pressure_completed"] = p_under_c
+        m["switches_of_play"] = switches
+
+    # ------------------------------------------------------------------
+    # v0.2.0 — Ground Duels & Tackle Success Rate
+    # ------------------------------------------------------------------
+    ground_duel_mask = events["type"] == "Duel"
+    if "duel_type" in events.columns:
+        ground_duel_mask = ground_duel_mask & (events["duel_type"] == "Tackle")
+    ground_duels = events[ground_duel_mask].copy()
+    _won_outcomes = {"Won", "Success", "Success In Play", "Success Out"}
+    for player_name, grp in ground_duels.groupby("player"):
+        total_gd = len(grp)
+        won_gd = 0
+        if "duel_outcome" in grp.columns:
+            won_gd = int(grp["duel_outcome"].isin(_won_outcomes).sum())
+        m = metrics.setdefault(player_name, {})
+        m["ground_duels_won"] = won_gd
+        m["ground_duels_total"] = total_gd
+        m["tackle_success_rate"] = round(won_gd / total_gd * 100, 1) if total_gd > 0 else 0.0
+
+    # ------------------------------------------------------------------
     # Minutes played (estimated from first/last event timestamp)
     # ------------------------------------------------------------------
     if "timestamp" in events.columns:
@@ -346,7 +471,7 @@ def extract_match_metrics(match_id: int) -> pd.DataFrame:
     all_metric_cols = [
         "goals", "assists", "shots", "shots_on_target", "xg", "xa",
         "passes", "passes_completed", "pass_pct",
-        "progressive_passes", "progressive_carries",
+        "progressive_passes", "progressive_carries", "progressive_receptions",
         "key_passes", "through_balls", "crosses",
         "tackles", "interceptions", "blocks", "clearances",
         "aerials_won", "aerials_lost",
@@ -354,6 +479,13 @@ def extract_match_metrics(match_id: int) -> pd.DataFrame:
         "dribbles_attempted", "dribbles_completed",
         "touches", "carries", "dispossessed",
         "pressures", "pressure_regains",
+        "big_chances", "big_chances_missed",
+        "passes_short", "passes_short_completed",
+        "passes_medium", "passes_medium_completed",
+        "passes_long", "passes_long_completed",
+        "passes_under_pressure", "passes_under_pressure_completed",
+        "switches_of_play",
+        "ground_duels_won", "ground_duels_total", "tackle_success_rate",
         "minutes_played",
     ]
 
@@ -371,6 +503,62 @@ def extract_match_metrics(match_id: int) -> pd.DataFrame:
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# Position extraction
+# ---------------------------------------------------------------------------
+
+# StatsBomb position_id → group mapping
+POSITION_GROUP_MAP: dict[int, str] = {
+    1: "GK",
+    2: "DEF", 3: "DEF", 4: "DEF", 5: "DEF", 6: "DEF", 7: "DEF", 8: "DEF",
+    9: "MID", 10: "MID", 11: "MID", 12: "MID", 13: "MID", 14: "MID",
+    15: "MID", 16: "MID",
+    17: "FWD", 18: "MID", 19: "MID", 20: "MID", 21: "FWD",
+    22: "FWD", 23: "FWD", 24: "FWD", 25: "FWD",
+}
+
+
+def extract_player_positions(match_id: int) -> dict[int, str]:
+    """Extrai a posicao primaria de cada jogador a partir dos lineups.
+
+    Usa o primeiro registro de posicao (start_reason='Starting XI') para
+    determinar o grupo posicional (GK, DEF, MID, FWD).
+
+    Parameters
+    ----------
+    match_id : int
+        Identificador da partida no StatsBomb.
+
+    Returns
+    -------
+    dict[int, str]
+        Mapeamento player_id → position_group ('GK', 'DEF', 'MID', 'FWD').
+    """
+    lineups = sb.lineups(match_id=match_id)
+    positions: dict[int, str] = {}
+
+    for team_name, team_df in lineups.items():
+        for _, player_row in team_df.iterrows():
+            player_id = player_row.get("player_id")
+            if player_id is None:
+                continue
+
+            pos_list = player_row.get("positions", [])
+            if not isinstance(pos_list, list) or not pos_list:
+                continue
+
+            # Use first position (usually Starting XI)
+            first_pos = pos_list[0]
+            if isinstance(first_pos, dict):
+                pos_id = first_pos.get("position_id")
+                if pos_id is not None:
+                    positions[int(player_id)] = POSITION_GROUP_MAP.get(
+                        int(pos_id), "MID"
+                    )
+
+    return positions
 
 
 # ---------------------------------------------------------------------------

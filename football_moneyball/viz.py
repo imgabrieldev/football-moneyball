@@ -535,3 +535,216 @@ def plot_rapm_rankings(
     ax.spines["left"].set_color("white")
 
     return _save_and_return(fig, save_path)
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 — xT Heatmap
+# ---------------------------------------------------------------------------
+
+def plot_xt_heatmap(
+    xt_grid: np.ndarray,
+    l: int = 16,
+    w: int = 12,
+    save_path: str | None = None,
+) -> Figure:
+    """
+    Desenha a superficie de Expected Threat (xT) sobre o campo.
+
+    Recebe o grid l x w com valores xT e renderiza como heatmap sobre
+    o campo de futebol usando coordenadas StatsBomb (120x80).
+
+    Parametros
+    ----------
+    xt_grid : np.ndarray
+        Matriz (l, w) com valores xT por zona.
+    l : int
+        Celulas no eixo x.
+    w : int
+        Celulas no eixo y.
+    save_path : str, optional
+        Caminho para salvar a figura.
+
+    Retorna
+    -------
+    Figure
+        Objeto matplotlib Figure.
+    """
+    plt.style.use("dark_background")
+    pitch = Pitch(pitch_type="statsbomb", line_color="white", line_alpha=0.3)
+    fig, ax = pitch.draw(figsize=(12, 8))
+    fig.set_facecolor("#1a1a2e")
+
+    # Transpose grid for imshow: xt_grid[x, y] → display[y, x]
+    display_grid = xt_grid.T
+
+    ax.imshow(
+        display_grid,
+        extent=[0, 120, 80, 0],
+        cmap="YlOrRd",
+        alpha=0.75,
+        interpolation="bilinear",
+        aspect="auto",
+    )
+
+    ax.set_title(
+        "Expected Threat (xT) — Superficie de Ameaca",
+        color="white",
+        fontsize=16,
+        fontweight="bold",
+        pad=15,
+    )
+
+    return _save_and_return(fig, save_path)
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 — Pressing Zones
+# ---------------------------------------------------------------------------
+
+def plot_pressing_zones(
+    pressing_data: dict,
+    team: str,
+    save_path: str | None = None,
+) -> Figure:
+    """
+    Visualiza a distribuicao de pressing por zona e metricas-chave.
+
+    Mostra 6 zonas horizontais do campo com cores proporcionais a
+    intensidade de pressing, alem de PPDA e success rate.
+
+    Parametros
+    ----------
+    pressing_data : dict
+        Dicionario com chaves: ppda, pressing_success_rate,
+        counter_pressing_fraction, pressing_zone_1..6.
+    team : str
+        Nome do time.
+    save_path : str, optional
+        Caminho para salvar.
+
+    Retorna
+    -------
+    Figure
+        Objeto matplotlib Figure.
+    """
+    plt.style.use("dark_background")
+    pitch = Pitch(pitch_type="statsbomb", line_color="white", line_alpha=0.3)
+    fig, ax = pitch.draw(figsize=(12, 8))
+    fig.set_facecolor("#1a1a2e")
+
+    zones = [pressing_data.get(f"pressing_zone_{i}", 0) for i in range(1, 7)]
+    max_zone = max(zones) if max(zones) > 0 else 1
+    boundaries = [(0, 20), (20, 40), (40, 60), (60, 80), (80, 100), (100, 120)]
+
+    for i, ((x0, x1), pct) in enumerate(zip(boundaries, zones)):
+        alpha = 0.2 + 0.6 * (pct / max_zone)
+        ax.fill_between(
+            [x0, x1], 0, 80,
+            color="#e74c3c",
+            alpha=alpha,
+        )
+        ax.text(
+            (x0 + x1) / 2, 40,
+            f"{pct:.0f}%",
+            ha="center", va="center",
+            color="white", fontsize=14, fontweight="bold",
+        )
+
+    ppda = pressing_data.get("ppda", 0)
+    success = pressing_data.get("pressing_success_rate", 0)
+    cp_frac = pressing_data.get("counter_pressing_fraction", 0)
+
+    info_text = (
+        f"PPDA: {ppda:.1f}  |  "
+        f"Sucesso: {success:.0f}%  |  "
+        f"Counter-press: {cp_frac:.0f}%"
+    )
+    ax.set_title(
+        f"Pressing Zones — {team}\n{info_text}",
+        color="white",
+        fontsize=14,
+        fontweight="bold",
+        pad=15,
+    )
+
+    return _save_and_return(fig, save_path)
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 — Shot Map
+# ---------------------------------------------------------------------------
+
+def plot_shot_map(
+    shots_df: pd.DataFrame,
+    player_name: str,
+    save_path: str | None = None,
+) -> Figure:
+    """
+    Mapa de chutes de um jogador com tamanho proporcional ao xG e cor
+    indicando o resultado.
+
+    Parametros
+    ----------
+    shots_df : pd.DataFrame
+        DataFrame de eventos de chute com colunas: location, shot_outcome,
+        shot_statsbomb_xg.
+    player_name : str
+        Nome do jogador.
+    save_path : str, optional
+        Caminho para salvar.
+
+    Retorna
+    -------
+    Figure
+        Objeto matplotlib Figure.
+    """
+    plt.style.use("dark_background")
+    pitch = Pitch(pitch_type="statsbomb", line_color="white", line_alpha=0.5)
+    fig, ax = pitch.draw(figsize=(12, 8))
+    fig.set_facecolor("#1a1a2e")
+
+    outcome_colors = {
+        "Goal": "#2ecc71",
+        "Saved": "#f39c12",
+        "Saved To Post": "#f39c12",
+        "Blocked": "#95a5a6",
+        "Off T": "#e74c3c",
+        "Wayward": "#e74c3c",
+        "Post": "#e67e22",
+    }
+
+    for _, row in shots_df.iterrows():
+        loc = row.get("location")
+        if not isinstance(loc, list) or len(loc) < 2:
+            continue
+
+        xg = row.get("shot_statsbomb_xg", 0.05) or 0.05
+        outcome = row.get("shot_outcome", "Off T")
+        color = outcome_colors.get(outcome, "#95a5a6")
+        is_big = xg >= 0.3
+
+        ax.scatter(
+            loc[0], loc[1],
+            s=xg * 800 + 30,
+            c=color,
+            alpha=0.85,
+            edgecolors="white" if is_big else "none",
+            linewidths=2 if is_big else 0,
+            zorder=3,
+        )
+
+    # Legend
+    for outcome, color in [("Gol", "#2ecc71"), ("Defesa", "#f39c12"),
+                            ("Bloqueado", "#95a5a6"), ("Fora", "#e74c3c")]:
+        ax.scatter([], [], c=color, s=80, label=outcome)
+    ax.legend(loc="upper left", fontsize=10, framealpha=0.5)
+
+    total_xg = shots_df.get("shot_statsbomb_xg", pd.Series([0])).sum()
+    n_shots = len(shots_df)
+    ax.set_title(
+        f"Mapa de Chutes — {player_name}\n{n_shots} chutes | xG total: {total_xg:.2f}",
+        color="white",
+        fontsize=14,
+        fontweight="bold",
+        pad=15,
+    )
