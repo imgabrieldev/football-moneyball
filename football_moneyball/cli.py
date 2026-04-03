@@ -90,10 +90,11 @@ def analyze_match(
             with console.status("[bold green]Construindo rede de passes..."):
                 graph, edges_df = network_analysis.build_pass_network(match_id)
                 edge_features = network_analysis.compute_edge_features(graph)
-                for idx, row in edges_df.iterrows():
+                feat_list = []
+                for _, row in edges_df.iterrows():
                     key = (row["passer_id"], row["receiver_id"])
-                    if key in edge_features:
-                        edges_df.at[idx, "features"] = edge_features[key]
+                    feat_list.append(edge_features.get(key, {}))
+                edges_df["features"] = feat_list
 
             with console.status("[bold green]Salvando no banco de dados..."):
                 match_info = player_metrics.extract_match_info(match_id)
@@ -291,10 +292,11 @@ def analyze_season(
 
                             graph, edges_df = network_analysis.build_pass_network(mid, team=team)
                             edge_features = network_analysis.compute_edge_features(graph)
-                            for idx, erow in edges_df.iterrows():
+                            feat_list = []
+                            for _, erow in edges_df.iterrows():
                                 key = (erow["passer_id"], erow["receiver_id"])
-                                if key in edge_features:
-                                    edges_df.at[idx, "features"] = edge_features[key]
+                                feat_list.append(edge_features.get(key, {}))
+                            edges_df["features"] = feat_list
                             db.upsert_pass_network(session, edges_df, mid)
 
                             # v0.2.0 — Pressing per match
