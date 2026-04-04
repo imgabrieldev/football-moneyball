@@ -225,6 +225,9 @@ class MatchOdds(Base):
     odds: Mapped[Optional[float]] = mapped_column(Float)
     implied_prob: Mapped[Optional[float]] = mapped_column(Float)
     fetched_at: Mapped[Optional[str]] = mapped_column(String)
+    # v1.5.3 — armazenar home/away pra nao depender de fallback alfabetico
+    home_team: Mapped[Optional[str]] = mapped_column(String)
+    away_team: Mapped[Optional[str]] = mapped_column(String)
     commence_time: Mapped[Optional[str]] = mapped_column(String)
 
 
@@ -458,6 +461,9 @@ def apply_migrations(engine) -> None:
         # v1.4.2 — round (from Sofascore roundInfo)
         "ALTER TABLE matches ADD COLUMN IF NOT EXISTS round INTEGER",
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS round INTEGER",
+        # v1.5.3 — home/away em match_odds
+        "ALTER TABLE match_odds ADD COLUMN IF NOT EXISTS home_team VARCHAR",
+        "ALTER TABLE match_odds ADD COLUMN IF NOT EXISTS away_team VARCHAR",
     ]
 
     with engine.connect() as conn:

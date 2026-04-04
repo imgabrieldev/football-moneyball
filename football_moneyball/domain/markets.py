@@ -76,18 +76,48 @@ def _derive_match_odds(pred: dict, home: str, away: str) -> list[dict]:
 
 
 def _derive_over_under(pred: dict) -> list[dict]:
-    """Over/Under 0.5, 1.5, 2.5, 3.5."""
-    lines = [
-        ("0.5", pred.get("over_05", 0)),
-        ("1.5", pred.get("over_15", 0)),
-        ("2.5", pred.get("over_25", 0)),
-        ("3.5", pred.get("over_35", 0)),
-    ]
+    """Over/Under 0.5, 1.5, 2.5, 3.5.
+
+    Usa campos stored se disponiveis, senao deriva analiticamente de xG
+    via Poisson (P(total > line)).
+    """
+    # Tentar usar campos armazenados
+    stored = {
+        "0.5": pred.get("over_05"),
+        "1.5": pred.get("over_15"),
+        "2.5": pred.get("over_25"),
+        "3.5": pred.get("over_35"),
+    }
+
+    # Se qualquer linha estiver faltando, derivar analiticamente
+    home_xg = pred.get("home_xg") or pred.get("home_xg_expected")
+    away_xg = pred.get("away_xg") or pred.get("away_xg_expected")
+
+    def _over_prob_poisson(line: float, h_xg: float, a_xg: float) -> float:
+        """P(total_goals > line) via Poisson bivariado independente."""
+        if not h_xg or not a_xg:
+            return 0.0
+        # P(H=i) * P(A=j) onde i+j > line
+        prob = 0.0
+        for i in range(10):
+            for j in range(10):
+                if i + j > line:
+                    prob += _poisson_prob(i, h_xg) * _poisson_prob(j, a_xg)
+        return prob
+
+    lines = [("0.5", 0.5), ("1.5", 1.5), ("2.5", 2.5), ("3.5", 3.5)]
     result = []
-    for line, over_prob in lines:
+    for label, line_val in lines:
+        over_prob = stored.get(label)
+        if over_prob is None or over_prob == 0:
+            # Derive from xG
+            if home_xg and away_xg:
+                over_prob = _over_prob_poisson(line_val, float(home_xg), float(away_xg))
+            else:
+                over_prob = 0.0
         under_prob = 1.0 - over_prob
         result.append({
-            "line": line,
+            "line": label,
             "over_prob": round(over_prob, 4),
             "under_prob": round(under_prob, 4),
             "over_odds": _prob_to_odds(over_prob),

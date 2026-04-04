@@ -17,6 +17,46 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 
+def _fuzzy_team_match(db_session, team: str) -> str:
+    """Encontra nome de time no DB ignorando acentos/case.
+
+    Se 'Sao Paulo' vem da odds API mas DB tem 'São Paulo', resolve.
+    Retorna o nome DO DB se achou, senao devolve original.
+    """
+    if not team:
+        return team
+    nfkd = unicodedata.normalize("NFKD", team.strip())
+    norm_input = "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+    query = text("""
+        SELECT DISTINCT team FROM player_match_metrics
+        WHERE team IS NOT NULL AND team != ''
+    """)
+    try:
+        rows = db_session.execute(query).fetchall()
+    except Exception:
+        return team
+
+    for row in rows:
+        db_team = row[0]
+        if not db_team:
+            continue
+        nfkd_db = unicodedata.normalize("NFKD", db_team.strip())
+        norm_db = "".join(c for c in nfkd_db if not unicodedata.combining(c)).lower()
+        if norm_db == norm_input:
+            return db_team
+    # Substring fallback
+    for row in rows:
+        db_team = row[0]
+        if not db_team:
+            continue
+        nfkd_db = unicodedata.normalize("NFKD", db_team.strip())
+        norm_db = "".join(c for c in nfkd_db if not unicodedata.combining(c)).lower()
+        if norm_input in norm_db or norm_db in norm_input:
+            return db_team
+    return team
+
+
 def _stable_match_key(home: str, away: str) -> int:
     """Gera match_key estavel (deterministico entre processos) de home+away.
 
@@ -594,6 +634,8 @@ class PostgresRepository:
         season: str | None = None,
         last_n: int = 5,
     ) -> pd.DataFrame:
+        # Fuzzy match: resolver acentos (ex: 'Sao Paulo' → 'São Paulo')
+        team = _fuzzy_team_match(self._session, team)
         """Retorna agregacao por jogador nos ultimos N jogos do time.
 
         Usado pelo pipeline player-aware pra construir probable XI e
@@ -1031,6 +1073,8 @@ class PostgresRepository:
                         "implied_prob": mkt.get("implied_prob", 0.0),
                         "fetched_at": now,
                         "commence_time": game.get("commence_time", ""),
+                        "home_team": home,
+                        "away_team": away,
                     }
                     # Upsert
                     existing = self._session.get(MatchOdds, (
@@ -1065,7 +1109,9 @@ class PostgresRepository:
             mid = row.match_id
             if mid not in games:
                 games[mid] = {
-                    "id": mid, "home_team": "", "away_team": "",
+                    "id": mid,
+                    "home_team": getattr(row, "home_team", "") or "",
+                    "away_team": getattr(row, "away_team", "") or "",
                     "commence_time": getattr(row, "commence_time", "") or "",
                     "bookmakers": {},
                 }
@@ -1174,6 +1220,8 @@ class PostgresRepository:
     ) -> dict:
         """Retorna medias de goals/xg/corners/cards/shots/fouls do time nos ultimos N jogos.
 
+        Fuzzy match aplicado ao nome do time (resolve 'Sao Paulo' → 'São Paulo').
+
         Considera tambem o que o time SOFREU (pra calcular opponent factor).
 
         Returns
@@ -1183,6 +1231,7 @@ class PostgresRepository:
             corners_for, corners_against, cards_for, shots_for,
             shots_against, fouls_committed, matches.
         """
+        team = _fuzzy_team_match(self._session, team)
         query = text("""
             WITH recent_matches AS (
                 SELECT m.match_id, m.home_team, m.away_team,
@@ -1317,6 +1366,7 @@ class PostgresRepository:
 
         Returns dict com todas as chaves que build_rich_team_features espera.
         """
+        team = _fuzzy_team_match(self._session, team)
         basic = self.get_team_stats_aggregates(team, season, last_n)
 
         query = text("""
