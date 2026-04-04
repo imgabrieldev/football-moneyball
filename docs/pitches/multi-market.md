@@ -232,3 +232,74 @@ Sem mudanças.
 - [ ] P1: corners prediction com accuracy > 50% no Over/Under 9.5
 - [ ] P1: cards prediction com accuracy > 50% no Over/Under 3.5
 - [ ] Cada mercado tem calibração validada contra odds Betfair
+
+---
+
+## Atualização: Player-Aware Prediction (pré e pós-escalação)
+
+### Conceito
+
+Duas rodadas de previsão por jogo:
+
+1. **Pré-escalação (~24h antes):** Previsão baseada em médias do time + provável escalação (titulares mais frequentes)
+2. **Pós-escalação (~1h antes):** Sofascore publica lineup confirmada → recalcular TUDO com dados reais dos 11 titulares
+
+### O que muda com dados de jogador
+
+Em vez de λ genérico do time, construir λ a partir dos 22 em campo:
+
+```
+λ_gols = Σ xG/90 dos 11 titulares (ajustado por oposição)
+λ_chutes = Σ chutes/90 dos atacantes + meias
+λ_escanteios = f(cruzamentos/90 dos laterais, chutes bloqueados adversário)
+λ_cartões = Σ faltas/90 dos volantes × referee_card_rate
+λ_defesas_goleiro = chutes adversário esperados × (1 - xG/chute)
+```
+
+### Dados por jogador que o Sofascore já tem
+
+- `expectedGoals` (xG por jogador por partida)
+- `totalShots`, `shotsOnTarget` (chutes)
+- `totalCross`, `accurateCross` (cruzamentos → escanteios)
+- `fouls`, `wasFouled` (faltas → cartões)
+- `totalTackle`, `wonTackle` (desarmes)
+- `saves` (defesas do goleiro)
+- `ballRecovery` (recuperações)
+- `touches`, `passes` (envolvimento)
+
+### Impacto por mercado
+
+| Mercado | Sem jogador | Com jogador |
+|---------|------------|-------------|
+| Gols total | λ média time | Σ xG/90 dos 11 |
+| Gols por time | genérico | Σ xG dos atacantes/meias |
+| Chutes no gol | genérico | Σ shotsOnTarget/90 dos 11 |
+| Escanteios | média time | cruzamentos laterais + chutes bloqueados |
+| Cartões | média time | faltas/90 volantes × referee |
+| Marcador X | impossível | xG individual |
+| Defesas goleiro | genérico | chutes_adversário × (1 - save_rate) |
+| Assistência X | impossível | xA individual |
+| Primeiro gol | genérico | xG/90 × minutos esperados |
+
+### Flow atualizado
+
+```
+24h antes:
+  CronJob predict → previsão com titulares prováveis
+  Frontend mostra com badge "Pré-escalação"
+
+1h antes:
+  Sofascore publica lineup
+  CronJob detect-lineup → busca lineups
+  CronJob predict-lineup → recalcula com 22 reais
+  Frontend atualiza com badge "Escalação confirmada"
+  Value bets recalculadas com novos λ
+```
+
+### Prioridade revisada
+
+| Sprint | O que | Player-aware? |
+|--------|-------|:---:|
+| P0 | Expor mercados deriváveis | Não (já feito) |
+| P1 | Escanteios, cartões, HT, chutes | **Sim — player-based λ** |
+| P2 | Marcador, assistência, props individuais | **Sim — obrigatório** |
