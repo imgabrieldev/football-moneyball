@@ -191,18 +191,31 @@ export function Predictions() {
                 {/* Bets recomendadas (Betfair) */}
                 {pred.recommended_bets && pred.recommended_bets.length > 0 && (
                   <div className="mt-3 bg-green-900/20 border border-green-900/40 rounded-lg p-3">
-                    <div className="text-xs text-green-500 font-medium mb-2">Bets Recomendadas (Betfair)</div>
-                    <div className="space-y-1.5">
-                      {pred.recommended_bets.map((bet: any, j: number) => (
-                        <div key={j} className="flex items-center justify-between text-sm">
-                          <span className="text-green-300">{bet.label}</span>
-                          <div className="flex items-center gap-4 text-xs">
-                            <span className="text-gray-400">Odds <span className="text-white font-mono">{bet.odds?.toFixed(2)}</span></span>
-                            <span className="text-green-400 font-medium">+{(bet.edge * 100).toFixed(1)}% edge</span>
-                            <span className="text-gray-400">Stake <span className="text-white">R$ {bet.stake?.toFixed(2)}</span></span>
+                    <div className="text-xs text-green-500 font-medium mb-2">O que apostar nesse jogo</div>
+                    <div className="space-y-2">
+                      {pred.recommended_bets.map((bet: any, j: number) => {
+                        const hasEdge = bet.edge !== null && bet.edge !== undefined;
+                        return (
+                          <div key={j} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              {hasEdge && <span className="bg-green-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">EDGE</span>}
+                              <span className={hasEdge ? 'text-green-300 font-medium' : 'text-cyan-300'}>{bet.label}</span>
+                              <span className="text-gray-500 text-xs">({((bet.model_prob || 0) * 100).toFixed(0)}% de chance)</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs">
+                              {hasEdge ? (
+                                <>
+                                  <span className="text-gray-400">Betfair <span className="text-white font-mono">{bet.odds?.toFixed(2)}</span></span>
+                                  <span className="text-green-400 font-medium">+{(bet.edge * 100).toFixed(1)}% edge</span>
+                                  <span className="text-white font-medium">R$ {bet.stake?.toFixed(2)}</span>
+                                </>
+                              ) : (
+                                <span className="text-gray-500">Odds justo: <span className="text-gray-300 font-mono">{bet.odds?.toFixed(2)}</span></span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}

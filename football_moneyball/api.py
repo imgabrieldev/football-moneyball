@@ -187,8 +187,81 @@ def get_predictions(repo=Depends(get_repo)):
                 for b in coherent
             ]
     except Exception:
-        for pred in predictions:
+        pass
+
+    # Adicionar sugestões do modelo pra TODAS as linhas (sem odds reais, só probabilidade)
+    for pred in predictions:
+        if "recommended_bets" not in pred:
             pred["recommended_bets"] = []
+
+        markets = pred.get("markets", {})
+
+        # Melhor aposta por mercado baseada na probabilidade do modelo
+        suggestions = []
+
+        # 1X2: favorito
+        match_odds = markets.get("match_odds", [])
+        if match_odds:
+            best = max(match_odds, key=lambda x: x.get("prob", 0))
+            if best["prob"] > 0.40:
+                suggestions.append({
+                    "label": best["outcome"],
+                    "market": "match_odds",
+                    "outcome": best["outcome"],
+                    "model_prob": best["prob"],
+                    "fair_odds": best["fair_odds"],
+                    "source": "model",
+                })
+
+        # Over/Under: linha mais confiante
+        for ou in markets.get("over_under", []):
+            line = ou["line"]
+            if ou["over_prob"] > 0.65:
+                suggestions.append({
+                    "label": f"Mais de {line} gols",
+                    "market": "totals",
+                    "outcome": "Over",
+                    "model_prob": ou["over_prob"],
+                    "fair_odds": ou["over_odds"],
+                    "source": "model",
+                })
+            elif ou["under_prob"] > 0.65:
+                suggestions.append({
+                    "label": f"Menos de {line} gols",
+                    "market": "totals",
+                    "outcome": "Under",
+                    "model_prob": ou["under_prob"],
+                    "fair_odds": ou["under_odds"],
+                    "source": "model",
+                })
+
+        # BTTS se confiante
+        btts = markets.get("btts", {})
+        if btts.get("yes_prob", 0) > 0.65:
+            suggestions.append({"label": "Ambas marcam", "market": "btts", "outcome": "Yes", "model_prob": btts["yes_prob"], "fair_odds": btts["yes_odds"], "source": "model"})
+        elif btts.get("no_prob", 0) > 0.65:
+            suggestions.append({"label": "Algum time não marca", "market": "btts", "outcome": "No", "model_prob": btts["no_prob"], "fair_odds": btts["no_odds"], "source": "model"})
+
+        # Correct score: top 1
+        cs = markets.get("correct_score", [])
+        if cs and cs[0]["prob"] > 0.10:
+            suggestions.append({"label": f"Placar exato {cs[0]['score']}", "market": "correct_score", "outcome": cs[0]["score"], "model_prob": cs[0]["prob"], "fair_odds": cs[0]["fair_odds"], "source": "model"})
+
+        # Mesclar: bets com edge real primeiro, depois sugestões do modelo
+        existing_labels = {b["label"] for b in pred.get("recommended_bets", [])}
+        for s in suggestions:
+            if s["label"] not in existing_labels:
+                pred["recommended_bets"].append({
+                    "label": s["label"],
+                    "market": s["market"],
+                    "outcome": s["outcome"],
+                    "odds": s["fair_odds"],
+                    "bookmaker": "modelo",
+                    "edge": None,
+                    "stake": None,
+                    "model_prob": s["model_prob"],
+                    "source": "model",
+                })
 
     return {"predictions": predictions, "total": len(predictions)}
 
