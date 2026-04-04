@@ -10,13 +10,13 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[frontend-dashboard]] — v0.7.0: React + Vite SPA, 6 páginas, dark theme, K8s deploy
+- ~~[[frontend-dashboard]]~~ — v0.7.0: shipped ✓
 - ~~[[infra-automation]]~~ — v0.6.0: shipped ✓
 - ~~[[advanced-predictor]]~~ — v0.5.0: shipped ✓
 
 ## Backlog
 
-(vazio)
+- **v0.8.0 — UX Polish** — Deduplicar value bets (1 linha = melhor odd por aposta). Cards com interpretação textual ("Bahia forte favorito"). Filtro de bookmaker (apostar só na Betfair/Bet365). Datas dos jogos. Cards maiores com mais contexto. Cores de confiança. Responsivo mobile básico.
 
 ## Finalizados → `docs/postmortem/`
 
