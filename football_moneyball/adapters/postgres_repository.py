@@ -539,6 +539,65 @@ class PostgresRepository:
         return compatibility
 
     # =====================================================================
+    # v0.5.0 — Prediction queries
+    # =====================================================================
+
+    def get_all_match_data(
+        self, competition: str | None = None, season: str | None = None
+    ) -> pd.DataFrame:
+        """Retorna todos os jogos: match_id, team, goals, xg, is_home.
+
+        Uma linha por time por partida. Usado pelo predictor pra
+        calcular parametros dinamicos.
+        """
+        query = text("""
+            SELECT pmm.match_id, pmm.team,
+                   SUM(pmm.goals) as goals,
+                   SUM(pmm.xg) as xg,
+                   CASE WHEN pmm.team = m.home_team THEN true ELSE false END as is_home
+            FROM player_match_metrics pmm
+            JOIN matches m ON m.match_id = pmm.match_id
+            WHERE (:comp IS NULL OR m.competition = :comp)
+              AND (:season IS NULL OR m.season = :season)
+            GROUP BY pmm.match_id, pmm.team, m.home_team
+            ORDER BY pmm.match_id
+        """)
+        return pd.read_sql(query, self._session.bind, params={
+            "comp": competition, "season": season,
+        })
+
+    def get_team_shots(self, team: str, n_matches: int = 6) -> list[float]:
+        """Lista de xG por chute do time nos ultimos N jogos (via action_values)."""
+        query = text("""
+            SELECT av.vaep_offensive as shot_xg
+            FROM action_values av
+            JOIN matches m ON m.match_id = av.match_id
+            WHERE av.team = :team
+              AND av.action_type = 'Shot'
+              AND av.vaep_offensive IS NOT NULL
+              AND av.match_id IN (
+                  SELECT DISTINCT match_id FROM player_match_metrics
+                  WHERE team = :team
+                  ORDER BY match_id DESC LIMIT :n
+              )
+            ORDER BY av.match_id DESC
+        """)
+        result = self._session.execute(query, {
+            "team": team, "n": n_matches,
+        })
+        return [float(row.shot_xg) for row in result if row.shot_xg]
+
+    def get_latest_match_date(self, competition: str | None = None) -> str | None:
+        """Retorna data da partida mais recente."""
+        query = text("""
+            SELECT MAX(match_date)::text as latest
+            FROM matches
+            WHERE (:comp IS NULL OR competition = :comp)
+        """)
+        result = self._session.execute(query, {"comp": competition}).scalar()
+        return result
+
+    # =====================================================================
     # Lifecycle
     # =====================================================================
 

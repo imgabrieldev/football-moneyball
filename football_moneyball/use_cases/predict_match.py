@@ -1,4 +1,8 @@
-"""Use case: previsao de resultado de uma partida."""
+"""Use case: previsao de resultado de uma partida.
+
+Pipeline v0.5.0 — parametros dinamicos calculados de todas as partidas
+da temporada, zero constantes hardcoded.
+"""
 
 from __future__ import annotations
 
@@ -6,16 +10,20 @@ from typing import Any
 
 import pandas as pd
 
-from football_moneyball.domain.match_predictor import estimate_team_xg, simulate_match
+from football_moneyball.domain.match_predictor import predict_match
 
 
 class PredictMatch:
-    """Preve o resultado de uma partida via Monte Carlo.
+    """Preve o resultado de uma partida via pipeline avancado.
+
+    Busca todos os dados da temporada no banco, calcula parametros
+    dinamicos (league averages, team strengths, regression), e roda
+    Monte Carlo.
 
     Parameters
     ----------
     repo : MatchRepository
-        Repositorio para buscar historico de xG.
+        Repositorio para buscar historico.
     """
 
     def __init__(self, repo) -> None:
@@ -27,11 +35,10 @@ class PredictMatch:
         home_team: str,
         away_team: str,
         n_simulations: int = 10_000,
+        competition: str | None = "Brasileirão Série A",
+        season: str | None = "2026",
     ) -> dict[str, Any]:
-        """Executa a previsao de uma partida.
-
-        Busca historico de xG de ambos os times, estima xG esperado
-        e roda simulacao Monte Carlo.
+        """Executa previsao com pipeline completo.
 
         Parameters
         ----------
@@ -40,82 +47,35 @@ class PredictMatch:
         home_team, away_team : str
             Nomes dos times.
         n_simulations : int
-            Numero de simulacoes.
+            Simulacoes Monte Carlo.
 
         Returns
         -------
         dict
-            Previsao com probabilidades de todos os mercados.
+            Probabilidades + metadados do pipeline.
         """
-        # Buscar historico de xG dos times
-        home_history = self._get_team_history(home_team)
-        away_history = self._get_team_history(away_team)
+        # Buscar TODOS os dados da temporada
+        all_match_data = self.repo.get_all_match_data(competition, season)
 
-        # Historico defensivo (xG sofrido)
-        home_defensive = self._get_defensive_history(home_team)
-        away_defensive = self._get_defensive_history(away_team)
+        if all_match_data.empty:
+            return {"error": "Sem dados historicos no banco.", "home_team": home_team, "away_team": away_team}
 
-        # Estimar xG esperado
-        home_xg = estimate_team_xg(
-            team_history=home_history,
-            opponent_history=away_defensive,
-            is_home=True,
+        # Shot quality (xG por chute dos ultimos jogos)
+        home_shots = self.repo.get_team_shots(home_team, n_matches=6)
+        away_shots = self.repo.get_team_shots(away_team, n_matches=6)
+
+        # Pipeline completo — tudo calculado dinamicamente
+        prediction = predict_match(
+            home_team=home_team,
+            away_team=away_team,
+            all_match_data=all_match_data,
+            home_shots=home_shots or None,
+            away_shots=away_shots or None,
+            n_simulations=n_simulations,
         )
-        away_xg = estimate_team_xg(
-            team_history=away_history,
-            opponent_history=home_defensive,
-            is_home=False,
-        )
 
-        # Simular
-        prediction = simulate_match(home_xg, away_xg, n_simulations)
         prediction["match_id"] = match_id
         prediction["home_team"] = home_team
         prediction["away_team"] = away_team
 
         return prediction
-
-    def _get_team_history(self, team: str) -> pd.DataFrame:
-        """Busca historico de xG ofensivo do time."""
-        try:
-            all_metrics = self.repo.get_all_metrics(None, None)
-            if all_metrics.empty:
-                return pd.DataFrame({"xg": [1.2]})
-
-            team_metrics = all_metrics[all_metrics["team"] == team]
-            if team_metrics.empty:
-                return pd.DataFrame({"xg": [1.2]})
-
-            # Agregar xG por partida
-            per_match = (
-                team_metrics.groupby("match_id")
-                .agg(xg=("xg", "sum"))
-                .reset_index()
-                .sort_values("match_id", ascending=False)
-            )
-            return per_match
-        except Exception:
-            return pd.DataFrame({"xg": [1.2]})
-
-    def _get_defensive_history(self, team: str) -> pd.DataFrame:
-        """Busca historico de xG sofrido pelo time (xG dos adversarios)."""
-        try:
-            all_metrics = self.repo.get_all_metrics(None, None)
-            if all_metrics.empty:
-                return pd.DataFrame({"xg_against": [1.2]})
-
-            # Para cada partida do time, pegar xG do adversario
-            team_matches = all_metrics[all_metrics["team"] == team]["match_id"].unique()
-            opponent_xg = []
-            for mid in team_matches:
-                match_data = all_metrics[all_metrics["match_id"] == mid]
-                opp_data = match_data[match_data["team"] != team]
-                if not opp_data.empty:
-                    opponent_xg.append({"match_id": mid, "xg_against": opp_data["xg"].sum()})
-
-            if not opponent_xg:
-                return pd.DataFrame({"xg_against": [1.2]})
-
-            return pd.DataFrame(opponent_xg).sort_values("match_id", ascending=False)
-        except Exception:
-            return pd.DataFrame({"xg_against": [1.2]})
