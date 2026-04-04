@@ -335,7 +335,7 @@ class PredictionHistory(Base):
 
 
 class MatchStats(Base):
-    """Estatisticas match-level: corners, cards, fouls, shots, HT score."""
+    """Estatisticas match-level: corners, cards, fouls, shots, HT score + playing style (v1.7.0)."""
 
     __tablename__ = "match_stats"
 
@@ -360,6 +360,29 @@ class MatchStats(Base):
     ht_away_score: Mapped[Optional[int]] = mapped_column(Integer)
     referee_id: Mapped[Optional[int]] = mapped_column(Integer)
     referee_name: Mapped[Optional[str]] = mapped_column(String)
+    # v1.7.0 — Playing style & quality
+    home_xg: Mapped[Optional[float]] = mapped_column(Float)
+    away_xg: Mapped[Optional[float]] = mapped_column(Float)
+    home_big_chances: Mapped[Optional[int]] = mapped_column(Integer)
+    away_big_chances: Mapped[Optional[int]] = mapped_column(Integer)
+    home_big_chances_scored: Mapped[Optional[int]] = mapped_column(Integer)
+    away_big_chances_scored: Mapped[Optional[int]] = mapped_column(Integer)
+    home_touches_box: Mapped[Optional[int]] = mapped_column(Integer)
+    away_touches_box: Mapped[Optional[int]] = mapped_column(Integer)
+    home_final_third_entries: Mapped[Optional[int]] = mapped_column(Integer)
+    away_final_third_entries: Mapped[Optional[int]] = mapped_column(Integer)
+    home_long_balls_pct: Mapped[Optional[float]] = mapped_column(Float)
+    away_long_balls_pct: Mapped[Optional[float]] = mapped_column(Float)
+    home_aerial_won_pct: Mapped[Optional[float]] = mapped_column(Float)
+    away_aerial_won_pct: Mapped[Optional[float]] = mapped_column(Float)
+    home_goals_prevented: Mapped[Optional[float]] = mapped_column(Float)
+    away_goals_prevented: Mapped[Optional[float]] = mapped_column(Float)
+    home_passes: Mapped[Optional[int]] = mapped_column(Integer)
+    away_passes: Mapped[Optional[int]] = mapped_column(Integer)
+    home_pass_accuracy: Mapped[Optional[float]] = mapped_column(Float)
+    away_pass_accuracy: Mapped[Optional[float]] = mapped_column(Float)
+    home_dispossessed: Mapped[Optional[int]] = mapped_column(Integer)
+    away_dispossessed: Mapped[Optional[int]] = mapped_column(Integer)
 
 
 class RefereeStats(Base):
@@ -508,6 +531,29 @@ def apply_migrations(engine) -> None:
         # v1.4.0
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS player_props JSONB",
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS ml_used INTEGER",
+        # v1.7.0 — expandir match_stats com playing style fields
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_xg REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_xg REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_big_chances INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_big_chances INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_big_chances_scored INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_big_chances_scored INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_touches_box INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_touches_box INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_final_third_entries INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_final_third_entries INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_long_balls_pct REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_long_balls_pct REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_aerial_won_pct REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_aerial_won_pct REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_goals_prevented REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_goals_prevented REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_passes INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_passes INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_pass_accuracy REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_pass_accuracy REAL",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_dispossessed INTEGER",
+        "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_dispossessed INTEGER",
         # v1.4.2 — round (from Sofascore roundInfo)
         "ALTER TABLE matches ADD COLUMN IF NOT EXISTS round INTEGER",
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS round INTEGER",

@@ -84,18 +84,28 @@ class ResolvePredictions:
                 matched_home = _fuzzy_match_team(home, known_teams)
                 matched_away = _fuzzy_match_team(away, known_teams)
 
-                # Find the match result
+                # Find the match result (tentando direto e invertido — old preds tinham bug)
                 match_result = None
+                inverted = False
                 for m in matches_with_results:
                     if m["home_team"] == matched_home and m["away_team"] == matched_away:
                         match_result = m
+                        break
+                    if m["home_team"] == matched_away and m["away_team"] == matched_home:
+                        match_result = m
+                        inverted = True
                         break
 
                 if match_result is None:
                     continue
 
-                home_goals = int(match_result["home_score"])
-                away_goals = int(match_result["away_score"])
+                # Se prediction tá invertida vs match, swap scores pra resolver direito
+                if inverted:
+                    home_goals = int(match_result["away_score"])
+                    away_goals = int(match_result["home_score"])
+                else:
+                    home_goals = int(match_result["home_score"])
+                    away_goals = int(match_result["away_score"])
 
                 # Resolve prediction
                 resolution = resolve_prediction(pred, home_goals, away_goals)

@@ -982,7 +982,8 @@ class PostgresRepository:
         row = self._session.get(ValueBetHistory, bet_id)
         if not row:
             return
-        row.won = result.get("won")
+        won = result.get("won")
+        row.won = int(won) if won is not None else None  # bool → int (INTEGER col)
         row.profit = result.get("profit")
         row.resolved_at = datetime.now().isoformat()
         self._session.commit()
@@ -1185,6 +1186,29 @@ class PostgresRepository:
             "ht_away_score": int(stats.get("ht_away_score", 0) or 0),
             "referee_id": int(stats.get("referee_id", 0) or 0) or None,
             "referee_name": str(stats.get("referee_name", "") or ""),
+            # v1.7.0
+            "home_xg": float(stats.get("home_xg", 0) or 0),
+            "away_xg": float(stats.get("away_xg", 0) or 0),
+            "home_big_chances": int(stats.get("home_big_chances", 0) or 0),
+            "away_big_chances": int(stats.get("away_big_chances", 0) or 0),
+            "home_big_chances_scored": int(stats.get("home_big_chances_scored", 0) or 0),
+            "away_big_chances_scored": int(stats.get("away_big_chances_scored", 0) or 0),
+            "home_touches_box": int(stats.get("home_touches_box", 0) or 0),
+            "away_touches_box": int(stats.get("away_touches_box", 0) or 0),
+            "home_final_third_entries": int(stats.get("home_final_third_entries", 0) or 0),
+            "away_final_third_entries": int(stats.get("away_final_third_entries", 0) or 0),
+            "home_long_balls_pct": float(stats.get("home_long_balls_pct", 0) or 0),
+            "away_long_balls_pct": float(stats.get("away_long_balls_pct", 0) or 0),
+            "home_aerial_won_pct": float(stats.get("home_aerial_won_pct", 0) or 0),
+            "away_aerial_won_pct": float(stats.get("away_aerial_won_pct", 0) or 0),
+            "home_goals_prevented": float(stats.get("home_goals_prevented", 0) or 0),
+            "away_goals_prevented": float(stats.get("away_goals_prevented", 0) or 0),
+            "home_passes": int(stats.get("home_passes", 0) or 0),
+            "away_passes": int(stats.get("away_passes", 0) or 0),
+            "home_pass_accuracy": float(stats.get("home_pass_accuracy", 0) or 0),
+            "away_pass_accuracy": float(stats.get("away_pass_accuracy", 0) or 0),
+            "home_dispossessed": int(stats.get("home_dispossessed", 0) or 0),
+            "away_dispossessed": int(stats.get("away_dispossessed", 0) or 0),
         }
         existing = self._session.get(MatchStats, match_id)
         if existing:

@@ -236,9 +236,29 @@ class SofascoreProvider:
         home_shots, away_shots = _pair("totalShotsOnGoal")
         home_saves, away_saves = _pair("goalkeeperSaves")
         home_poss, away_poss = _pair_f("ballPossession")
-        # SoT = goals + saves (saves are by opponent's keeper)
-        home_sot = away_saves
-        away_sot = home_saves
+        # SoT from shotsOnGoal group if available, else keeper saves proxy
+        home_sot, away_sot = _pair("shotsOnGoal") if "shotsOnGoal" in items else (away_saves, home_saves)
+
+        # v1.7.0 — playing style
+        home_xg, away_xg = _pair_f("expectedGoals")
+        home_bc, away_bc = _pair("bigChanceCreated")
+        home_bc_scored, away_bc_scored = _pair("bigChanceScored")
+        home_touches_box, away_touches_box = _pair("touchesInOppBox")
+        home_fte, away_fte = _pair("finalThirdEntries")
+        home_passes, away_passes = _pair("passes")
+        home_acc_pass, away_acc_pass = _pair("accuratePasses")
+        home_dispossessed, away_dispossessed = _pair("dispossessed")
+        home_gp, away_gp = _pair_f("goalsPrevented")
+
+        # Percentages parse from renderType=2 fields (stored as home_X/away_X)
+        def _pct_from_items(key: str) -> tuple[float, float]:
+            h, a = items.get(key, (0.0, 0.0))
+            return float(h), float(a)
+
+        home_long_pct, away_long_pct = _pct_from_items("longBallsPercentage")
+        home_aerial_pct, away_aerial_pct = _pct_from_items("aerialDuelsWonPercentage")
+        home_pass_acc = (home_acc_pass / home_passes * 100) if home_passes > 0 else 0.0
+        away_pass_acc = (away_acc_pass / away_passes * 100) if away_passes > 0 else 0.0
 
         return {
             "home_corners": home_corners, "away_corners": away_corners,
@@ -249,6 +269,18 @@ class SofascoreProvider:
             "home_sot": home_sot, "away_sot": away_sot,
             "home_saves": home_saves, "away_saves": away_saves,
             "home_possession": home_poss, "away_possession": away_poss,
+            # v1.7.0
+            "home_xg": home_xg, "away_xg": away_xg,
+            "home_big_chances": home_bc, "away_big_chances": away_bc,
+            "home_big_chances_scored": home_bc_scored, "away_big_chances_scored": away_bc_scored,
+            "home_touches_box": home_touches_box, "away_touches_box": away_touches_box,
+            "home_final_third_entries": home_fte, "away_final_third_entries": away_fte,
+            "home_long_balls_pct": home_long_pct, "away_long_balls_pct": away_long_pct,
+            "home_aerial_won_pct": home_aerial_pct, "away_aerial_won_pct": away_aerial_pct,
+            "home_goals_prevented": home_gp, "away_goals_prevented": away_gp,
+            "home_passes": home_passes, "away_passes": away_passes,
+            "home_pass_accuracy": round(home_pass_acc, 1), "away_pass_accuracy": round(away_pass_acc, 1),
+            "home_dispossessed": home_dispossessed, "away_dispossessed": away_dispossessed,
         }
 
     def get_referee_info(self, match_id: int) -> dict[str, Any] | None:

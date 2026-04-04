@@ -517,6 +517,119 @@ def trigger_resolve(repo=Depends(get_repo)):
     return ResolvePredictions(repo).execute()
 
 
+@app.get("/api/match-analysis/by-teams")
+def get_match_analysis_by_teams(
+    home_team: str, away_team: str, repo=Depends(get_repo),
+):
+    """Analise pos-jogo via nome dos times (fuzzy match)."""
+    from sqlalchemy import text
+    # Find match by team names (either direction — handle home/away swaps)
+    row = repo._session.execute(text("""
+        SELECT match_id FROM matches
+        WHERE (home_team = :h AND away_team = :a)
+           OR (home_team = :a AND away_team = :h)
+           OR (REPLACE(home_team, 'São', 'Sao') = :h_norm AND REPLACE(away_team, 'São', 'Sao') = :a_norm)
+           OR (REPLACE(home_team, 'São', 'Sao') = :a_norm AND REPLACE(away_team, 'São', 'Sao') = :h_norm)
+        ORDER BY match_date DESC LIMIT 1
+    """), {
+        "h": home_team, "a": away_team,
+        "h_norm": home_team.replace("São", "Sao").replace("é", "e").replace("í", "i"),
+        "a_norm": away_team.replace("São", "Sao").replace("é", "e").replace("í", "i"),
+    }).fetchone()
+    if not row:
+        return {"error": "Partida nao encontrada"}
+    return get_match_analysis(int(row.match_id), repo)
+
+
+@app.get("/api/match-analysis/{match_id}")
+def get_match_analysis(match_id: int, repo=Depends(get_repo)):
+    """Analise pos-jogo: previsoes vs stats reais de match_stats + prediction_history.
+
+    v1.7.0 — compara o que o modelo previu com o que aconteceu.
+    """
+    from sqlalchemy import text
+
+    # Match info
+    match = repo._session.execute(text("""
+        SELECT match_id, match_date, home_team, away_team, home_score, away_score, round
+        FROM matches WHERE match_id = :mid
+    """), {"mid": match_id}).fetchone()
+    if not match or match.home_score is None:
+        return {"error": "Partida nao encontrada ou sem resultado"}
+
+    # Real match stats
+    stats = repo._session.execute(text("""
+        SELECT * FROM match_stats WHERE match_id = :mid
+    """), {"mid": match_id}).fetchone()
+
+    # Prediction that was made for this match (latest)
+    pred = repo._session.execute(text("""
+        SELECT * FROM prediction_history
+        WHERE (home_team = :home AND away_team = :away)
+           OR (home_team = :away AND away_team = :home)
+        ORDER BY predicted_at DESC LIMIT 1
+    """), {"home": match.home_team, "away": match.away_team}).fetchone()
+
+    result = {
+        "match": {
+            "home_team": match.home_team,
+            "away_team": match.away_team,
+            "home_score": match.home_score,
+            "away_score": match.away_score,
+            "round": match.round,
+            "match_date": str(match.match_date),
+        },
+        "real_stats": None,
+        "prediction": None,
+    }
+
+    if stats:
+        result["real_stats"] = {
+            "possession": {"home": stats.home_possession, "away": stats.away_possession},
+            "xg": {"home": stats.home_xg, "away": stats.away_xg},
+            "shots": {"home": stats.home_shots, "away": stats.away_shots},
+            "sot": {"home": stats.home_sot, "away": stats.away_sot},
+            "saves": {"home": stats.home_saves, "away": stats.away_saves},
+            "corners": {"home": stats.home_corners, "away": stats.away_corners},
+            "cards": {"home": stats.home_yellow + (stats.home_red or 0),
+                      "away": stats.away_yellow + (stats.away_red or 0)},
+            "fouls": {"home": stats.home_fouls, "away": stats.away_fouls},
+            "big_chances": {"home": stats.home_big_chances, "away": stats.away_big_chances},
+            "big_chances_scored": {"home": stats.home_big_chances_scored, "away": stats.away_big_chances_scored},
+            "touches_box": {"home": stats.home_touches_box, "away": stats.away_touches_box},
+            "long_balls_pct": {"home": stats.home_long_balls_pct, "away": stats.away_long_balls_pct},
+            "aerial_won_pct": {"home": stats.home_aerial_won_pct, "away": stats.away_aerial_won_pct},
+            "goals_prevented": {"home": stats.home_goals_prevented, "away": stats.away_goals_prevented},
+            "passes": {"home": stats.home_passes, "away": stats.away_passes},
+            "pass_accuracy": {"home": stats.home_pass_accuracy, "away": stats.away_pass_accuracy},
+            "dispossessed": {"home": stats.home_dispossessed, "away": stats.away_dispossessed},
+            "ht_score": {"home": stats.ht_home_score, "away": stats.ht_away_score},
+            "referee": stats.referee_name,
+        }
+
+    if pred:
+        # Check if prediction is inverted vs actual match
+        inverted = pred.home_team != match.home_team
+        if inverted:
+            hp, dp, ap = pred.away_win_prob, pred.draw_prob, pred.home_win_prob
+        else:
+            hp, dp, ap = pred.home_win_prob, pred.draw_prob, pred.away_win_prob
+
+        result["prediction"] = {
+            "home_win_prob": hp, "draw_prob": dp, "away_win_prob": ap,
+            "home_xg_expected": pred.away_xg_expected if inverted else pred.home_xg_expected,
+            "away_xg_expected": pred.home_xg_expected if inverted else pred.away_xg_expected,
+            "most_likely_score": pred.most_likely_score,
+            "over_25_prob": pred.over_25_prob,
+            "btts_prob": pred.btts_prob,
+            "brier_score": pred.brier_score,
+            "correct_1x2": bool(pred.correct_1x2) if pred.correct_1x2 is not None else None,
+            "inverted": inverted,
+        }
+
+    return result
+
+
 @app.get("/api/verify")
 def get_verify(
     competition: str = "Brasileirão Série A",

@@ -1,12 +1,14 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { fetchAPI, postAPI } from '../api/client';
-import { CheckCircle, XCircle, Clock, RefreshCw, Loader2, Trophy, Target, TrendingUp } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, RefreshCw, Loader2, Trophy, Target, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react';
 import { ProbabilityBar } from '../components/ProbabilityBar';
+import { MatchAnalysis } from '../components/MatchAnalysis';
 
 export function TrackRecord() {
   const [roundFilter, setRoundFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [expandedMatches, setExpandedMatches] = useState<Set<number>>(new Set());
 
   const { data: summary, isLoading: loadingSummary } = useQuery({
     queryKey: ['trackRecord'],
@@ -280,6 +282,29 @@ export function TrackRecord() {
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {/* Post-match analysis toggle — only for resolved */}
+                {!isPending && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => {
+                        const next = new Set(expandedMatches);
+                        if (next.has(p.match_key)) next.delete(p.match_key);
+                        else next.add(p.match_key);
+                        setExpandedMatches(next);
+                      }}
+                      className="flex items-center gap-2 text-xs text-cyan-400 hover:text-cyan-300"
+                    >
+                      {expandedMatches.has(p.match_key) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      {expandedMatches.has(p.match_key) ? 'Ocultar análise' : 'Ver análise completa do jogo'}
+                    </button>
+                    {expandedMatches.has(p.match_key) && (
+                      <div className="mt-3">
+                        <MatchAnalysis homeTeam={p.home_team} awayTeam={p.away_team} />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
