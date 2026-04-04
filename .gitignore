@@ -7,3 +7,5 @@ build/
 *.png
 *.jpg
 .env
+data/
+data/
