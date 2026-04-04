@@ -65,7 +65,8 @@ class IngestLineups:
                     match_info = self.provider.get_match_info(mid)
                     home = match_info.get("home_team", "")
                     away = match_info.get("away_team", "")
-                    match_key = abs(hash(f"{home}-{away}")) % (10**9)
+                    from football_moneyball.adapters.postgres_repository import _stable_match_key
+                    match_key = _stable_match_key(home, away)
 
                     rows = self._convert_lineups(
                         lineups, match_key, home, away, now, "confirmed"

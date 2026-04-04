@@ -326,6 +326,8 @@ class SofascoreProvider:
         match_date = (
             datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else None
         )
+        round_info = match.get("roundInfo", {})
+        round_num = round_info.get("round") if round_info else None
         return {
             "match_id": match["id"],
             "competition": self.competition_name,
@@ -335,6 +337,7 @@ class SofascoreProvider:
             "away_team": match.get("awayTeam", {}).get("name", ""),
             "home_score": match.get("homeScore", {}).get("current", 0),
             "away_score": match.get("awayScore", {}).get("current", 0),
+            "round": round_num,
         }
 
     def _convert_player_stats(

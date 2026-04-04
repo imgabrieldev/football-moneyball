@@ -59,6 +59,7 @@ class Match(Base):
     away_team: Mapped[Optional[str]] = mapped_column(String)
     home_score: Mapped[Optional[int]] = mapped_column(Integer)
     away_score: Mapped[Optional[int]] = mapped_column(Integer)
+    round: Mapped[Optional[int]] = mapped_column(Integer)  # v1.4.2 — Sofascore roundInfo
 
 
 class PlayerMatchMetrics(Base):
@@ -246,6 +247,7 @@ class MatchPrediction(Base):
     simulations: Mapped[Optional[int]] = mapped_column(Integer)
     predicted_at: Mapped[Optional[str]] = mapped_column(String)
     commence_time: Mapped[Optional[str]] = mapped_column(String)
+    round: Mapped[Optional[int]] = mapped_column(Integer)
     # v1.1.0 — player-aware
     lineup_type: Mapped[Optional[str]] = mapped_column(String)
     model_version: Mapped[Optional[str]] = mapped_column(String)
@@ -453,6 +455,9 @@ def apply_migrations(engine) -> None:
         # v1.4.0
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS player_props JSONB",
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS ml_used INTEGER",
+        # v1.4.2 — round (from Sofascore roundInfo)
+        "ALTER TABLE matches ADD COLUMN IF NOT EXISTS round INTEGER",
+        "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS round INTEGER",
     ]
 
     with engine.connect() as conn:

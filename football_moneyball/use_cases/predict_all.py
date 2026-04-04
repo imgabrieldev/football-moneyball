@@ -137,6 +137,14 @@ class PredictAll:
                 pred["away_team"] = away
                 pred["commence_time"] = game.get("commence_time", "")
 
+                # v1.4.2: Round (estimado via repo)
+                try:
+                    pred["round"] = self.repo.get_round_for_date(
+                        pred["commence_time"], season=season,
+                    )
+                except Exception:
+                    pred["round"] = None
+
                 # v1.2.0: Multi-output markets (corners, cards, shots, HT)
                 try:
                     multi = self._compute_multi_markets(home, away, pred, season)

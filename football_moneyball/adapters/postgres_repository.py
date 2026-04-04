@@ -7,12 +7,28 @@ queries de suporte a relatorios.
 
 from __future__ import annotations
 
+import hashlib
+import unicodedata
 from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+
+def _stable_match_key(home: str, away: str) -> int:
+    """Gera match_key estavel (deterministico entre processos) de home+away.
+
+    Normaliza acentos antes pra ter 'Grêmio' e 'Gremio' como mesma chave.
+    """
+    def _norm(s: str) -> str:
+        nfkd = unicodedata.normalize("NFKD", s.strip())
+        return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+    key_str = f"{_norm(home)}-{_norm(away)}"
+    digest = hashlib.md5(key_str.encode("utf-8")).hexdigest()
+    return int(digest[:12], 16) % (10**9)
 
 from football_moneyball.adapters.orm import (
     ActionValue,
@@ -743,7 +759,7 @@ class PostgresRepository:
             return float(v)
 
         for pred in predictions:
-            match_key = abs(hash(f"{pred.get('home_team','')}-{pred.get('away_team','')}")) % (10**9)
+            match_key = _stable_match_key(pred.get('home_team',''), pred.get('away_team',''))
             data = {
                 "match_id": match_key,
                 "home_team": str(pred.get("home_team", "")),
@@ -764,6 +780,7 @@ class PostgresRepository:
                 "multi_markets": pred.get("multi_markets"),
                 "player_props": pred.get("player_props"),
                 "ml_used": int(bool(pred.get("ml_used", False))),
+                "round": int(pred["round"]) if pred.get("round") else None,
             }
             existing = self._session.get(MatchPrediction, match_key)
             if existing:
@@ -774,9 +791,13 @@ class PostgresRepository:
         self._session.commit()
 
     def get_predictions(self) -> list[dict]:
-        """Retorna previsoes pre-computadas."""
+        """Retorna previsoes pre-computadas ordenadas por commence_time ASC (proximas primeiro)."""
         from football_moneyball.adapters.orm import MatchPrediction
-        rows = self._session.query(MatchPrediction).all()
+        rows = (
+            self._session.query(MatchPrediction)
+            .order_by(MatchPrediction.commence_time.asc())
+            .all()
+        )
         return [
             {
                 "home_team": r.home_team, "away_team": r.away_team,
@@ -786,6 +807,7 @@ class PostgresRepository:
                 "btts_prob": r.btts_prob, "most_likely_score": r.most_likely_score,
                 "simulations": r.simulations, "predicted_at": r.predicted_at,
                 "commence_time": r.commence_time,
+                "round": r.round,
                 "lineup_type": r.lineup_type, "model_version": r.model_version,
                 "multi_markets": r.multi_markets,
                 "player_props": r.player_props,
@@ -816,7 +838,7 @@ class PostgresRepository:
         for pred in predictions:
             home = str(pred.get("home_team", ""))
             away = str(pred.get("away_team", ""))
-            match_key = abs(hash(f"{home}-{away}")) % (10**9)
+            match_key = _stable_match_key(home, away)
             predicted_at = pred.get("predicted_at", now)
 
             # Avoid exact duplicates (same match + same prediction timestamp)
@@ -836,7 +858,7 @@ class PostgresRepository:
                 home_team=home,
                 away_team=away,
                 commence_time=str(pred.get("commence_time", "")),
-                round=pred.get("round"),
+                round=int(pred["round"]) if pred.get("round") else None,
                 home_win_prob=_float(pred.get("home_win_prob")),
                 draw_prob=_float(pred.get("draw_prob")),
                 away_win_prob=_float(pred.get("away_win_prob")),
@@ -859,7 +881,7 @@ class PostgresRepository:
         for bet in bets:
             home = str(bet.get("home_team", ""))
             away = str(bet.get("away_team", ""))
-            match_key = abs(hash(f"{home}-{away}")) % (10**9)
+            match_key = _stable_match_key(home, away)
 
             row = ValueBetHistory(
                 prediction_id=bet.get("prediction_id"),
@@ -898,8 +920,11 @@ class PostgresRepository:
         row.actual_home_goals = result.get("actual_home_goals")
         row.actual_away_goals = result.get("actual_away_goals")
         row.actual_outcome = result.get("actual_outcome")
-        row.correct_1x2 = result.get("correct_1x2")
-        row.correct_over_under = result.get("correct_over_under")
+        # Colunas sao INTEGER (SQLite compat) — converter bool → int
+        c1x2 = result.get("correct_1x2")
+        cou = result.get("correct_over_under")
+        row.correct_1x2 = int(c1x2) if c1x2 is not None else None
+        row.correct_over_under = int(cou) if cou is not None else None
         row.brier_score = result.get("brier_score")
         row.status = "resolved"
         row.resolved_at = datetime.now().isoformat()
@@ -922,17 +947,41 @@ class PostgresRepository:
         round_num: int | None = None,
         status: str | None = None,
     ) -> list[dict]:
-        """Retorna historico de previsoes com filtros opcionais."""
+        """Retorna historico de previsoes com filtros opcionais.
+
+        Dedupe: prediction_history eh imutavel (1 linha por predicao), entao
+        podemos ter a mesma partida N vezes. Retornamos apenas a MAIS RECENTE
+        por match_key (por predicted_at desc).
+        """
         query = self._session.query(PredictionHistory)
         if round_num is not None:
             query = query.filter(PredictionHistory.round == round_num)
         if status is not None:
             query = query.filter(PredictionHistory.status == status)
-        query = query.order_by(PredictionHistory.commence_time.desc(), PredictionHistory.id.desc())
+        query = query.order_by(
+            PredictionHistory.predicted_at.desc(),
+            PredictionHistory.id.desc(),
+        )
 
         rows = query.all()
         columns = [c.key for c in PredictionHistory.__table__.columns]
-        return [{col: getattr(r, col) for col in columns} for r in rows]
+
+        # Dedup por match_key: manter apenas a mais recente
+        seen_keys = set()
+        deduped = []
+        for r in rows:
+            mk = r.match_key
+            if mk in seen_keys:
+                continue
+            seen_keys.add(mk)
+            deduped.append({col: getattr(r, col) for col in columns})
+
+        # Ordenar deduped por commence_time (proximas primeiro)
+        deduped.sort(
+            key=lambda x: (x.get("commence_time") or "", x.get("id") or 0),
+            reverse=True,
+        )
+        return deduped
 
     def get_value_bet_history(self) -> list[dict]:
         """Retorna todo o historico de value bets."""
@@ -967,7 +1016,7 @@ class PostgresRepository:
             home = game.get("home_team", "")
             away = game.get("away_team", "")
             # Use hash of teams as match_id (we don't have Sofascore IDs for future matches)
-            match_key = abs(hash(f"{home}-{away}")) % (10**9)
+            match_key = _stable_match_key(home, away)
 
             for bm in game.get("bookmakers", []):
                 bm_name = bm.get("name", "")
@@ -1043,7 +1092,7 @@ class PostgresRepository:
 
     def get_odds_for_match(self, home_team: str, away_team: str) -> list[dict]:
         """Busca odds de uma partida por nomes dos times."""
-        match_id = abs(hash(f"{home_team}-{away_team}")) % (10**9)
+        match_id = _stable_match_key(home_team, away_team)
         rows = (
             self._session.query(MatchOdds)
             .filter(MatchOdds.match_id == match_id)
@@ -1259,6 +1308,60 @@ class PostgresRepository:
             ORDER BY m.match_date, m.match_id
         """)
         return pd.read_sql(query, self._session.bind, params={"season": season})
+
+    def get_round_for_date(
+        self, commence_time: str, season: str | None = None,
+    ) -> int | None:
+        """Estima round de uma data baseado nos jogos ja ingeridos.
+
+        Usa a rodada mais recente antes de commence_time + 1 como proxima.
+        Se commence_time eh anterior ao ultimo jogo, usa o round daquela data.
+
+        Parameters
+        ----------
+        commence_time : str
+            ISO format (ex: '2026-04-12T21:30:00Z').
+        season : str, optional
+
+        Returns
+        -------
+        int | None
+            Numero da rodada estimada.
+        """
+        if not commence_time:
+            return None
+        date_only = commence_time[:10]  # YYYY-MM-DD
+
+        query = text("""
+            SELECT round, match_date FROM matches
+            WHERE round IS NOT NULL
+              AND (:season IS NULL OR season = :season)
+            ORDER BY ABS(EXTRACT(EPOCH FROM CAST(match_date AS timestamp) - CAST(:target_date AS timestamp))) ASC
+            LIMIT 1
+        """)
+        try:
+            result = self._session.execute(query, {
+                "target_date": date_only, "season": season,
+            }).fetchone()
+            if not result:
+                return None
+
+            closest_round = int(result.round)
+            closest_date = str(result.match_date)
+
+            # Se target_date eh DEPOIS do closest match, estimar rodadas a frente
+            if date_only > closest_date:
+                import math
+                from datetime import datetime
+                d1 = datetime.fromisoformat(date_only)
+                d2 = datetime.fromisoformat(closest_date)
+                days_diff = (d1 - d2).days
+                # Cada rodada ~7 dias no Brasileirao — usar ceil pra nao subestimar
+                rounds_ahead = max(1, math.ceil(days_diff / 7.0))
+                return closest_round + rounds_ahead
+            return closest_round
+        except Exception:
+            return None
 
     def get_referee_stats_by_name(self, name: str) -> dict | None:
         """Busca arbitro por nome (fuzzy: LIKE)."""

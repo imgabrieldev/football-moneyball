@@ -16,8 +16,8 @@ export function ValueBets() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Value Bets</h1>
-      <p className="text-gray-500">Apostas onde nosso modelo encontra vantagem sobre as casas (melhor odd por aposta)</p>
+      <h1 className="text-2xl font-bold">Value Bets — Betfair</h1>
+      <p className="text-gray-500">Apostas onde nosso modelo encontra vantagem sobre a Betfair</p>
 
       {/* Filters */}
       <div className="flex gap-4 items-end">
@@ -72,12 +72,8 @@ export function ValueBets() {
                 </div>
                 <div className="flex items-center gap-5 text-sm">
                   <div className="text-center">
-                    <div className="text-gray-500 text-xs">Odds</div>
+                    <div className="text-gray-500 text-xs">Odds Betfair</div>
                     <div className="font-mono text-lg">{vb.best_odds?.toFixed(2)}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-gray-500 text-xs">Casa</div>
-                    <div className="text-xs">{vb.bookmaker}</div>
                   </div>
                   <div className="text-center">
                     <div className="text-gray-500 text-xs">Edge</div>

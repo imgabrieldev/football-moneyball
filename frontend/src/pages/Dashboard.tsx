@@ -136,16 +136,12 @@ export function Dashboard() {
                 </div>
                 <div className="flex items-center gap-6 text-sm">
                   <div className="text-right">
-                    <div className="text-gray-500">Odds</div>
+                    <div className="text-gray-500">Odds Betfair</div>
                     <div className="font-mono">{vb.best_odds?.toFixed(2)}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-gray-500">Edge</div>
                     <div className="text-green-400 font-bold">+{(vb.edge * 100).toFixed(1)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-gray-500">Casa</div>
-                    <div>{vb.bookmaker}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-gray-500">Stake</div>

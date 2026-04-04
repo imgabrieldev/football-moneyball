@@ -350,22 +350,20 @@ def get_players(
 def get_value_bets(
     bankroll: float = 1000.0,
     min_edge: float = 0.03,
-    bookmaker: str | None = None,
+    bookmaker: str | None = "betfair",
     repo=Depends(get_repo),
 ):
-    """Retorna value bets deduplicadas (melhor odd por aposta)."""
+    """Retorna value bets deduplicadas (Betfair-only por padrao)."""
     from football_moneyball.config import get_odds_provider
     from football_moneyball.use_cases.find_value_bets import FindValueBets
     try:
         odds_provider = get_odds_provider()
         odds_provider.repo = repo
-        result = FindValueBets(odds_provider, repo).execute(bankroll=bankroll, min_edge=min_edge)
+        result = FindValueBets(odds_provider, repo).execute(
+            bankroll=bankroll, min_edge=min_edge, bookmaker_filter=bookmaker,
+        )
 
         bets = result.get("value_bets", [])
-
-        # Filtrar por bookmaker se pedido
-        if bookmaker:
-            bets = [b for b in bets if bookmaker.lower() in b.get("bookmaker", "").lower()]
 
         # Deduplicar: 1 linha por match+market+outcome (melhor odd)
         seen = {}
@@ -377,6 +375,7 @@ def get_value_bets(
 
         result["value_bets"] = deduped
         result["total_before_dedup"] = len(bets)
+        result["bookmaker_filter"] = bookmaker or "all"
         return result
     except Exception as e:
         return {"error": str(e), "value_bets": []}
@@ -432,10 +431,67 @@ def get_verify(
     season: str = "2026",
     repo=Depends(get_repo),
 ):
-    """Verifica previsoes vs resultados."""
-    from football_moneyball.use_cases.verify_predictions import VerifyPredictions
-    result = VerifyPredictions(repo).execute(competition=competition, season=season)
-    return result
+    """Verifica previsoes vs resultados reais (de prediction_history resolvido)."""
+    preds = repo.get_prediction_history(status="resolved")
+    if not preds:
+        return {
+            "error": "Nenhuma previsao resolvida. Rode 'moneyball resolve' apos jogos terminarem.",
+            "total_matches": 0,
+        }
+
+    predictions = []
+    total = len(preds)
+    correct_1x2 = 0
+    correct_ou = 0
+    brier_sum = 0.0
+
+    for p in preds:
+        hp = p.get("home_win_prob") or 0
+        dp = p.get("draw_prob") or 0
+        ap = p.get("away_win_prob") or 0
+        actual = p.get("actual_outcome", "")
+        home_goals = p.get("actual_home_goals") or 0
+        away_goals = p.get("actual_away_goals") or 0
+
+        probs = {"home": hp, "draw": dp, "away": ap}
+        predicted = max(probs, key=probs.get)
+        predicted_label = {
+            "home": p.get("home_team", "?"),
+            "draw": "Empate",
+            "away": p.get("away_team", "?"),
+        }[predicted]
+        actual_label = {
+            "home": p.get("home_team", "?"),
+            "draw": "Empate",
+            "away": p.get("away_team", "?"),
+        }.get(actual, actual)
+
+        if p.get("correct_1x2"):
+            correct_1x2 += 1
+        if p.get("correct_over_under"):
+            correct_ou += 1
+        brier_sum += float(p.get("brier_score") or 0)
+
+        predictions.append({
+            "match": f"{p.get('home_team')} vs {p.get('away_team')}",
+            "score": f"{home_goals} x {away_goals}",
+            "predicted": predicted_label,
+            "actual": actual_label,
+            "correct_1x2": bool(p.get("correct_1x2")),
+            "home_prob": hp, "draw_prob": dp, "away_prob": ap,
+            "correct_over": bool(p.get("correct_over_under")),
+            "brier": p.get("brier_score"),
+        })
+
+    return {
+        "total_matches": total,
+        "correct_1x2": correct_1x2,
+        "correct_over_under": correct_ou,
+        "accuracy_1x2": round(correct_1x2 / total * 100, 1) if total else 0,
+        "accuracy_over_under": round(correct_ou / total * 100, 1) if total else 0,
+        "avg_brier_score": round(brier_sum / total, 4) if total else 0,
+        "predictions": predictions,
+    }
 
 
 @app.get("/api/backtest")

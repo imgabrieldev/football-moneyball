@@ -123,6 +123,17 @@ def find_value_bets(
 
     value_bets = []
 
+    # Traducao: "Home"/"Away" → nome dos times (odds API usa team names)
+    home_team = predictions.get("home_team", "")
+    away_team = predictions.get("away_team", "")
+    outcome_aliases = {
+        "Home": {home_team, "Home"},
+        "Away": {away_team, "Away"},
+        "Draw": {"Draw"},
+        "Over": {"Over"},
+        "Yes": {"Yes"},
+    }
+
     for pred_key, (market, outcome) in _PREDICTION_TO_MARKET.items():
         if market not in markets:
             continue
@@ -131,6 +142,8 @@ def find_value_bets(
         if model_prob <= 0:
             continue
 
+        matching_outcomes = outcome_aliases.get(outcome, {outcome})
+
         # Find best odds across bookmakers for this market/outcome
         best_odds = 0.0
         best_bookmaker = ""
@@ -138,7 +151,7 @@ def find_value_bets(
         for bm in odds_data:
             bm_name = bm.get("name", "")
             for m in bm.get("markets", []):
-                if m.get("market") == market and m.get("outcome") == outcome:
+                if m.get("market") == market and m.get("outcome") in matching_outcomes:
                     if m.get("odds", 0) > best_odds:
                         best_odds = m["odds"]
                         best_bookmaker = bm_name

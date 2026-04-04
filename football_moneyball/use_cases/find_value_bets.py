@@ -28,6 +28,7 @@ class FindValueBets:
         bankroll: float = 1000.0,
         min_edge: float = 0.03,
         markets: list[str] | None = None,
+        bookmaker_filter: str | None = None,
     ) -> dict[str, Any]:
         """Busca value bets nas proximas partidas.
 
@@ -82,6 +83,9 @@ class FindValueBets:
             # Collect all bookmaker odds for this game
             all_bm_odds = []
             for bm in game.get("bookmakers", []):
+                # Se filtrando bookmaker, so incluir correspondentes
+                if bookmaker_filter and bookmaker_filter.lower() not in bm.get("name", "").lower():
+                    continue
                 all_bm_odds.append(bm)
 
             # Find value
