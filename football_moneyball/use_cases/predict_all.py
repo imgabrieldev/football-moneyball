@@ -44,6 +44,18 @@ class PredictAll:
             home = game.get("home_team", "")
             away = game.get("away_team", "")
 
+            # Se nomes vazios, extrair dos outcomes h2h
+            if not home or not away:
+                team_names = set()
+                for bm in game.get("bookmakers", []):
+                    for m in bm.get("markets", []):
+                        if m.get("market") == "h2h" and m.get("outcome") != "Draw":
+                            team_names.add(m["outcome"])
+                team_names = sorted(team_names)
+                if len(team_names) >= 2:
+                    home = team_names[0]
+                    away = team_names[1]
+
             if not home or not away:
                 continue
 

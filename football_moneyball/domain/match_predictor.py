@@ -380,6 +380,10 @@ def predict_match(
     dict
         Probabilidades + metadados do pipeline.
     """
+    # 0. Fuzzy match team names (odds API retorna sem acentos)
+    home_team = _fuzzy_match_team(home_team, all_match_data["team"].unique())
+    away_team = _fuzzy_match_team(away_team, all_match_data["team"].unique())
+
     # 1. Medias da liga (dinamicas, weighted)
     league = calculate_league_averages(all_match_data)
 
@@ -438,7 +442,31 @@ def predict_match(
 
 
 # ---------------------------------------------------------------------------
-# 7. Helpers (mantidos)
+# 7. Fuzzy team name matching
+# ---------------------------------------------------------------------------
+
+def _normalize_name(name: str) -> str:
+    """Remove acentos e normaliza pra comparacao."""
+    import unicodedata
+    nfkd = unicodedata.normalize("NFKD", name)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
+
+
+def _fuzzy_match_team(name: str, known_teams: list | np.ndarray) -> str:
+    """Encontra o time mais proximo no dataset por nome normalizado."""
+    norm = _normalize_name(name)
+    for team in known_teams:
+        if _normalize_name(team) == norm:
+            return team
+    # Substring match
+    for team in known_teams:
+        if norm in _normalize_name(team) or _normalize_name(team) in norm:
+            return team
+    return name  # fallback: retorna original
+
+
+# ---------------------------------------------------------------------------
+# 8. Helpers (mantidos)
 # ---------------------------------------------------------------------------
 
 def poisson_pmf(k: int, lam: float) -> float:
