@@ -10,7 +10,8 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[advanced-predictor]] — v0.5.0: Pipeline 6 estágios (xG + pressing + xT + RAPM + regressão à média + Monte Carlo)
+- [[infra-automation]] — v0.6.0: Odds no PG, Dockerfile, CronJobs K8s, FastAPI básica
+- ~~[[advanced-predictor]]~~ — v0.5.0: shipped ✓
 
 ## Backlog
 
