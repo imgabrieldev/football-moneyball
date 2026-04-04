@@ -93,6 +93,59 @@ def get_prediction(
     return result
 
 
+@app.get("/api/players")
+def get_players(
+    competition: str = "Brasileirão Série A",
+    season: str = "2026",
+    team: str | None = None,
+    repo=Depends(get_repo),
+):
+    """Lista jogadores com metricas agregadas."""
+    from sqlalchemy import text
+    params = {"comp": competition, "season": season}
+    where = "WHERE m.competition = :comp AND m.season = :season"
+    if team:
+        where += " AND pmm.team = :team"
+        params["team"] = team
+
+    result = repo._session.execute(text(f"""
+        SELECT pmm.player_name, pmm.team,
+               COUNT(DISTINCT pmm.match_id) as matches,
+               ROUND(SUM(pmm.minutes_played)::numeric, 0) as minutes,
+               SUM(pmm.goals) as goals,
+               SUM(pmm.assists) as assists,
+               ROUND(SUM(pmm.xg)::numeric, 2) as xg,
+               ROUND(SUM(pmm.xa)::numeric, 2) as xa,
+               SUM(pmm.shots) as shots,
+               SUM(pmm.passes) as passes,
+               SUM(pmm.tackles) as tackles
+        FROM player_match_metrics pmm
+        JOIN matches m ON m.match_id = pmm.match_id
+        {where}
+        GROUP BY pmm.player_name, pmm.team
+        HAVING SUM(pmm.minutes_played) > 0
+        ORDER BY SUM(pmm.xg) DESC
+        LIMIT 100
+    """), params)
+
+    return [
+        {
+            "player_name": r.player_name,
+            "team": r.team,
+            "matches": int(r.matches),
+            "minutes": int(r.minutes or 0),
+            "goals": int(r.goals or 0),
+            "assists": int(r.assists or 0),
+            "xg": float(r.xg or 0),
+            "xa": float(r.xa or 0),
+            "shots": int(r.shots or 0),
+            "passes": int(r.passes or 0),
+            "tackles": int(r.tackles or 0),
+        }
+        for r in result
+    ]
+
+
 @app.get("/api/value-bets")
 def get_value_bets(
     bankroll: float = 1000.0,
