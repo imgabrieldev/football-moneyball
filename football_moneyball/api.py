@@ -67,10 +67,54 @@ def list_matches(
     ]
 
 
+def _interpret_prediction(pred: dict) -> dict:
+    """Adiciona interpretacao textual a uma previsao."""
+    home = pred.get("home_team", "?")
+    away = pred.get("away_team", "?")
+    hp = pred.get("home_win_prob", 0) or 0
+    dp = pred.get("draw_prob", 0) or 0
+    ap = pred.get("away_win_prob", 0) or 0
+
+    # Favorito
+    if hp > ap + 0.15:
+        fav = home
+        conf = "forte" if hp > 0.60 else "leve"
+        pred["interpretation"] = f"{fav} {conf} favorito em casa"
+    elif ap > hp + 0.15:
+        fav = away
+        conf = "forte" if ap > 0.60 else "leve"
+        pred["interpretation"] = f"{fav} {conf} favorito fora"
+    elif dp > 0.30:
+        pred["interpretation"] = "Jogo equilibrado, empate provável"
+    else:
+        pred["interpretation"] = "Jogo equilibrado e aberto"
+
+    # Confiança
+    max_prob = max(hp, dp, ap)
+    if max_prob > 0.65:
+        pred["confidence"] = "alta"
+    elif max_prob > 0.45:
+        pred["confidence"] = "media"
+    else:
+        pred["confidence"] = "baixa"
+
+    # Gols
+    over = pred.get("over_25", 0) or 0
+    if over > 0.65:
+        pred["goals_hint"] = "Jogo com muitos gols esperado"
+    elif over < 0.35:
+        pred["goals_hint"] = "Jogo fechado, poucos gols"
+    else:
+        pred["goals_hint"] = ""
+
+    return pred
+
+
 @app.get("/api/predictions")
 def get_predictions(repo=Depends(get_repo)):
-    """Retorna previsoes pre-computadas do banco."""
+    """Retorna previsoes pre-computadas com interpretacao."""
     predictions = repo.get_predictions()
+    predictions = [_interpret_prediction(p) for p in predictions]
     return {"predictions": predictions, "total": len(predictions)}
 
 
@@ -153,15 +197,33 @@ def get_players(
 def get_value_bets(
     bankroll: float = 1000.0,
     min_edge: float = 0.03,
+    bookmaker: str | None = None,
     repo=Depends(get_repo),
 ):
-    """Retorna value bets atuais."""
+    """Retorna value bets deduplicadas (melhor odd por aposta)."""
     from football_moneyball.config import get_odds_provider
     from football_moneyball.use_cases.find_value_bets import FindValueBets
     try:
         odds_provider = get_odds_provider()
         odds_provider.repo = repo
         result = FindValueBets(odds_provider, repo).execute(bankroll=bankroll, min_edge=min_edge)
+
+        bets = result.get("value_bets", [])
+
+        # Filtrar por bookmaker se pedido
+        if bookmaker:
+            bets = [b for b in bets if bookmaker.lower() in b.get("bookmaker", "").lower()]
+
+        # Deduplicar: 1 linha por match+market+outcome (melhor odd)
+        seen = {}
+        for b in bets:
+            key = f"{b.get('match','')}-{b.get('market','')}-{b.get('outcome','')}"
+            if key not in seen or b.get("best_odds", 0) > seen[key].get("best_odds", 0):
+                seen[key] = b
+        deduped = sorted(seen.values(), key=lambda x: -x.get("edge", 0))
+
+        result["value_bets"] = deduped
+        result["total_before_dedup"] = len(bets)
         return result
     except Exception as e:
         return {"error": str(e), "value_bets": []}

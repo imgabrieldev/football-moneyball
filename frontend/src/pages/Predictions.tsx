@@ -11,27 +11,20 @@ export function Predictions() {
   const { data, isLoading } = useQuery({
     queryKey: ['predictions'],
     queryFn: () => api.predictions(),
-    refetchInterval: computing ? 5_000 : false, // Poll every 5s while computing
+    refetchInterval: computing ? 5_000 : false,
   });
 
   const predictions = data?.predictions || [];
 
-  // Stop polling when predictions arrive
   useEffect(() => {
-    if (computing && predictions.length > 0) {
-      setComputing(false);
-    }
+    if (computing && predictions.length > 0) setComputing(false);
   }, [predictions.length, computing]);
 
   async function handleRecompute() {
     setComputing(true);
     setError('');
     try {
-      const res = await fetch('/api/predictions/recompute', { method: 'POST' });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
-      }
+      await fetch('/api/predictions/recompute', { method: 'POST' });
     } catch (e: any) {
       setError(`Erro: ${e.message}`);
       setComputing(false);
@@ -43,20 +36,11 @@ export function Predictions() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Previsões — Monte Carlo</h1>
-          <p className="text-gray-500">
-            {predictions.length} partidas • Dixon-Coles + Poisson (10K simulações)
-          </p>
+          <p className="text-gray-500">{predictions.length} partidas • Dixon-Coles + Poisson (10K sims)</p>
         </div>
-        <button
-          onClick={handleRecompute}
-          disabled={computing}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-wait rounded-lg text-sm font-medium transition-colors"
-        >
-          {computing ? (
-            <><Loader2 size={16} className="animate-spin" /> Computando...</>
-          ) : (
-            <><RefreshCw size={16} /> Recomputar</>
-          )}
+        <button onClick={handleRecompute} disabled={computing}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-wait rounded-lg text-sm font-medium transition-colors">
+          {computing ? <><Loader2 size={16} className="animate-spin" /> Computando...</> : <><RefreshCw size={16} /> Recomputar</>}
         </button>
       </div>
 
@@ -65,71 +49,72 @@ export function Predictions() {
           <Loader2 size={20} className="animate-spin text-yellow-400" />
           <div>
             <p className="text-yellow-400 font-medium">Computando previsões...</p>
-            <p className="text-yellow-600 text-xs">Monte Carlo rodando em background. A tabela atualiza automaticamente.</p>
+            <p className="text-yellow-600 text-xs">Monte Carlo em background. Atualiza automaticamente.</p>
           </div>
         </div>
       )}
 
-      {error && (
-        <div className="bg-red-900/30 border border-red-800 rounded-lg p-3 text-sm text-red-400">
-          {error}
-        </div>
-      )}
+      {error && <div className="bg-red-900/30 border border-red-800 rounded-lg p-3 text-sm text-red-400">{error}</div>}
 
       {isLoading ? (
         <div className="flex items-center gap-3 justify-center py-20 text-gray-500">
-          <Loader2 size={24} className="animate-spin" />
-          Carregando...
+          <Loader2 size={24} className="animate-spin" /> Carregando...
         </div>
       ) : predictions.length === 0 && !computing ? (
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-12 text-center">
           <p className="text-gray-400 text-lg mb-2">Nenhuma previsão pre-computada</p>
-          <p className="text-gray-600 text-sm mb-6">Clique no botão abaixo para rodar o Monte Carlo pela primeira vez.</p>
-          <button
-            onClick={handleRecompute}
-            className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors"
-          >
+          <p className="text-gray-600 text-sm mb-6">Clique para rodar Monte Carlo pela primeira vez.</p>
+          <button onClick={handleRecompute} className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-medium">
             Computar Previsões
           </button>
         </div>
-      ) : predictions.length > 0 ? (
-        <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="text-gray-500 bg-gray-900 border-b border-gray-800">
-              <tr>
-                <th className="p-3 text-left">Partida</th>
-                <th className="p-3 text-right">xG H</th>
-                <th className="p-3 text-right">xG A</th>
-                <th className="p-3 w-52">Probabilidades</th>
-                <th className="p-3 text-right">Over 2.5</th>
-                <th className="p-3 text-right">BTTS</th>
-                <th className="p-3 text-center">Placar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {predictions.map((pred: any, i: number) => (
-                <tr key={i} className="hover:bg-gray-800/50">
-                  <td className="p-3 font-medium">
-                    {pred.home_team} <span className="text-gray-500">vs</span> {pred.away_team}
-                  </td>
-                  <td className="p-3 text-right">{pred.home_xg?.toFixed(2)}</td>
-                  <td className="p-3 text-right">{pred.away_xg?.toFixed(2)}</td>
-                  <td className="p-3">
-                    <ProbabilityBar
-                      home={pred.home_win_prob || 0}
-                      draw={pred.draw_prob || 0}
-                      away={pred.away_win_prob || 0}
-                    />
-                  </td>
-                  <td className="p-3 text-right">{pred.over_25 ? `${(pred.over_25 * 100).toFixed(0)}%` : '—'}</td>
-                  <td className="p-3 text-right">{pred.btts_prob ? `${(pred.btts_prob * 100).toFixed(0)}%` : '—'}</td>
-                  <td className="p-3 text-center font-mono">{pred.most_likely_score || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      ) : (
+        <div className="space-y-3">
+          {predictions.map((pred: any, i: number) => {
+            const conf = pred.confidence;
+            const confColor = conf === 'alta' ? 'border-green-800' : conf === 'media' ? 'border-yellow-900' : 'border-gray-800';
+            const confDot = conf === 'alta' ? 'text-green-400' : conf === 'media' ? 'text-yellow-400' : 'text-gray-600';
+            return (
+              <div key={i} className={`bg-gray-900 rounded-lg border ${confColor} p-4`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-lg">{pred.home_team}</span>
+                      <span className="text-gray-600">vs</span>
+                      <span className="font-bold text-lg">{pred.away_team}</span>
+                    </div>
+                    {pred.interpretation && (
+                      <p className="text-cyan-400 text-sm mt-1">{pred.interpretation}</p>
+                    )}
+                    {pred.goals_hint && (
+                      <p className="text-yellow-600 text-xs mt-0.5">{pred.goals_hint}</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-2xl">{pred.most_likely_score}</div>
+                    <div className={`text-xs ${confDot}`}>
+                      {conf === 'alta' ? '●●● Alta confiança' : conf === 'media' ? '●● Média' : '● Baixa'}
+                    </div>
+                  </div>
+                </div>
+
+                <ProbabilityBar home={pred.home_win_prob || 0} draw={pred.draw_prob || 0} away={pred.away_win_prob || 0} />
+                <div className="flex justify-between text-xs text-gray-600 mt-1">
+                  <span>{pred.home_team} (casa)</span>
+                  <span>Empate</span>
+                  <span>{pred.away_team} (fora)</span>
+                </div>
+
+                <div className="flex gap-6 mt-3 text-sm text-gray-400">
+                  <span>xG: <b className="text-gray-200">{pred.home_xg?.toFixed(2)}</b> - <b className="text-gray-200">{pred.away_xg?.toFixed(2)}</b></span>
+                  <span>Over 2.5: <b className="text-gray-200">{pred.over_25 ? `${(pred.over_25 * 100).toFixed(0)}%` : '—'}</b></span>
+                  <span>BTTS: <b className="text-gray-200">{pred.btts_prob ? `${(pred.btts_prob * 100).toFixed(0)}%` : '—'}</b></span>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
