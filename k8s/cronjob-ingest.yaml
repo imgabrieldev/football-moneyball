@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ingest-sofascore
+  namespace: football-moneyball
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: ingest
+              image: moneyball:0.6.0
+              command: ["moneyball", "ingest", "--provider", "sofascore"]
+              env:
+                - name: DATABASE_URL
+                  value: "postgresql://moneyball:moneyball@postgres:5432/moneyball"
+          restartPolicy: OnFailure

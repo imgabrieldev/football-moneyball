@@ -1183,6 +1183,131 @@ def verify(
 
 
 # ---------------------------------------------------------------------------
+# v0.6.0 — Automation commands
+# ---------------------------------------------------------------------------
+
+@app.command("ingest")
+def ingest(
+    provider_name: str = typer.Option("sofascore", "--provider", help="Data provider"),
+    competition: str = typer.Option("Brasileirão Série A", "--competition"),
+    season: str = typer.Option("2026", "--season"),
+) -> None:
+    """Ingere partidas novas do provider (delta — so jogos que faltam)."""
+    from football_moneyball.use_cases.ingest_matches import IngestMatches
+
+    repo = get_repository()
+    try:
+        provider = get_provider(provider_name)
+        with console.status(f"[bold green]Ingerindo de {provider_name}..."):
+            result = IngestMatches(provider, repo).execute(competition, season)
+
+        if "error" in result:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(1)
+
+        console.print(Panel(
+            f"Ingeridos: {result['ingested']}\n"
+            f"Ja existiam: {result['skipped']}\n"
+            f"Erros: {result['errors']}\n"
+            f"Total no provider: {result['total']}",
+            title=f"Ingestao — {provider_name}", border_style="green",
+        ))
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro na ingestao: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+@app.command("snapshot-odds")
+def snapshot_odds() -> None:
+    """Busca odds atuais e salva no PostgreSQL."""
+    from football_moneyball.use_cases.snapshot_odds import SnapshotOdds
+    from football_moneyball.config import get_odds_provider
+
+    repo = get_repository()
+    try:
+        odds_provider = get_odds_provider()
+        odds_provider.repo = repo
+        with console.status("[bold green]Buscando odds..."):
+            result = SnapshotOdds(odds_provider, repo).execute()
+
+        if "error" in result:
+            console.print(f"[yellow]{result['error']}[/yellow]")
+            raise typer.Exit(0)
+
+        console.print(Panel(
+            f"Partidas: {result['matches']}\n"
+            f"Casas de apostas: {result['bookmakers']}\n"
+            f"Total de odds: {result['total_odds']}",
+            title="Snapshot de Odds", border_style="green",
+        ))
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro ao buscar odds: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+@app.command("predict-all")
+def predict_all_cmd(
+    competition: str = typer.Option("Brasileirão Série A", "--competition"),
+    season: str = typer.Option("2026", "--season"),
+) -> None:
+    """Preve todos os jogos pendentes da rodada."""
+    from football_moneyball.use_cases.predict_all import PredictAll
+
+    repo = get_repository()
+    try:
+        with console.status("[bold green]Prevendo partidas..."):
+            result = PredictAll(repo).execute(competition, season)
+
+        if "error" in result:
+            console.print(f"[yellow]{result['error']}[/yellow]")
+            raise typer.Exit(0)
+
+        preds = result.get("predictions", [])
+        if not preds:
+            console.print("[yellow]Nenhuma previsao gerada.[/yellow]")
+            raise typer.Exit(0)
+
+        table = Table(title=f"Previsoes — {result['total']} partidas")
+        table.add_column("Partida", style="bold")
+        table.add_column("xG H", justify="right")
+        table.add_column("xG A", justify="right")
+        table.add_column("P(H)", justify="right")
+        table.add_column("P(D)", justify="right")
+        table.add_column("P(A)", justify="right")
+        table.add_column("O/U 2.5", justify="right")
+        table.add_column("Placar", justify="center")
+
+        for p in preds:
+            table.add_row(
+                f"{p.get('home_team', '')[:15]} vs {p.get('away_team', '')[:15]}",
+                f"{p['home_xg']:.2f}",
+                f"{p['away_xg']:.2f}",
+                f"{p['home_win_prob']*100:.0f}%",
+                f"{p['draw_prob']*100:.0f}%",
+                f"{p['away_win_prob']*100:.0f}%",
+                f"O {p['over_25']*100:.0f}%",
+                p.get("most_likely_score", ""),
+            )
+        console.print(table)
+
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro nas previsoes: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

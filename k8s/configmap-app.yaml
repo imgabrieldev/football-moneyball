@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moneyball-config
+  namespace: football-moneyball
+data:
+  ODDS_API_KEY: "REPLACE_WITH_YOUR_KEY"
+  MONEYBALL_PROVIDER: "sofascore"

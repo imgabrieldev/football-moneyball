@@ -1,21 +1,16 @@
 """Adapter The Odds API — busca odds de casas de apostas.
 
-Puxa odds de ~30 bookmakers (Bet365, Betano, Pinnacle, etc.)
-tudo numa unica chamada. Implementa cache local read-through/
-write-through para evitar gastar creditos da API em desenvolvimento.
+Persistencia via PostgreSQL (read-through/write-through).
+Sem dependencia de filesystem local.
 
-Cache: data/odds_cache.json (write-through no fetch, read-through no get)
 Configurar: export ODDS_API_KEY=sua_chave
 Cadastro gratis: https://the-odds-api.com
 """
 
 from __future__ import annotations
 
-import json
 import os
 import logging
-import time
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -25,90 +20,21 @@ logger = logging.getLogger(__name__)
 DEFAULT_SPORT = "soccer_brazil_campeonato"
 DEFAULT_MARKETS = ["h2h", "totals"]
 BASE_URL = "https://api.the-odds-api.com/v4"
-
-
-CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-CACHE_TTL_HOURS = 24  # cache valido por 24 horas
+CACHE_TTL_HOURS = 24
 
 
 class TheOddsAPIProvider:
-    """Provedor de odds via The Odds API com cache local.
-
-    Implementa read-through/write-through cache em data/odds_cache.json.
-    Se o cache existir e nao estiver expirado, usa o cache.
-    Caso contrario, busca da API e atualiza o cache.
-
-    Parameters
-    ----------
-    api_key : str, optional
-        API key. Default: env ODDS_API_KEY.
-    sport : str, optional
-        Sport key. Default: soccer_brazil_campeonato.
-    cache_dir : Path, optional
-        Diretorio do cache. Default: data/
-    force_refresh : bool
-        Ignorar cache e buscar da API.
-    """
+    """Provedor de odds via The Odds API com cache no PostgreSQL."""
 
     def __init__(
         self,
         api_key: str | None = None,
         sport: str = DEFAULT_SPORT,
-        cache_dir: Path | None = None,
-        force_refresh: bool = False,
+        repo: Any = None,
     ) -> None:
         self.api_key = api_key or os.getenv("ODDS_API_KEY", "")
         self.sport = sport
-        self.cache_dir = cache_dir or CACHE_DIR
-        self.force_refresh = force_refresh
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-
-    def _cache_path(self, key: str) -> Path:
-        """Retorna o caminho do arquivo de cache."""
-        return self.cache_dir / f"odds_{key}.json"
-
-    def _read_cache(self, key: str) -> list[dict] | None:
-        """Le do cache se existir e nao estiver expirado."""
-        if self.force_refresh:
-            return None
-
-        path = self._cache_path(key)
-        if not path.exists():
-            return None
-
-        # Verificar TTL
-        age_hours = (time.time() - path.stat().st_mtime) / 3600
-        if age_hours > CACHE_TTL_HOURS:
-            logger.info(f"Cache expirado ({age_hours:.1f}h > {CACHE_TTL_HOURS}h)")
-            return None
-
-        try:
-            with open(path) as f:
-                data = json.load(f)
-            logger.info(f"Cache hit: {path.name} ({len(data)} items, {age_hours:.1f}h)")
-            return data
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning(f"Cache corrompido: {e}")
-            return None
-
-    def _write_cache(self, key: str, data: list[dict]) -> None:
-        """Escreve no cache (write-through) + snapshot timestamped."""
-        path = self._cache_path(key)
-        try:
-            with open(path, "w") as f:
-                json.dump(data, f, indent=2, default=str)
-            logger.info(f"Cache escrito: {path.name} ({len(data)} items)")
-
-            # Snapshot com timestamp — histórico próprio de odds
-            snapshots_dir = self.cache_dir / "snapshots"
-            snapshots_dir.mkdir(exist_ok=True)
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            snapshot_path = snapshots_dir / f"odds_{key}_{timestamp}.json"
-            with open(snapshot_path, "w") as f:
-                json.dump(data, f, indent=2, default=str)
-            logger.info(f"Snapshot salvo: {snapshot_path.name}")
-        except OSError as e:
-            logger.warning(f"Erro ao escrever cache: {e}")
+        self.repo = repo
 
     def _has_api_key(self) -> bool:
         """Verifica se tem API key configurada."""
@@ -173,8 +99,8 @@ class TheOddsAPIProvider:
     ) -> list[dict]:
         """Busca odds de TODAS as proximas partidas.
 
-        Read-through: le do cache se valido, senao busca da API e cacheia.
-        1 request = todas as partidas com odds de todos os bookmakers.
+        Se repo existir, tenta cache do PostgreSQL primeiro (TTL 24h).
+        Caso contrario, busca direto da API.
 
         Returns
         -------
@@ -183,16 +109,17 @@ class TheOddsAPIProvider:
         """
         sport = sport or self.sport
         markets = markets or DEFAULT_MARKETS
-        cache_key = f"upcoming_{sport}"
 
-        # Read-through: tentar cache primeiro
-        cached = self._read_cache(cache_key)
-        if cached is not None:
-            return cached
+        # Read-through: check PG cache
+        if self.repo is not None:
+            cached = self.repo.get_cached_odds(max_age_hours=CACHE_TTL_HOURS)
+            if cached is not None:
+                logger.info(f"Odds cache hit (PG): {len(cached)} jogos")
+                return cached
 
-        # Cache miss — buscar da API
+        # Cache miss — fetch from API
         if not self._has_api_key():
-            logger.warning("Sem ODDS_API_KEY e sem cache. Retornando vazio.")
+            logger.warning("Sem ODDS_API_KEY e sem cache.")
             return []
 
         data = self._get(f"sports/{sport}/odds", {
@@ -206,8 +133,10 @@ class TheOddsAPIProvider:
 
         results = self._normalize_odds(data)
 
-        # Write-through: salvar no cache
-        self._write_cache(cache_key, results)
+        # Write-through: save to PG
+        if self.repo is not None and results:
+            self.repo.save_odds(results)
+            logger.info(f"Odds salvas no PG: {len(results)} jogos")
 
         return results
 

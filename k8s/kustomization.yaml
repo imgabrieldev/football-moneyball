@@ -7,6 +7,12 @@ resources:
   - namespace.yaml
   - secret.yaml
   - configmap.yaml
+  - configmap-app.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
+  - app-deployment.yaml
+  - app-service.yaml
+  - cronjob-ingest.yaml
+  - cronjob-odds.yaml
+  - cronjob-predict.yaml

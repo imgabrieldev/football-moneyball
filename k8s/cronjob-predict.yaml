@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: predict-matchday
+  namespace: football-moneyball
+spec:
+  schedule: "0 16 * * 3,6"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: predict
+              image: moneyball:0.6.0
+              command: ["moneyball", "predict-all"]
+              env:
+                - name: DATABASE_URL
+                  value: "postgresql://moneyball:moneyball@postgres:5432/moneyball"
+          restartPolicy: OnFailure

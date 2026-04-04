@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from football_moneyball.adapters.orm import (
     ActionValue,
     Match,
+    MatchOdds,
     PassNetwork,
     PlayerEmbedding,
     PlayerMatchMetrics,
@@ -596,6 +597,110 @@ class PostgresRepository:
         """)
         result = self._session.execute(query, {"comp": competition}).scalar()
         return result
+
+    # =====================================================================
+    # v0.6.0 — Odds persistence
+    # =====================================================================
+
+    def save_odds(self, odds_data: list[dict]) -> None:
+        """Persiste odds na tabela match_odds.
+
+        Recebe lista de jogos no formato normalizado do odds_provider:
+        [{"home_team": "...", "away_team": "...", "bookmakers": [{"name": "...", "markets": [...]}]}]
+        """
+        from datetime import datetime
+        now = datetime.now().isoformat()
+
+        for game in odds_data:
+            home = game.get("home_team", "")
+            away = game.get("away_team", "")
+            # Use hash of teams as match_id (we don't have Sofascore IDs for future matches)
+            match_key = abs(hash(f"{home}-{away}")) % (10**9)
+
+            for bm in game.get("bookmakers", []):
+                bm_name = bm.get("name", "")
+                for mkt in bm.get("markets", []):
+                    data = {
+                        "match_id": match_key,
+                        "bookmaker": bm_name,
+                        "market": mkt.get("market", ""),
+                        "outcome": mkt.get("outcome", ""),
+                        "point": mkt.get("point", 0.0),
+                        "odds": mkt.get("odds", 0.0),
+                        "implied_prob": mkt.get("implied_prob", 0.0),
+                        "fetched_at": now,
+                    }
+                    # Upsert
+                    existing = self._session.get(MatchOdds, (
+                        data["match_id"], data["bookmaker"], data["market"],
+                        data["outcome"], data["point"]
+                    ))
+                    if existing:
+                        for k, v in data.items():
+                            setattr(existing, k, v)
+                    else:
+                        self._session.add(MatchOdds(**data))
+        self._session.commit()
+
+    def get_cached_odds(self, max_age_hours: int = 24) -> list[dict] | None:
+        """Busca odds do cache no PG se recentes o suficiente."""
+        from datetime import datetime, timedelta
+
+        cutoff = (datetime.now() - timedelta(hours=max_age_hours)).isoformat()
+
+        rows = (
+            self._session.query(MatchOdds)
+            .filter(MatchOdds.fetched_at >= cutoff)
+            .all()
+        )
+
+        if not rows:
+            return None
+
+        # Reconstruct normalized format
+        games: dict[int, dict] = {}
+        for row in rows:
+            mid = row.match_id
+            if mid not in games:
+                games[mid] = {"id": mid, "home_team": "", "away_team": "", "bookmakers": {}}
+
+            bm_name = row.bookmaker
+            if bm_name not in games[mid]["bookmakers"]:
+                games[mid]["bookmakers"][bm_name] = {"name": bm_name, "markets": []}
+
+            games[mid]["bookmakers"][bm_name]["markets"].append({
+                "market": row.market,
+                "outcome": row.outcome,
+                "point": row.point,
+                "odds": row.odds,
+                "implied_prob": row.implied_prob,
+            })
+
+        # Convert to list format
+        result = []
+        for game in games.values():
+            game["bookmakers"] = list(game["bookmakers"].values())
+            result.append(game)
+
+        return result
+
+    def get_odds_for_match(self, home_team: str, away_team: str) -> list[dict]:
+        """Busca odds de uma partida por nomes dos times."""
+        match_id = abs(hash(f"{home_team}-{away_team}")) % (10**9)
+        rows = (
+            self._session.query(MatchOdds)
+            .filter(MatchOdds.match_id == match_id)
+            .all()
+        )
+        if not rows:
+            return []
+        bm_dict: dict[str, list] = {}
+        for r in rows:
+            bm_dict.setdefault(r.bookmaker, []).append({
+                "market": r.market, "outcome": r.outcome,
+                "point": r.point, "odds": r.odds, "implied_prob": r.implied_prob,
+            })
+        return [{"name": k, "markets": v} for k, v in bm_dict.items()]
 
     # =====================================================================
     # Lifecycle

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: moneyball-api
+  namespace: football-moneyball
+spec:
+  selector:
+    app: moneyball-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moneyball-api
+  namespace: football-moneyball
+  labels:
+    app: moneyball-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moneyball-api
+  template:
+    metadata:
+      labels:
+        app: moneyball-api
+    spec:
+      containers:
+        - name: moneyball-api
+          image: moneyball:0.6.0
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://moneyball:moneyball@postgres:5432/moneyball"
+          envFrom:
+            - configMapRef:
+                name: moneyball-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
