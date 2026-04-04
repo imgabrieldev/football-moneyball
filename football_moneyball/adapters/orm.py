@@ -224,6 +224,7 @@ class MatchOdds(Base):
     odds: Mapped[Optional[float]] = mapped_column(Float)
     implied_prob: Mapped[Optional[float]] = mapped_column(Float)
     fetched_at: Mapped[Optional[str]] = mapped_column(String)
+    commence_time: Mapped[Optional[str]] = mapped_column(String)
 
 
 class MatchPrediction(Base):
@@ -244,6 +245,7 @@ class MatchPrediction(Base):
     most_likely_score: Mapped[Optional[str]] = mapped_column(String)
     simulations: Mapped[Optional[int]] = mapped_column(Integer)
     predicted_at: Mapped[Optional[str]] = mapped_column(String)
+    commence_time: Mapped[Optional[str]] = mapped_column(String)
 
 
 class ValueBet(Base):

@@ -82,6 +82,13 @@ export function Predictions() {
                       <span className="font-bold text-lg">{pred.home_team}</span>
                       <span className="text-gray-600">vs</span>
                       <span className="font-bold text-lg">{pred.away_team}</span>
+                      {pred.commence_time && (
+                        <span className="text-xs text-gray-500 ml-2 bg-gray-800 px-2 py-0.5 rounded">
+                          {new Date(pred.commence_time).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                          {' '}
+                          {new Date(pred.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </div>
                     {pred.interpretation && (
                       <p className="text-cyan-400 text-sm mt-1">{pred.interpretation}</p>

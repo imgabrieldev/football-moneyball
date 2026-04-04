@@ -17,8 +17,9 @@ class PredictAll:
     repo : MatchRepository
     """
 
-    def __init__(self, repo) -> None:
+    def __init__(self, repo, odds_provider=None) -> None:
         self.repo = repo
+        self.odds_provider = odds_provider
 
     def execute(
         self,
@@ -34,10 +35,17 @@ class PredictAll:
         if all_data.empty:
             return {"error": "Sem dados historicos.", "predictions": []}
 
-        # Get upcoming odds (games that haven't happened yet)
-        cached_odds = self.repo.get_cached_odds(max_age_hours=48)
+        # Get upcoming odds — preferir provider (tem commence_time) ou cache PG
+        cached_odds = None
+        if self.odds_provider:
+            try:
+                cached_odds = self.odds_provider.get_upcoming_odds()
+            except Exception:
+                pass
         if not cached_odds:
-            return {"error": "Sem odds no banco. Rode snapshot-odds primeiro.", "predictions": []}
+            cached_odds = self.repo.get_cached_odds(max_age_hours=48)
+        if not cached_odds:
+            return {"error": "Sem odds. Rode snapshot-odds primeiro.", "predictions": []}
 
         predictions = []
         for game in cached_odds:
@@ -74,6 +82,7 @@ class PredictAll:
 
                 pred["home_team"] = home
                 pred["away_team"] = away
+                pred["commence_time"] = game.get("commence_time", "")
                 predictions.append(pred)
 
                 logger.info(

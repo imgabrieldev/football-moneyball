@@ -630,6 +630,7 @@ class PostgresRepository:
                 "most_likely_score": str(pred.get("most_likely_score", "")),
                 "simulations": int(pred.get("simulations", 10000)),
                 "predicted_at": now,
+                "commence_time": str(pred.get("commence_time", "")),
             }
             existing = self._session.get(MatchPrediction, match_key)
             if existing:
@@ -651,6 +652,7 @@ class PostgresRepository:
                 "away_win_prob": r.away_win_prob, "over_25": r.over_25_prob,
                 "btts_prob": r.btts_prob, "most_likely_score": r.most_likely_score,
                 "simulations": r.simulations, "predicted_at": r.predicted_at,
+                "commence_time": r.commence_time,
             }
             for r in rows
         ]
@@ -686,6 +688,7 @@ class PostgresRepository:
                         "odds": mkt.get("odds", 0.0),
                         "implied_prob": mkt.get("implied_prob", 0.0),
                         "fetched_at": now,
+                        "commence_time": game.get("commence_time", ""),
                     }
                     # Upsert
                     existing = self._session.get(MatchOdds, (
@@ -719,7 +722,11 @@ class PostgresRepository:
         for row in rows:
             mid = row.match_id
             if mid not in games:
-                games[mid] = {"id": mid, "home_team": "", "away_team": "", "bookmakers": {}}
+                games[mid] = {
+                    "id": mid, "home_team": "", "away_team": "",
+                    "commence_time": getattr(row, "commence_time", "") or "",
+                    "bookmakers": {},
+                }
 
             bm_name = row.bookmaker
             if bm_name not in games[mid]["bookmakers"]:

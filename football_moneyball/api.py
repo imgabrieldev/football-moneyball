@@ -129,8 +129,13 @@ def recompute_predictions(
     import threading
 
     def _run():
+        from football_moneyball.config import get_odds_provider
         r = get_repository()
         try:
+            odds = get_odds_provider()
+            odds.repo = r
+            PredictAll(r, odds_provider=odds).execute(competition, season)
+        except Exception:
             PredictAll(r).execute(competition, season)
         finally:
             r.close()

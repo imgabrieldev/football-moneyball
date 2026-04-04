@@ -79,6 +79,13 @@ export function Dashboard() {
                         <span className="font-bold text-base">{pred.home_team}</span>
                         <span className="text-gray-600 text-sm">vs</span>
                         <span className="font-bold text-base">{pred.away_team}</span>
+                        {pred.commence_time && (
+                          <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
+                            {new Date(pred.commence_time).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                            {' '}
+                            {new Date(pred.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
                       </div>
                       <div className="text-sm text-gray-500 mt-0.5">
                         xG: {pred.home_xg?.toFixed(2)} - {pred.away_xg?.toFixed(2)}
