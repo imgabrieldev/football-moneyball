@@ -10,7 +10,7 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[infra-automation]] — v0.6.0: Odds no PG, Dockerfile, CronJobs K8s, FastAPI básica
+- ~~[[infra-automation]]~~ — v0.6.0: shipped ✓
 - ~~[[advanced-predictor]]~~ — v0.5.0: shipped ✓
 
 ## Backlog
