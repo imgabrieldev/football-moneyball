@@ -28,7 +28,7 @@ BASE_URL = "https://api.the-odds-api.com/v4"
 
 
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-CACHE_TTL_HOURS = 6  # cache valido por 6 horas
+CACHE_TTL_HOURS = 24  # cache valido por 24 horas
 
 
 class TheOddsAPIProvider:
