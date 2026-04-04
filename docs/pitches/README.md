@@ -10,6 +10,7 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
+- [[track-record]] — v0.9.0: Histórico imutável de previsões, auto-resolve, track record por rodada/time/mercado
 - ~~[[frontend-dashboard]]~~ — v0.7.0: shipped ✓
 - ~~[[infra-automation]]~~ — v0.6.0: shipped ✓
 - ~~[[advanced-predictor]]~~ — v0.5.0: shipped ✓
