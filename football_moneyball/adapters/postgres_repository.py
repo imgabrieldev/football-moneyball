@@ -608,21 +608,27 @@ class PostgresRepository:
         from football_moneyball.adapters.orm import MatchPrediction
         now = datetime.now().isoformat()
 
+        def _float(v):
+            """Converte numpy float pra Python float nativo."""
+            if v is None:
+                return None
+            return float(v)
+
         for pred in predictions:
             match_key = abs(hash(f"{pred.get('home_team','')}-{pred.get('away_team','')}")) % (10**9)
             data = {
                 "match_id": match_key,
-                "home_team": pred.get("home_team", ""),
-                "away_team": pred.get("away_team", ""),
-                "home_xg_expected": pred.get("home_xg"),
-                "away_xg_expected": pred.get("away_xg"),
-                "home_win_prob": pred.get("home_win_prob"),
-                "draw_prob": pred.get("draw_prob"),
-                "away_win_prob": pred.get("away_win_prob"),
-                "over_25_prob": pred.get("over_25"),
-                "btts_prob": pred.get("btts_prob"),
-                "most_likely_score": pred.get("most_likely_score"),
-                "simulations": pred.get("simulations", 10000),
+                "home_team": str(pred.get("home_team", "")),
+                "away_team": str(pred.get("away_team", "")),
+                "home_xg_expected": _float(pred.get("home_xg")),
+                "away_xg_expected": _float(pred.get("away_xg")),
+                "home_win_prob": _float(pred.get("home_win_prob")),
+                "draw_prob": _float(pred.get("draw_prob")),
+                "away_win_prob": _float(pred.get("away_win_prob")),
+                "over_25_prob": _float(pred.get("over_25")),
+                "btts_prob": _float(pred.get("btts_prob")),
+                "most_likely_score": str(pred.get("most_likely_score", "")),
+                "simulations": int(pred.get("simulations", 10000)),
                 "predicted_at": now,
             }
             existing = self._session.get(MatchPrediction, match_key)
