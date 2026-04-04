@@ -10,7 +10,8 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[track-record]] — v0.9.0: Histórico imutável de previsões, auto-resolve, track record por rodada/time/mercado
+- [[multi-market]] — v1.0.0: Todos os mercados Betfair (correct score, asian handicap, corners, cards, HT)
+- ~~[[track-record]]~~ — v0.9.0: shipped ✓
 - ~~[[frontend-dashboard]]~~ — v0.7.0: shipped ✓
 - ~~[[infra-automation]]~~ — v0.6.0: shipped ✓
 - ~~[[advanced-predictor]]~~ — v0.5.0: shipped ✓
