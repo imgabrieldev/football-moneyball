@@ -143,9 +143,35 @@ def get_predictions(repo=Depends(get_repo)):
                 seen[key] = b
         deduped = list(seen.values())
 
-        # Associar bets a predictions por nome do jogo
+        # Associar bets a predictions — SÓ bets coerentes com a previsão
         for pred in predictions:
             match_name = f"{pred.get('home_team','')} vs {pred.get('away_team','')}"
+            match_bets = [b for b in deduped if b.get("match", "") == match_name]
+
+            # Filtrar: só bets alinhadas com o que o modelo prevê
+            coherent = []
+            for b in match_bets:
+                if b["market"] == "h2h":
+                    # 1X2: recomendar só o favorito do modelo
+                    hp = pred.get("home_win_prob", 0)
+                    dp = pred.get("draw_prob", 0)
+                    ap = pred.get("away_win_prob", 0)
+                    max_p = max(hp, dp, ap)
+                    if b["outcome"] == "Draw" and dp == max_p:
+                        coherent.append(b)
+                    elif b["outcome"] != "Draw" and hp == max_p and b["outcome"] != pred.get("away_team"):
+                        coherent.append(b)
+                    elif b["outcome"] != "Draw" and ap == max_p and b["outcome"] != pred.get("home_team"):
+                        coherent.append(b)
+                elif b["market"] == "totals":
+                    over25 = pred.get("over_25", 0.5)
+                    if b["outcome"] == "Over" and over25 > 0.5:
+                        coherent.append(b)
+                    elif b["outcome"] == "Under" and over25 <= 0.5:
+                        coherent.append(b)
+                else:
+                    coherent.append(b)
+
             pred["recommended_bets"] = [
                 {
                     "market": b["market"],
@@ -158,7 +184,7 @@ def get_predictions(repo=Depends(get_repo)):
                              "Menos de 2.5 gols" if b["outcome"] == "Under" else
                              f"Vitória {b['outcome']}" if b["outcome"] != "Draw" else "Empate",
                 }
-                for b in deduped if b.get("match", "") == match_name
+                for b in coherent
             ]
     except Exception:
         for pred in predictions:
