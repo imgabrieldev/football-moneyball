@@ -13,6 +13,12 @@ export function TrackRecord() {
     queryFn: () => fetchAPI<any>('/track-record'),
   });
 
+  // Buscar TODAS pra popular dropdown de rodadas
+  const { data: allPreds } = useQuery({
+    queryKey: ['trackRecordAll'],
+    queryFn: () => fetchAPI<any[]>('/track-record/predictions'),
+  });
+
   const params: Record<string, string> = {};
   if (roundFilter) params.round = roundFilter;
   if (statusFilter) params.status = statusFilter;
@@ -28,7 +34,7 @@ export function TrackRecord() {
   });
 
   const preds = predictions || [];
-  const rounds = [...new Set(preds.map((p: any) => p.round).filter(Boolean))].sort((a: number, b: number) => b - a);
+  const rounds = [...new Set((allPreds || []).map((p: any) => p.round).filter(Boolean))].sort((a: number, b: number) => b - a);
 
   function whoWon(homeGoals: number, awayGoals: number, home: string, away: string) {
     if (homeGoals > awayGoals) return `Vitória ${home}`;
