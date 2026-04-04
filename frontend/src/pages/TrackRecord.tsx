@@ -237,6 +237,48 @@ export function TrackRecord() {
                     )}
                   </div>
                 </div>
+
+                {/* Bets associadas */}
+                {p.bets && p.bets.length > 0 && (
+                  <div className={`mt-3 rounded-lg p-3 ${isPending ? 'bg-gray-800/30' : 'bg-gray-800/50'}`}>
+                    <div className="text-xs text-gray-500 font-medium mb-2">
+                      {isPending ? 'Bets recomendadas' : 'Resultado das bets'}
+                    </div>
+                    <div className="space-y-1.5">
+                      {p.bets.map((b: any, j: number) => {
+                        const label = b.outcome === 'Over' ? 'Mais de 2.5 gols' :
+                                      b.outcome === 'Under' ? 'Menos de 2.5 gols' :
+                                      b.outcome === 'Draw' ? 'Empate' :
+                                      `Vitória ${b.outcome}`;
+                        return (
+                          <div key={j} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              {b.won !== null && (
+                                b.won ?
+                                  <CheckCircle size={14} className="text-green-400" /> :
+                                  <XCircle size={14} className="text-red-400" />
+                              )}
+                              <span className={isPending ? 'text-cyan-400' : b.won ? 'text-green-300' : 'text-red-300'}>
+                                {label}
+                              </span>
+                              <span className="text-gray-600">@ {b.best_odds?.toFixed(2)}</span>
+                              <span className="text-green-600 text-xs">+{((b.edge||0)*100).toFixed(0)}%</span>
+                            </div>
+                            <div className="text-right">
+                              {b.profit !== null ? (
+                                <span className={`font-medium ${(b.profit||0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {(b.profit||0) >= 0 ? '+' : ''}R$ {b.profit?.toFixed(2)}
+                                </span>
+                              ) : (
+                                <span className="text-gray-500">R$ {b.kelly_stake?.toFixed(2)} apostado</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

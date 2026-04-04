@@ -112,9 +112,54 @@ def _interpret_prediction(pred: dict) -> dict:
 
 @app.get("/api/predictions")
 def get_predictions(repo=Depends(get_repo)):
-    """Retorna previsoes pre-computadas com interpretacao."""
+    """Retorna previsoes pre-computadas com interpretacao e bets recomendadas."""
     predictions = repo.get_predictions()
     predictions = [_interpret_prediction(p) for p in predictions]
+
+    # Enriquecer com value bets associadas (deduplicadas, melhor odd por mercado)
+    try:
+        from football_moneyball.config import get_odds_provider
+        from football_moneyball.use_cases.find_value_bets import FindValueBets
+        odds_provider = get_odds_provider()
+        odds_provider.repo = repo
+        vb_result = FindValueBets(odds_provider, repo).execute(bankroll=1000, min_edge=0.03)
+        all_bets = vb_result.get("value_bets", [])
+
+        # Filtrar Betfair only
+        betfair_bets = [b for b in all_bets if 'betfair' in b.get("bookmaker", "").lower()]
+        # Fallback: se Betfair não tem, usar melhor odd geral
+        if not betfair_bets:
+            betfair_bets = all_bets
+
+        # Dedup: melhor odd por match+market+outcome
+        seen = {}
+        for b in betfair_bets:
+            key = f"{b.get('match','')}-{b.get('market','')}-{b.get('outcome','')}"
+            if key not in seen or b.get("best_odds", 0) > seen[key].get("best_odds", 0):
+                seen[key] = b
+        deduped = list(seen.values())
+
+        # Associar bets a predictions por nome do jogo
+        for pred in predictions:
+            match_name = f"{pred.get('home_team','')} vs {pred.get('away_team','')}"
+            pred["recommended_bets"] = [
+                {
+                    "market": b["market"],
+                    "outcome": b["outcome"],
+                    "odds": b["best_odds"],
+                    "bookmaker": b["bookmaker"],
+                    "edge": b["edge"],
+                    "stake": b.get("stake", 0),
+                    "label": "Mais de 2.5 gols" if b["outcome"] == "Over" else
+                             "Menos de 2.5 gols" if b["outcome"] == "Under" else
+                             f"Vitória {b['outcome']}" if b["outcome"] != "Draw" else "Empate",
+                }
+                for b in deduped if b.get("match", "") == match_name
+            ]
+    except Exception:
+        for pred in predictions:
+            pred["recommended_bets"] = []
+
     return {"predictions": predictions, "total": len(predictions)}
 
 
@@ -248,8 +293,21 @@ def get_track_record_predictions(
     status: str | None = None,
     repo=Depends(get_repo),
 ):
-    """Retorna historico de previsoes com filtros opcionais."""
-    return repo.get_prediction_history(round_num=round, status=status)
+    """Retorna historico de previsoes com bets associadas."""
+    preds = repo.get_prediction_history(round_num=round, status=status)
+    bets = repo.get_value_bet_history()
+
+    # Associar bets a predictions por match_key
+    bets_by_match: dict[int, list] = {}
+    for b in bets:
+        mk = b.get("match_key", 0)
+        bets_by_match.setdefault(mk, []).append(b)
+
+    for p in preds:
+        mk = p.get("match_key", 0)
+        p["bets"] = bets_by_match.get(mk, [])
+
+    return preds
 
 
 @app.get("/api/track-record/value-bets")
