@@ -113,8 +113,12 @@ def _interpret_prediction(pred: dict) -> dict:
 @app.get("/api/predictions")
 def get_predictions(repo=Depends(get_repo)):
     """Retorna previsoes pre-computadas com interpretacao e bets recomendadas."""
+    from football_moneyball.domain.markets import derive_all_markets
     predictions = repo.get_predictions()
     predictions = [_interpret_prediction(p) for p in predictions]
+    # Enriquecer com todos os mercados derivados
+    for pred in predictions:
+        pred["markets"] = derive_all_markets(pred)
 
     # Enriquecer com value bets associadas (deduplicadas, melhor odd por mercado)
     try:

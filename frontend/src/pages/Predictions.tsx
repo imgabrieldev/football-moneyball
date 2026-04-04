@@ -112,11 +112,81 @@ export function Predictions() {
                   <span>{pred.away_team} (fora)</span>
                 </div>
 
-                <div className="flex gap-6 mt-3 text-sm text-gray-400">
-                  <span>xG: <b className="text-gray-200">{pred.home_xg?.toFixed(2)}</b> - <b className="text-gray-200">{pred.away_xg?.toFixed(2)}</b></span>
-                  <span>Over 2.5: <b className="text-gray-200">{pred.over_25 ? `${(pred.over_25 * 100).toFixed(0)}%` : '—'}</b></span>
-                  <span>BTTS: <b className="text-gray-200">{pred.btts_prob ? `${(pred.btts_prob * 100).toFixed(0)}%` : '—'}</b></span>
-                </div>
+                {/* Markets — linguagem humana */}
+                {pred.markets && (
+                  <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                    {/* Quantos gols */}
+                    <div className="bg-gray-800/50 rounded-lg p-2.5">
+                      <div className="text-gray-500 font-medium mb-2">Quantos gols no jogo?</div>
+                      {pred.markets.over_under?.map((ou: any) => {
+                        const goals = parseFloat(ou.line);
+                        const moreProb = ou.over_prob;
+                        const lessProb = ou.under_prob;
+                        const moreLabel = `${Math.ceil(goals)}+ gols`;
+                        const winner = moreProb > lessProb ? 'more' : 'less';
+                        return (
+                          <div key={ou.line} className="flex justify-between py-0.5">
+                            <span className={winner === 'more' ? 'text-green-400' : 'text-gray-500'}>{moreLabel}</span>
+                            <span className={winner === 'more' ? 'text-green-400 font-medium' : 'text-gray-500'}>{(moreProb*100).toFixed(0)}%</span>
+                          </div>
+                        );
+                      })}
+                      <div className="border-t border-gray-700 mt-1.5 pt-1.5">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Os dois times marcam?</span>
+                          <span className={(pred.markets.btts?.yes_prob||0) > 0.5 ? 'text-green-400 font-medium' : 'text-gray-400'}>
+                            {(pred.markets.btts?.yes_prob||0) > 0.5 ? 'Provável' : 'Improvável'} ({((pred.markets.btts?.yes_prob||0)*100).toFixed(0)}%)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Placares mais prováveis */}
+                    <div className="bg-gray-800/50 rounded-lg p-2.5">
+                      <div className="text-gray-500 font-medium mb-2">Placares mais prováveis</div>
+                      {pred.markets.correct_score?.slice(0, 6).map((cs: any, idx: number) => (
+                        <div key={cs.score} className="flex justify-between py-0.5">
+                          <span className={`font-mono ${idx === 0 ? 'text-green-400 font-medium' : 'text-gray-300'}`}>{cs.score}</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 bg-gray-700 rounded-full h-1.5">
+                              <div className="bg-green-500 h-1.5 rounded-full" style={{width: `${Math.min(cs.prob * 500, 100)}%`}} />
+                            </div>
+                            <span className="text-gray-400 w-10 text-right">{(cs.prob*100).toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Handicap explicado */}
+                    <div className="bg-gray-800/50 rounded-lg p-2.5">
+                      <div className="text-gray-500 font-medium mb-2">Vantagem necessária pra ganhar</div>
+                      {pred.markets.asian_handicap?.filter((ah: any) => ah.line < 0).map((ah: any) => {
+                        const needed = Math.abs(ah.line);
+                        const teamName = pred.home_team;
+                        return (
+                          <div key={ah.line} className="flex justify-between py-0.5">
+                            <span className="text-gray-400">
+                              {teamName} ganha por {needed === 0.5 ? '1+' : needed === 1.5 ? '2+' : '3+'} gol{needed > 0.5 ? 's' : ''}
+                            </span>
+                            <span className={ah.home_prob > 0.5 ? 'text-green-400 font-medium' : 'text-gray-500'}>{(ah.home_prob*100).toFixed(0)}%</span>
+                          </div>
+                        );
+                      })}
+                      {pred.markets.asian_handicap?.filter((ah: any) => ah.line > 0).slice(0, 2).map((ah: any) => {
+                        const buffer = ah.line;
+                        const teamName = pred.home_team;
+                        return (
+                          <div key={ah.line} className="flex justify-between py-0.5">
+                            <span className="text-gray-400">
+                              {teamName} não perde{buffer >= 1.5 ? ` (ou perde por até ${Math.floor(buffer)})` : ''}
+                            </span>
+                            <span className={ah.home_prob > 0.5 ? 'text-green-400 font-medium' : 'text-gray-500'}>{(ah.home_prob*100).toFixed(0)}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Bets recomendadas (Betfair) */}
                 {pred.recommended_bets && pred.recommended_bets.length > 0 && (
