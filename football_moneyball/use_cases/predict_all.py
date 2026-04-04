@@ -37,6 +37,7 @@ class PredictAll:
         self.repo = repo
         self.odds_provider = odds_provider
         self._ml_models = self._try_load_ml_models()
+        self._elo_ratings: dict[str, float] = {}  # lazy-loaded per season
 
     def _try_load_ml_models(self) -> dict:
         """Carrega modelos ML se existem. Retorna {} se nao treinados."""
@@ -188,8 +189,9 @@ class PredictAll:
         self, home: str, away: str, pred: dict, season: str,
     ) -> dict | None:
         """Simula corners, cards, shots, HT. Usa ML se disponivel, senao analitico."""
-        home_stats = self.repo.get_team_stats_aggregates(home, season, last_n=5)
-        away_stats = self.repo.get_team_stats_aggregates(away, season, last_n=5)
+        # v1.5.0 — usa advanced aggregates para alimentar rich features
+        home_stats = self.repo.get_team_advanced_aggregates(home, season, last_n=5)
+        away_stats = self.repo.get_team_advanced_aggregates(away, season, last_n=5)
         league = self.repo.get_league_stats_averages(season)
 
         if home_stats["matches"] == 0 or away_stats["matches"] == 0:
@@ -204,6 +206,8 @@ class PredictAll:
         if "corners" in self._ml_models:
             lam_home_corners, lam_away_corners = self._ml_predict_pair(
                 home_stats, away_stats, league, target="corners",
+                home_team=home, away_team=away,
+                commence_time=pred.get("commence_time", ""), season=season,
             )
             ml_used = True
         else:
@@ -219,6 +223,8 @@ class PredictAll:
         if "cards" in self._ml_models:
             lam_home_cards, lam_away_cards = self._ml_predict_pair(
                 home_stats, away_stats, league, target="cards",
+                home_team=home, away_team=away,
+                commence_time=pred.get("commence_time", ""), season=season,
             )
             ml_used = True
         else:
@@ -240,14 +246,24 @@ class PredictAll:
             league_shots_per_team=league_shots_per_team,
         )
 
-        # v1.3.0 — ML goals sobrescreve home_xg/away_xg se modelo carregado
-        lam_home_goals = pred.get("home_xg", 1.3)
-        lam_away_goals = pred.get("away_xg", 1.1)
+        # v1.3.0/v1.5.0 — ML goals ENSEMBLE com analytical (70% analytical + 30% ML)
+        # Research: com < 200 samples, analytical Dixon-Coles bate ML puro.
+        # Ensemble weighted evita regressao enquanto permite ML adicionar sinal.
+        lam_home_goals_analytical = pred.get("home_xg", 1.3)
+        lam_away_goals_analytical = pred.get("away_xg", 1.1)
         if "goals" in self._ml_models:
-            lam_home_goals, lam_away_goals = self._ml_predict_pair(
+            lam_home_ml, lam_away_ml = self._ml_predict_pair(
                 home_stats, away_stats, league, target="goals",
+                home_team=home, away_team=away,
+                commence_time=pred.get("commence_time", ""), season=season,
             )
+            # Ensemble: 70% analytical (battle-tested) + 30% ML (emerging signal)
+            lam_home_goals = 0.7 * lam_home_goals_analytical + 0.3 * lam_home_ml
+            lam_away_goals = 0.7 * lam_away_goals_analytical + 0.3 * lam_away_ml
             ml_used = True
+        else:
+            lam_home_goals = lam_home_goals_analytical
+            lam_away_goals = lam_away_goals_analytical
 
         pred["ml_used"] = ml_used
 
@@ -284,23 +300,66 @@ class PredictAll:
             "away": compute_team_player_props(away_aggs, top_n=5),
         }
 
+    def _ensure_elo_loaded(self, season: str) -> None:
+        """Carrega Elo ratings da temporada (lazy, 1x por instancia)."""
+        if self._elo_ratings:
+            return
+        from football_moneyball.domain.elo import final_elo_ratings
+        try:
+            df = self.repo.get_training_dataset(season)
+            self._elo_ratings = final_elo_ratings(df)
+        except Exception:
+            self._elo_ratings = {}
+
     def _ml_predict_pair(
-        self, home_stats: dict, away_stats: dict, league: dict, target: str,
+        self,
+        home_stats: dict,
+        away_stats: dict,
+        league: dict,
+        target: str,
+        home_team: str = "",
+        away_team: str = "",
+        commence_time: str = "",
+        season: str = "2026",
     ) -> tuple[float, float]:
-        """Usa LambdaPredictor pra prever (λ_home, λ_away) de um target."""
+        """Usa LambdaPredictor pra prever (λ_home, λ_away) com rich features."""
         from football_moneyball.domain.feature_engineering import (
-            build_team_features,
+            build_rich_team_features, FEATURE_DIM,
         )
 
-        # league_avg adaptado pro target
+        # Elo ratings (current — usado como aprox pre-match nessa chamada)
+        self._ensure_elo_loaded(season)
+        home_elo = self._elo_ratings.get(home_team, 1500.0)
+        away_elo = self._elo_ratings.get(away_team, 1500.0)
+
+        # Rest days
+        home_rest = self.repo.get_rest_days(home_team, commence_time) if commence_time else 7
+        away_rest = self.repo.get_rest_days(away_team, commence_time) if commence_time else 7
+
         league_avg = {
             "goals_per_team": 1.3,
             "corners_per_team": league.get("corners_per_match", 10.0) / 2,
         }
 
-        X_home = build_team_features(home_stats, away_stats, league_avg, is_home=True)
-        X_away = build_team_features(away_stats, home_stats, league_avg, is_home=False)
+        X_home = build_rich_team_features(
+            home_stats, away_stats, league_avg, is_home=True,
+            team_elo=home_elo, opp_elo=away_elo,
+            team_rest_days=home_rest, opp_rest_days=away_rest,
+        )
+        X_away = build_rich_team_features(
+            away_stats, home_stats, league_avg, is_home=False,
+            team_elo=away_elo, opp_elo=home_elo,
+            team_rest_days=away_rest, opp_rest_days=home_rest,
+        )
 
-        lam_home = self._ml_models[target].predict(X_home)
-        lam_away = self._ml_models[target].predict(X_away)
+        # Backward compat: se modelo foi treinado com 12 features, fallback
+        model = self._ml_models[target]
+        if model.model is not None and hasattr(model.model, "n_features_in_"):
+            if model.model.n_features_in_ != FEATURE_DIM:
+                # Modelo antigo — usa só primeiras 12 features
+                X_home = X_home[:model.model.n_features_in_]
+                X_away = X_away[:model.model.n_features_in_]
+
+        lam_home = model.predict(X_home)
+        lam_away = model.predict(X_away)
         return (lam_home, lam_away)

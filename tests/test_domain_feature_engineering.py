@@ -5,7 +5,9 @@ import pandas as pd
 
 from football_moneyball.domain.feature_engineering import (
     FEATURE_DIM,
+    FEATURE_NAMES,
     _team_rolling_stats,
+    build_rich_team_features,
     build_team_features,
     build_training_dataset,
 )
@@ -28,8 +30,15 @@ class TestBuildTeamFeatures:
         league = {"goals_per_team": 1.3}
         f_home = build_team_features(team, opp, league, is_home=True)
         f_away = build_team_features(team, opp, league, is_home=False)
-        assert f_home[-1] == 1.0
-        assert f_away[-1] == 0.0
+        # is_home sits at index 11
+        assert f_home[11] == 1.0
+        assert f_away[11] == 0.0
+
+    def test_feature_names_match_dim(self):
+        assert len(FEATURE_NAMES) == FEATURE_DIM
+
+    def test_24_features(self):
+        assert FEATURE_DIM == 24
 
     def test_team_vs_opp_ordering(self):
         team = {"goals_for": 2.0, "goals_against": 0.5, "xg_for": 1.8,
@@ -42,6 +51,31 @@ class TestBuildTeamFeatures:
         assert features[0] == 2.0  # team_goals_for
         assert features[4] == 7.0  # team_corners_for
         assert features[6] == 0.5  # opp_goals_for
+
+    def test_rich_features_elo_diff(self):
+        team = {"goals_for": 1.5}
+        opp = {"goals_for": 1.2}
+        league = {"goals_per_team": 1.3}
+        features = build_rich_team_features(
+            team, opp, league, is_home=True,
+            team_elo=1700, opp_elo=1500,
+            team_rest_days=5, opp_rest_days=7,
+        )
+        # elo_diff sits at index 12
+        assert features[12] == 200.0
+
+    def test_rich_features_rest_days(self):
+        team = {"goals_for": 1.5}
+        opp = {"goals_for": 1.2}
+        league = {"goals_per_team": 1.3}
+        features = build_rich_team_features(
+            team, opp, league, is_home=True,
+            team_elo=1500, opp_elo=1500,
+            team_rest_days=3, opp_rest_days=10,
+        )
+        # rest_days: team at 19, opp at 23
+        assert features[19] == 3.0
+        assert features[23] == 10.0
 
     def test_fallback_defaults(self):
         team = {}

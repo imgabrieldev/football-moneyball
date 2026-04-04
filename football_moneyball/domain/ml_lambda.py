@@ -41,15 +41,31 @@ class LambdaPredictor:
         if len(X) < 10:
             raise ValueError(f"Dataset muito pequeno: {len(X)} amostras")
 
-        # Hyperparams conservadores (previne overfitting)
-        self.model = GradientBoostingRegressor(
-            n_estimators=300,
-            max_depth=4,
-            learning_rate=0.03,
-            subsample=0.8,
-            min_samples_leaf=5,
-            random_state=42,
-        )
+        # Hyperparams ajustados pra small-sample regime (< 200 samples)
+        # Shallow trees + high regularization previnem overfitting com 24 features
+        n_samples = len(X)
+        if n_samples < 200:
+            # Small data: menos complexidade
+            self.model = GradientBoostingRegressor(
+                n_estimators=100,
+                max_depth=3,
+                learning_rate=0.05,
+                subsample=0.7,
+                min_samples_leaf=8,
+                min_samples_split=15,
+                max_features="sqrt",
+                random_state=42,
+            )
+        else:
+            # Plenty of data: original hyperparams
+            self.model = GradientBoostingRegressor(
+                n_estimators=300,
+                max_depth=4,
+                learning_rate=0.03,
+                subsample=0.8,
+                min_samples_leaf=5,
+                random_state=42,
+            )
 
         # Time-series CV
         n_splits = min(5, max(2, len(X) // 20))

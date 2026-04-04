@@ -1266,42 +1266,212 @@ class PostgresRepository:
             "matches": int(result.matches or 0),
         }
 
+    def get_rest_days(self, team: str, reference_date: str) -> int:
+        """Dias desde ultimo jogo do time antes da data de referencia.
+
+        Parameters
+        ----------
+        team : str
+            Nome do time.
+        reference_date : str
+            ISO format (YYYY-MM-DD ou com timestamp).
+
+        Returns
+        -------
+        int
+            Dias desde ultimo jogo (minimo 1, default 7 se sem historico).
+        """
+        if not reference_date:
+            return 7
+        date_only = reference_date[:10]
+
+        query = text("""
+            SELECT MAX(match_date) AS last_date
+            FROM matches
+            WHERE (home_team = :team OR away_team = :team)
+              AND match_date < CAST(:ref_date AS date)
+              AND home_score IS NOT NULL
+        """)
+        try:
+            result = self._session.execute(query, {
+                "team": team, "ref_date": date_only,
+            }).fetchone()
+            if not result or not result.last_date:
+                return 7
+            from datetime import datetime
+            ref = datetime.fromisoformat(date_only).date()
+            last = result.last_date
+            diff = (ref - last).days
+            return max(1, min(diff, 30))  # clamp [1, 30]
+        except Exception:
+            return 7
+
+    def get_team_advanced_aggregates(
+        self, team: str, season: str | None = None, last_n: int = 5,
+    ) -> dict:
+        """Retorna agregados avancados do time para feature engineering v1.5.0.
+
+        Estende get_team_stats_aggregates com:
+        goal_diff_ema, xg_overperf, xga_overperf,
+        creation_index, defensive_intensity, touches_per_match.
+
+        Returns dict com todas as chaves que build_rich_team_features espera.
+        """
+        basic = self.get_team_stats_aggregates(team, season, last_n)
+
+        query = text("""
+            WITH recent AS (
+                SELECT m.match_id, m.match_date, m.home_team, m.away_team,
+                       m.home_score, m.away_score,
+                       CASE WHEN m.home_team = :team THEN 'home' ELSE 'away' END AS side
+                FROM matches m
+                WHERE (m.home_team = :team OR m.away_team = :team)
+                  AND (:season IS NULL OR m.season = :season)
+                  AND m.home_score IS NOT NULL
+                ORDER BY m.match_date DESC, m.match_id DESC
+                LIMIT :last_n
+            ),
+            pmm_agg AS (
+                SELECT match_id, team,
+                       SUM(xa) AS xa,
+                       SUM(key_passes) AS key_passes,
+                       SUM(tackles) AS tackles,
+                       SUM(interceptions) AS interceptions,
+                       SUM(pressure_regains) AS recoveries,
+                       SUM(touches) AS touches
+                FROM player_match_metrics
+                WHERE team = :team
+                GROUP BY match_id, team
+            ),
+            xg_agg AS (
+                SELECT match_id, team, SUM(xg) AS xg
+                FROM player_match_metrics
+                GROUP BY match_id, team
+            )
+            SELECT
+                -- goal diff (team perspective)
+                AVG(
+                    CASE WHEN r.side = 'home'
+                         THEN r.home_score - r.away_score
+                         ELSE r.away_score - r.home_score END
+                ) AS goal_diff_avg,
+                -- goals scored (for overperf calc)
+                AVG(
+                    CASE WHEN r.side = 'home' THEN r.home_score ELSE r.away_score END
+                ) AS goals_scored_avg,
+                AVG(
+                    CASE WHEN r.side = 'home' THEN r.away_score ELSE r.home_score END
+                ) AS goals_conceded_avg,
+                -- xG for/against per match from xg_agg
+                AVG(COALESCE(pmm.xa, 0)) AS xa_avg,
+                AVG(COALESCE(pmm.key_passes, 0)) AS key_passes_avg,
+                AVG(COALESCE(pmm.tackles, 0)) AS tackles_avg,
+                AVG(COALESCE(pmm.interceptions, 0)) AS interceptions_avg,
+                AVG(COALESCE(pmm.recoveries, 0)) AS recoveries_avg,
+                AVG(COALESCE(pmm.touches, 0)) AS touches_avg,
+                AVG(COALESCE(own_xg.xg, 0)) AS xg_for_avg,
+                AVG(COALESCE(opp_xg.xg, 0)) AS xg_against_avg,
+                COUNT(*) AS n
+            FROM recent r
+            LEFT JOIN pmm_agg pmm ON pmm.match_id = r.match_id
+            LEFT JOIN xg_agg own_xg ON own_xg.match_id = r.match_id AND own_xg.team = :team
+            LEFT JOIN xg_agg opp_xg ON opp_xg.match_id = r.match_id
+                AND opp_xg.team != :team
+        """)
+
+        try:
+            result = self._session.execute(query, {
+                "team": team, "season": season, "last_n": last_n,
+            }).fetchone()
+        except Exception:
+            result = None
+
+        if not result or not result.n:
+            # Fallback defaults
+            basic.update({
+                "goal_diff_ema": 0.0,
+                "xg_overperf": 0.0, "xga_overperf": 0.0,
+                "creation_index": 0.0, "defensive_intensity": 0.0,
+                "touches_per_match": 500.0,
+            })
+            return basic
+
+        goals_scored = float(result.goals_scored_avg or 0)
+        goals_conceded = float(result.goals_conceded_avg or 0)
+        xg_for = float(result.xg_for_avg or 0)
+        xg_against = float(result.xg_against_avg or 0)
+        xa = float(result.xa_avg or 0)
+        kp = float(result.key_passes_avg or 0)
+        tackles = float(result.tackles_avg or 0)
+        interceptions = float(result.interceptions_avg or 0)
+        recoveries = float(result.recoveries_avg or 0)
+        touches = float(result.touches_avg or 500)
+
+        basic.update({
+            "goal_diff_ema": float(result.goal_diff_avg or 0),
+            "xg_overperf": goals_scored - xg_for,
+            "xga_overperf": goals_conceded - xg_against,
+            "creation_index": xa + kp * 0.05,
+            "defensive_intensity": tackles + interceptions + recoveries,
+            "touches_per_match": touches,
+        })
+        return basic
+
     def get_training_dataset(
         self, season: str | None = None,
     ) -> pd.DataFrame:
-        """Retorna todas partidas resolvidas com stats pra treino ML.
+        """Retorna todas partidas resolvidas com stats ricos pra treino ML v1.5.0.
 
-        Join de matches + match_stats + player_match_metrics (pra xG agregado).
+        Join de matches + match_stats + player_match_metrics agregado.
 
         Returns
         -------
         pd.DataFrame
             Colunas: match_id, match_date, home_team, away_team,
             home_goals, away_goals, home_xg, away_xg,
-            home_corners, away_corners, home_cards, away_cards.
+            home_corners, away_corners, home_cards, away_cards,
+            home_xa, away_xa, home_key_passes, away_key_passes,
+            home_tackles, away_tackles, home_interceptions, away_interceptions,
+            home_recoveries, away_recoveries, home_touches, away_touches.
         """
         query = text("""
+            WITH team_agg AS (
+                SELECT match_id, team,
+                       SUM(xg) AS xg,
+                       SUM(xa) AS xa,
+                       SUM(key_passes) AS key_passes,
+                       SUM(tackles) AS tackles,
+                       SUM(interceptions) AS interceptions,
+                       SUM(pressure_regains) AS recoveries,
+                       SUM(touches) AS touches
+                FROM player_match_metrics
+                GROUP BY match_id, team
+            )
             SELECT
                 m.match_id, m.match_date, m.home_team, m.away_team,
                 m.home_score AS home_goals, m.away_score AS away_goals,
-                COALESCE(home_xg.xg, 0) AS home_xg,
-                COALESCE(away_xg.xg, 0) AS away_xg,
+                COALESCE(ha.xg, 0) AS home_xg,
+                COALESCE(aa.xg, 0) AS away_xg,
                 COALESCE(ms.home_corners, 0) AS home_corners,
                 COALESCE(ms.away_corners, 0) AS away_corners,
                 COALESCE(ms.home_yellow + ms.home_red, 0) AS home_cards,
-                COALESCE(ms.away_yellow + ms.away_red, 0) AS away_cards
+                COALESCE(ms.away_yellow + ms.away_red, 0) AS away_cards,
+                COALESCE(ha.xa, 0) AS home_xa,
+                COALESCE(aa.xa, 0) AS away_xa,
+                COALESCE(ha.key_passes, 0) AS home_key_passes,
+                COALESCE(aa.key_passes, 0) AS away_key_passes,
+                COALESCE(ha.tackles, 0) AS home_tackles,
+                COALESCE(aa.tackles, 0) AS away_tackles,
+                COALESCE(ha.interceptions, 0) AS home_interceptions,
+                COALESCE(aa.interceptions, 0) AS away_interceptions,
+                COALESCE(ha.recoveries, 0) AS home_recoveries,
+                COALESCE(aa.recoveries, 0) AS away_recoveries,
+                COALESCE(ha.touches, 0) AS home_touches,
+                COALESCE(aa.touches, 0) AS away_touches
             FROM matches m
             LEFT JOIN match_stats ms ON ms.match_id = m.match_id
-            LEFT JOIN (
-                SELECT match_id, team, SUM(xg) AS xg
-                FROM player_match_metrics
-                GROUP BY match_id, team
-            ) home_xg ON home_xg.match_id = m.match_id AND home_xg.team = m.home_team
-            LEFT JOIN (
-                SELECT match_id, team, SUM(xg) AS xg
-                FROM player_match_metrics
-                GROUP BY match_id, team
-            ) away_xg ON away_xg.match_id = m.match_id AND away_xg.team = m.away_team
+            LEFT JOIN team_agg ha ON ha.match_id = m.match_id AND ha.team = m.home_team
+            LEFT JOIN team_agg aa ON aa.match_id = m.match_id AND aa.team = m.away_team
             WHERE (:season IS NULL OR m.season = :season)
               AND m.home_score IS NOT NULL
               AND m.away_score IS NOT NULL
