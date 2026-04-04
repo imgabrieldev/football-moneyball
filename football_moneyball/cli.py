@@ -1111,6 +1111,77 @@ def backtest(
         repo.close()
 
 
+@app.command("verify")
+def verify(
+    season: str = typer.Option("2026", "--season", help="Temporada"),
+    competition: str = typer.Option("Brasileirão Série A", "--competition", help="Competicao"),
+) -> None:
+    """Verifica previsoes vs resultados reais."""
+    from football_moneyball.use_cases.verify_predictions import VerifyPredictions
+
+    repo = get_repository()
+    try:
+        with console.status("[bold green]Comparando previsoes com resultados..."):
+            result = VerifyPredictions(repo).execute(competition=competition, season=season)
+
+        if "error" in result:
+            console.print(f"[yellow]{result['error']}[/yellow]")
+            raise typer.Exit(0)
+
+        # Summary
+        acc_color = "green" if result["accuracy_1x2"] > 40 else "red"
+        brier_color = "green" if result["avg_brier_score"] < 0.25 else "yellow"
+        console.print(Panel(
+            f"[bold]Verificacao — {competition} {season}[/bold]\n\n"
+            f"Partidas verificadas: {result['total_matches']}\n\n"
+            f"[{acc_color}]1X2 corretos: {result['correct_1x2']}/{result['total_matches']} "
+            f"({result['accuracy_1x2']}%)[/{acc_color}]\n"
+            f"Over/Under corretos: {result['correct_over_under']}/{result['total_matches']} "
+            f"({result['accuracy_over_under']}%)\n"
+            f"[{brier_color}]Brier score: {result['avg_brier_score']:.4f}[/{brier_color}] "
+            f"(< 0.25 = melhor que aleatorio)",
+            title="Modelo vs Realidade", border_style=acc_color,
+        ))
+
+        # Detail table
+        detail_table = Table(title="Detalhamento por Partida")
+        detail_table.add_column("Partida", style="bold")
+        detail_table.add_column("Placar")
+        detail_table.add_column("Prev 1X2")
+        detail_table.add_column("Real")
+        detail_table.add_column("Acertou")
+        detail_table.add_column("P(H)", justify="right")
+        detail_table.add_column("P(D)", justify="right")
+        detail_table.add_column("P(A)", justify="right")
+        detail_table.add_column("O/U 2.5")
+        detail_table.add_column("Brier", justify="right")
+
+        for p in result["predictions"]:
+            correct = "[green]✓[/green]" if p["correct_1x2"] else "[red]✗[/red]"
+            ou = "[green]✓[/green]" if p["correct_over"] else "[red]✗[/red]"
+            detail_table.add_row(
+                str(p["match"])[:28],
+                p["score"],
+                p["predicted"],
+                p["actual"],
+                correct,
+                f"{p['home_prob']*100:.0f}%",
+                f"{p['draw_prob']*100:.0f}%",
+                f"{p['away_prob']*100:.0f}%",
+                ou,
+                f"{p['brier']:.3f}",
+            )
+        console.print(detail_table)
+
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro na verificacao: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

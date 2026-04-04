@@ -92,12 +92,21 @@ class TheOddsAPIProvider:
             return None
 
     def _write_cache(self, key: str, data: list[dict]) -> None:
-        """Escreve no cache (write-through)."""
+        """Escreve no cache (write-through) + snapshot timestamped."""
         path = self._cache_path(key)
         try:
             with open(path, "w") as f:
                 json.dump(data, f, indent=2, default=str)
             logger.info(f"Cache escrito: {path.name} ({len(data)} items)")
+
+            # Snapshot com timestamp — histórico próprio de odds
+            snapshots_dir = self.cache_dir / "snapshots"
+            snapshots_dir.mkdir(exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            snapshot_path = snapshots_dir / f"odds_{key}_{timestamp}.json"
+            with open(snapshot_path, "w") as f:
+                json.dump(data, f, indent=2, default=str)
+            logger.info(f"Snapshot salvo: {snapshot_path.name}")
         except OSError as e:
             logger.warning(f"Erro ao escrever cache: {e}")
 
