@@ -68,29 +68,32 @@ def list_matches(
 
 
 @app.get("/api/predictions")
-def get_predictions(
+def get_predictions(repo=Depends(get_repo)):
+    """Retorna previsoes pre-computadas do banco."""
+    predictions = repo.get_predictions()
+    return {"predictions": predictions, "total": len(predictions)}
+
+
+@app.post("/api/predictions/recompute")
+def recompute_predictions(
     competition: str = "Brasileirão Série A",
     season: str = "2026",
     repo=Depends(get_repo),
 ):
-    """Retorna previsoes da rodada."""
+    """Recomputa todas as previsoes (pode demorar ~30s)."""
     from football_moneyball.use_cases.predict_all import PredictAll
-    result = PredictAll(repo).execute(competition, season)
-    return result
+    import threading
 
+    def _run():
+        r = get_repository()
+        try:
+            PredictAll(r).execute(competition, season)
+        finally:
+            r.close()
 
-@app.get("/api/predictions/{home_team}/{away_team}")
-def get_prediction(
-    home_team: str,
-    away_team: str,
-    competition: str = "Brasileirão Série A",
-    season: str = "2026",
-    repo=Depends(get_repo),
-):
-    """Retorna previsao de uma partida especifica."""
-    from football_moneyball.use_cases.predict_match import PredictMatch
-    result = PredictMatch(repo).execute(0, home_team, away_team, competition=competition, season=season)
-    return result
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return {"status": "computing", "message": "Previsoes sendo recomputadas em background. Atualize em ~30s."}
 
 
 @app.get("/api/players")

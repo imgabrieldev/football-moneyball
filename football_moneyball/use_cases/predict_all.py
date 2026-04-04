@@ -85,6 +85,11 @@ class PredictAll:
             except Exception as e:
                 logger.warning(f"Erro ao prever {home} vs {away}: {e}")
 
+        # Persistir previsoes no banco
+        if predictions:
+            self.repo.save_predictions(predictions)
+            logger.info(f"{len(predictions)} previsoes salvas no banco")
+
         return {
             "predictions": predictions,
             "total": len(predictions),

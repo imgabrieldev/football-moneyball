@@ -599,6 +599,57 @@ class PostgresRepository:
         return result
 
     # =====================================================================
+    # v0.7.0 — Predictions (pre-computed)
+    # =====================================================================
+
+    def save_predictions(self, predictions: list[dict]) -> None:
+        """Persiste previsoes pre-computadas."""
+        from datetime import datetime
+        from football_moneyball.adapters.orm import MatchPrediction
+        now = datetime.now().isoformat()
+
+        for pred in predictions:
+            match_key = abs(hash(f"{pred.get('home_team','')}-{pred.get('away_team','')}")) % (10**9)
+            data = {
+                "match_id": match_key,
+                "home_team": pred.get("home_team", ""),
+                "away_team": pred.get("away_team", ""),
+                "home_xg_expected": pred.get("home_xg"),
+                "away_xg_expected": pred.get("away_xg"),
+                "home_win_prob": pred.get("home_win_prob"),
+                "draw_prob": pred.get("draw_prob"),
+                "away_win_prob": pred.get("away_win_prob"),
+                "over_25_prob": pred.get("over_25"),
+                "btts_prob": pred.get("btts_prob"),
+                "most_likely_score": pred.get("most_likely_score"),
+                "simulations": pred.get("simulations", 10000),
+                "predicted_at": now,
+            }
+            existing = self._session.get(MatchPrediction, match_key)
+            if existing:
+                for k, v in data.items():
+                    setattr(existing, k, v)
+            else:
+                self._session.add(MatchPrediction(**data))
+        self._session.commit()
+
+    def get_predictions(self) -> list[dict]:
+        """Retorna previsoes pre-computadas."""
+        from football_moneyball.adapters.orm import MatchPrediction
+        rows = self._session.query(MatchPrediction).all()
+        return [
+            {
+                "home_team": r.home_team, "away_team": r.away_team,
+                "home_xg": r.home_xg_expected, "away_xg": r.away_xg_expected,
+                "home_win_prob": r.home_win_prob, "draw_prob": r.draw_prob,
+                "away_win_prob": r.away_win_prob, "over_25": r.over_25_prob,
+                "btts_prob": r.btts_prob, "most_likely_score": r.most_likely_score,
+                "simulations": r.simulations, "predicted_at": r.predicted_at,
+            }
+            for r in rows
+        ]
+
+    # =====================================================================
     # v0.6.0 — Odds persistence
     # =====================================================================
 

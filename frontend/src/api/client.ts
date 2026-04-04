@@ -10,14 +10,20 @@ export async function fetchAPI<T>(path: string, params?: Record<string, string>)
   return res.json();
 }
 
+export async function postAPI<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
 export const api = {
   health: () => fetchAPI<{ status: string; version: string }>('/health'),
   matches: (comp?: string, season?: string) =>
     fetchAPI<any[]>('/matches', { competition: comp || 'Brasileirão Série A', season: season || '2026' }),
-  predictions: (comp?: string, season?: string) =>
-    fetchAPI<{ predictions: any[]; total: number }>('/predictions', { competition: comp || 'Brasileirão Série A', season: season || '2026' }),
-  prediction: (home: string, away: string) =>
-    fetchAPI<any>(`/predictions/${encodeURIComponent(home)}/${encodeURIComponent(away)}`),
+  predictions: () =>
+    fetchAPI<{ predictions: any[]; total: number }>('/predictions'),
+  recomputePredictions: () =>
+    postAPI<{ status: string; message: string }>('/predictions/recompute'),
   valueBets: (bankroll?: number, minEdge?: number) =>
     fetchAPI<{ value_bets: any[]; total_matches: number; matches_with_value: number }>('/value-bets', {
       bankroll: String(bankroll || 1000),
