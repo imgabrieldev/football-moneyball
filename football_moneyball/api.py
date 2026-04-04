@@ -135,11 +135,11 @@ def get_predictions(repo=Depends(get_repo)):
         if not betfair_bets:
             betfair_bets = all_bets
 
-        # Dedup: melhor odd por match+market+outcome
+        # Dedup: melhor edge por match+market (só 1 lado, não Over E Under)
         seen = {}
         for b in betfair_bets:
-            key = f"{b.get('match','')}-{b.get('market','')}-{b.get('outcome','')}"
-            if key not in seen or b.get("best_odds", 0) > seen[key].get("best_odds", 0):
+            key = f"{b.get('match','')}-{b.get('market','')}"
+            if key not in seen or b.get("edge", 0) > seen[key].get("edge", 0):
                 seen[key] = b
         deduped = list(seen.values())
 
