@@ -10,8 +10,8 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[comprehensive-predictor]] — v1.1.0-1.3.0: Framework 5-camadas (player-aware λ + multi-output Poisson + ML → λ)
 - [[multi-market]] — v1.0.0: Todos os mercados Betfair (correct score, asian handicap, corners, cards, HT)
+- ~~[[comprehensive-predictor]]~~ — v1.1.0-1.4.0: shipped ✓
 - ~~[[track-record]]~~ — v0.9.0: shipped ✓
 - ~~[[frontend-dashboard]]~~ — v0.7.0: shipped ✓
 - ~~[[infra-automation]]~~ — v0.6.0: shipped ✓

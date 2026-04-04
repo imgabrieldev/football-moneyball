@@ -253,6 +253,8 @@ class MatchPrediction(Base):
     multi_markets = mapped_column(JSONB)
     # v1.4.0 — player props (marcador, assistencia, chutes individuais)
     player_props = mapped_column(JSONB)
+    # v1.3.0 — ML flag
+    ml_used: Mapped[Optional[bool]] = mapped_column(Integer)  # 0/1 as int
 
 
 class ValueBet(Base):
@@ -450,6 +452,7 @@ def apply_migrations(engine) -> None:
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS multi_markets JSONB",
         # v1.4.0
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS player_props JSONB",
+        "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS ml_used INTEGER",
     ]
 
     with engine.connect() as conn:

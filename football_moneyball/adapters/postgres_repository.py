@@ -763,6 +763,7 @@ class PostgresRepository:
                 "model_version": str(pred.get("model_version", "v1.0.0")),
                 "multi_markets": pred.get("multi_markets"),
                 "player_props": pred.get("player_props"),
+                "ml_used": int(bool(pred.get("ml_used", False))),
             }
             existing = self._session.get(MatchPrediction, match_key)
             if existing:
@@ -788,6 +789,7 @@ class PostgresRepository:
                 "lineup_type": r.lineup_type, "model_version": r.model_version,
                 "multi_markets": r.multi_markets,
                 "player_props": r.player_props,
+                "ml_used": bool(r.ml_used) if r.ml_used is not None else False,
             }
             for r in rows
         ]

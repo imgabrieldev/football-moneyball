@@ -17,15 +17,20 @@ spec:
     spec:
       containers:
         - name: moneyball-api
-          image: moneyball:0.6.0
+          image: moneyball:1.4.1
           ports:
             - containerPort: 8000
           env:
             - name: DATABASE_URL
               value: "postgresql://moneyball:moneyball@postgres:5432/moneyball"
+            - name: MONEYBALL_MODELS_DIR
+              value: "/data/models"
           envFrom:
             - configMapRef:
                 name: moneyball-config
+          volumeMounts:
+            - name: ml-models
+              mountPath: /data/models
           readinessProbe:
             httpGet:
               path: /health
@@ -38,3 +43,7 @@ spec:
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 30
+      volumes:
+        - name: ml-models
+          persistentVolumeClaim:
+            claimName: ml-models-pvc
