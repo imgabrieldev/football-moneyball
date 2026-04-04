@@ -14,8 +14,8 @@ Propostas de features em design ou implementação.
 
 ## Backlog
 
-- **v0.5.0 — Modelo Preditivo Avançado** — Brier score atual 0.76, precisa < 0.25. Integrar xT + pressing (PPDA) + RAPM no match_predictor. Regressão à média. Peso de escalação (RAPM dos titulares). Calibração Over/Under.
-- **v0.6.0 — API REST + Automação** — FastAPI para integrar com frontend. Refresh automático Sofascore (cron/scheduler). Alertas de value bets (Telegram/Discord). Endpoints: /predict, /value-bets, /backtest, /players.
+- **v0.6.0 — Infra & Automação K8s** — Persistir odds no PostgreSQL (sair de JSON local). CronJobs K8s: ingest Sofascore (6h), snapshot odds (diário), predict pré-jogo (2h antes). FastAPI para frontend. Alertas Telegram/Discord.
+- **v0.7.0 — API REST + Frontend** — Endpoints: /predict, /value-bets, /backtest, /players, /verify. Dashboard web com resultados e value bets.
 
 ## Finalizados → `docs/postmortem/`
 
