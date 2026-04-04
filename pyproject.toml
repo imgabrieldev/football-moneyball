@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "statsbombpy>=1.13",
     "requests>=2.31",
+    "betfairlightweight>=2.20",
     "pandas>=2.2",
     "numpy>=1.26",
     "networkx>=3.2",

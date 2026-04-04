@@ -56,6 +56,21 @@ def get_repository():
     return PostgresRepository(get_session())
 
 
+def get_odds_provider():
+    """Retorna o OddsProvider configurado (Betfair Exchange).
+
+    Requer variaveis de ambiente BETFAIR_USERNAME, BETFAIR_PASSWORD,
+    BETFAIR_APP_KEY configuradas.
+
+    Returns
+    -------
+    BetfairProvider
+        Instancia do provider de odds.
+    """
+    from football_moneyball.adapters.odds_provider import BetfairProvider
+    return BetfairProvider()
+
+
 def get_visualizer():
     """Retorna o Visualizer configurado (Matplotlib).
 

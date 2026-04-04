@@ -964,6 +964,71 @@ def predict(
         repo.close()
 
 
+@app.command("value-bets")
+def value_bets(
+    bankroll: float = typer.Option(1000.0, "--bankroll", help="Bankroll atual"),
+    min_edge: float = typer.Option(0.03, "--min-edge", help="Edge minimo (0.03 = 3%)"),
+) -> None:
+    """Busca value bets nas proximas partidas via Betfair Exchange."""
+    from football_moneyball.config import get_odds_provider
+    from football_moneyball.use_cases.find_value_bets import FindValueBets
+
+    repo = get_repository()
+    try:
+        odds_provider = get_odds_provider()
+        with console.status("[bold green]Buscando odds na Betfair Exchange..."):
+            result = FindValueBets(odds_provider, repo).execute(
+                bankroll=bankroll, min_edge=min_edge
+            )
+
+        if not result.get("value_bets"):
+            console.print(f"[yellow]Nenhuma value bet encontrada (edge > {min_edge*100:.0f}%).[/yellow]")
+            console.print(f"Partidas analisadas: {result.get('total_matches', 0)}")
+            raise typer.Exit(0)
+
+        console.print(Panel(
+            f"Partidas analisadas: {result['total_matches']}\n"
+            f"Partidas com value: {result['matches_with_value']}\n"
+            f"Value bets encontradas: {len(result['value_bets'])}",
+            title="Value Bets — Betfair Exchange", border_style="green",
+        ))
+
+        vb_table = Table(title="Value Bets Recomendadas")
+        vb_table.add_column("Partida", style="bold")
+        vb_table.add_column("Mercado")
+        vb_table.add_column("Aposta")
+        vb_table.add_column("Modelo", justify="right")
+        vb_table.add_column("Odds", justify="right")
+        vb_table.add_column("Edge", justify="right", style="green")
+        vb_table.add_column("EV", justify="right")
+        vb_table.add_column("Stake", justify="right")
+
+        for vb in result["value_bets"]:
+            vb_table.add_row(
+                str(vb.get("match", ""))[:30],
+                vb["market"],
+                vb["outcome"],
+                f"{vb['model_prob']*100:.1f}%",
+                f"{vb['best_odds']:.2f}",
+                f"+{vb['edge']*100:.1f}%",
+                f"{vb.get('ev', 0):.3f}",
+                f"R$ {vb.get('stake', 0):.2f}",
+            )
+        console.print(vb_table)
+
+    except typer.Exit:
+        raise
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        console.print("[dim]Configure: BETFAIR_USERNAME, BETFAIR_PASSWORD, BETFAIR_APP_KEY[/dim]")
+        raise typer.Exit(1)
+    except Exception as exc:
+        console.print(f"[red]Erro ao buscar value bets: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
 @app.command("backtest")
 def backtest(
     season: str = typer.Option("2026", "--season", help="Temporada"),
