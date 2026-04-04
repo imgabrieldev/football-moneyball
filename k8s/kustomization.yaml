@@ -16,3 +16,5 @@ resources:
   - cronjob-ingest.yaml
   - cronjob-odds.yaml
   - cronjob-predict.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml

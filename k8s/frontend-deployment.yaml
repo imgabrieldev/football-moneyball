@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moneyball-frontend
+  namespace: football-moneyball
+  labels:
+    app: moneyball-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moneyball-frontend
+  template:
+    metadata:
+      labels:
+        app: moneyball-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: moneyball-frontend:0.7.0
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 10
