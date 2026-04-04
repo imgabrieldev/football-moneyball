@@ -458,19 +458,48 @@ def get_track_record_predictions(
     status: str | None = None,
     repo=Depends(get_repo),
 ):
-    """Retorna historico de previsoes com bets associadas."""
+    """Retorna historico de previsoes com bets associadas (deduplicadas)."""
     preds = repo.get_prediction_history(round_num=round, status=status)
     bets = repo.get_value_bet_history()
 
-    # Associar bets a predictions por match_key
+    # Associar bets a predictions por match_key + dedup por market+outcome (melhor odd)
     bets_by_match: dict[int, list] = {}
     for b in bets:
         mk = b.get("match_key", 0)
         bets_by_match.setdefault(mk, []).append(b)
 
+    # Build match_key → pred lookup pra traduzir Home/Away → nome do time
+    pred_by_match: dict[int, dict] = {p.get("match_key", 0): p for p in preds}
+
+    def _translate(bet: dict, pred: dict) -> dict:
+        outcome = bet.get("outcome", "")
+        if outcome == "Home":
+            bet["outcome_label"] = f"Vitória {pred.get('home_team', '')}"
+        elif outcome == "Away":
+            bet["outcome_label"] = f"Vitória {pred.get('away_team', '')}"
+        elif outcome == "Draw":
+            bet["outcome_label"] = "Empate"
+        elif outcome == "Over":
+            bet["outcome_label"] = "Mais de 2.5 gols"
+        elif outcome == "Under":
+            bet["outcome_label"] = "Menos de 2.5 gols"
+        else:
+            bet["outcome_label"] = f"Vitória {outcome}" if outcome else ""
+        return bet
+
     for p in preds:
         mk = p.get("match_key", 0)
-        p["bets"] = bets_by_match.get(mk, [])
+        raw_bets = bets_by_match.get(mk, [])
+        # Dedup: 1 por market+outcome (melhor odd, depois menor kelly_stake)
+        seen: dict[str, dict] = {}
+        for b in raw_bets:
+            key = f"{b.get('market','')}-{b.get('outcome','')}"
+            if key not in seen or (b.get("best_odds", 0) or 0) > (seen[key].get("best_odds", 0) or 0):
+                seen[key] = b
+        deduped = [_translate(b, p) for b in seen.values()]
+        # Ordenar por edge desc
+        deduped.sort(key=lambda x: -(x.get("edge", 0) or 0))
+        p["bets"] = deduped
 
     return preds
 

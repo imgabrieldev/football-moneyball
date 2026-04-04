@@ -246,10 +246,13 @@ export function TrackRecord() {
                     </div>
                     <div className="space-y-1.5">
                       {p.bets.map((b: any, j: number) => {
-                        const label = b.outcome === 'Over' ? 'Mais de 2.5 gols' :
-                                      b.outcome === 'Under' ? 'Menos de 2.5 gols' :
-                                      b.outcome === 'Draw' ? 'Empate' :
-                                      `Vitória ${b.outcome}`;
+                        const label = b.outcome_label ||
+                                      (b.outcome === 'Over' ? 'Mais de 2.5 gols' :
+                                       b.outcome === 'Under' ? 'Menos de 2.5 gols' :
+                                       b.outcome === 'Draw' ? 'Empate' :
+                                       b.outcome === 'Home' ? `Vitória ${p.home_team}` :
+                                       b.outcome === 'Away' ? `Vitória ${p.away_team}` :
+                                       `Vitória ${b.outcome}`);
                         return (
                           <div key={j} className="flex items-center justify-between text-sm">
                             <div className="flex items-center gap-2">

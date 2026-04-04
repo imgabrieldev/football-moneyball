@@ -104,12 +104,8 @@ class FindValueBets:
 
         matches_with_value = len(set(vb["match"] for vb in all_value_bets))
 
-        # v1.4.1 — Persist ao histórico (pra backtest ROI depois)
-        try:
-            if all_value_bets:
-                self.repo.save_value_bet_history(all_value_bets)
-        except Exception:
-            pass
+        # Nao salva automaticamente — save_value_bet_history deve ser chamado
+        # explicitamente via CLI ou por CronJob especifico.
 
         return {
             "value_bets": sorted(all_value_bets, key=lambda x: -x["edge"]),
