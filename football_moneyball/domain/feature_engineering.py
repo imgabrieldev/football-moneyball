@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 
-FEATURE_DIM = 40
+FEATURE_DIM = 48
 
 FEATURE_NAMES = [
     # 0-11: existing v1.3.0 (12)
@@ -70,6 +70,15 @@ FEATURE_NAMES = [
     "opp_position",
     "position_gap",
     "both_in_relegation",
+    # 40-47: v1.8.0 playing style features (8)
+    "team_finishing_efficiency",
+    "team_sot_rate",
+    "team_gk_quality",
+    "team_possession_avg",
+    "opp_finishing_efficiency",
+    "opp_sot_rate",
+    "opp_gk_quality",
+    "opp_possession_avg",
 ]
 
 
@@ -175,6 +184,8 @@ def build_context_aware_features(
     opp_rest_days: int = 7,
     team_context: dict | None = None,
     opp_context: dict | None = None,
+    team_style: dict | None = None,
+    opp_style: dict | None = None,
 ) -> np.ndarray:
     """Constroi vetor de 40 features (v1.6.0 = v1.5.0 + 16 context).
 
@@ -247,7 +258,23 @@ def build_context_aware_features(
         float(t_pos["both_in_relegation"]),
     ], dtype=np.float64)
 
-    return np.concatenate([base, context_features])
+    # v1.8.0 — Playing style features (8)
+    ts = team_style or {}
+    os_ = opp_style or {}
+    style_features = np.array([
+        # 40-43: team style (4)
+        float(ts.get("finishing_efficiency", 0.35)),
+        float(ts.get("sot_rate", 0.35)),
+        float(ts.get("gk_quality", 0.0)),
+        float(ts.get("possession_avg", 50.0)),
+        # 44-47: opp style (4)
+        float(os_.get("finishing_efficiency", 0.35)),
+        float(os_.get("sot_rate", 0.35)),
+        float(os_.get("gk_quality", 0.0)),
+        float(os_.get("possession_avg", 50.0)),
+    ], dtype=np.float64)
+
+    return np.concatenate([base, context_features, style_features])
 
 
 def _team_rolling_stats(

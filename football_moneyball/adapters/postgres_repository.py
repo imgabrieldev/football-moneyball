@@ -1556,6 +1556,86 @@ class PostgresRepository:
         """)
         return pd.read_sql(query, self._session.bind, params={"season": season})
 
+    def get_team_style_aggregates(
+        self, team: str, season: str | None = None, last_n: int = 5,
+    ) -> dict:
+        """Retorna agregados de estilo de jogo (v1.8.0).
+
+        Features: finishing_efficiency, sot_rate, gk_quality, possession_avg,
+        long_balls_pct, big_chance_conversion.
+        """
+        team = _fuzzy_team_match(self._session, team)
+        query = text("""
+            WITH recent AS (
+                SELECT m.match_id, m.home_team, m.away_team,
+                       m.home_score, m.away_score,
+                       CASE WHEN m.home_team = :team THEN 'home' ELSE 'away' END AS side
+                FROM matches m
+                WHERE (m.home_team = :team OR m.away_team = :team)
+                  AND (:season IS NULL OR m.season = :season)
+                  AND m.home_score IS NOT NULL
+                ORDER BY m.match_date DESC, m.match_id DESC
+                LIMIT :last_n
+            )
+            SELECT
+                -- Goals scored
+                AVG(CASE WHEN r.side='home' THEN r.home_score ELSE r.away_score END) AS goals_avg,
+                -- Big chances (team perspective)
+                AVG(CASE WHEN r.side='home' THEN ms.home_big_chances ELSE ms.away_big_chances END) AS big_chances_avg,
+                AVG(CASE WHEN r.side='home' THEN ms.home_big_chances_scored ELSE ms.away_big_chances_scored END) AS bc_scored_avg,
+                -- Shots
+                AVG(CASE WHEN r.side='home' THEN ms.home_shots ELSE ms.away_shots END) AS shots_avg,
+                AVG(CASE WHEN r.side='home' THEN ms.home_sot ELSE ms.away_sot END) AS sot_avg,
+                -- Possession
+                AVG(CASE WHEN r.side='home' THEN ms.home_possession ELSE ms.away_possession END) AS possession_avg,
+                -- Long balls (directness)
+                AVG(CASE WHEN r.side='home' THEN ms.home_long_balls_pct ELSE ms.away_long_balls_pct END) AS long_balls_avg,
+                -- Goals prevented (GK quality — do time)
+                AVG(CASE WHEN r.side='home' THEN ms.home_goals_prevented ELSE ms.away_goals_prevented END) AS gk_quality_avg,
+                -- Touches box
+                AVG(CASE WHEN r.side='home' THEN ms.home_touches_box ELSE ms.away_touches_box END) AS touches_box_avg,
+                COUNT(*) AS n
+            FROM recent r
+            LEFT JOIN match_stats ms ON ms.match_id = r.match_id
+        """)
+        try:
+            result = self._session.execute(query, {
+                "team": team, "season": season, "last_n": last_n,
+            }).fetchone()
+        except Exception:
+            result = None
+
+        if not result or not result.n:
+            return {
+                "finishing_efficiency": 0.35,  # typical avg
+                "sot_rate": 0.35,
+                "gk_quality": 0.0,
+                "possession_avg": 50.0,
+                "long_balls_pct": 30.0,
+                "big_chance_conversion": 0.35,
+                "touches_box_avg": 20.0,
+            }
+
+        goals = float(result.goals_avg or 0)
+        big_chances = float(result.big_chances_avg or 0)
+        bc_scored = float(result.bc_scored_avg or 0)
+        shots = float(result.shots_avg or 0)
+        sot = float(result.sot_avg or 0)
+
+        finishing = (goals / big_chances) if big_chances > 0 else 0.35
+        sot_rate = (sot / shots) if shots > 0 else 0.35
+        bc_conv = (bc_scored / big_chances) if big_chances > 0 else 0.35
+
+        return {
+            "finishing_efficiency": round(min(finishing, 2.0), 3),
+            "sot_rate": round(sot_rate, 3),
+            "gk_quality": round(float(result.gk_quality_avg or 0), 3),
+            "possession_avg": round(float(result.possession_avg or 50), 1),
+            "long_balls_pct": round(float(result.long_balls_avg or 30), 1),
+            "big_chance_conversion": round(bc_conv, 3),
+            "touches_box_avg": round(float(result.touches_box_avg or 20), 1),
+        }
+
     def get_round_for_date(
         self, commence_time: str, season: str | None = None,
     ) -> int | None:

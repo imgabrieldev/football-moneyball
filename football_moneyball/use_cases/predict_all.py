@@ -345,6 +345,15 @@ class PredictAll:
         except Exception:
             pass
 
+        # v1.8.0: Playing style features
+        home_style = None
+        away_style = None
+        try:
+            home_style = self.repo.get_team_style_aggregates(home_team, season, last_n=5)
+            away_style = self.repo.get_team_style_aggregates(away_team, season, last_n=5)
+        except Exception:
+            pass
+
         league_avg = {
             "goals_per_team": 1.3,
             "corners_per_team": league.get("corners_per_match", 10.0) / 2,
@@ -355,12 +364,14 @@ class PredictAll:
             team_elo=home_elo, opp_elo=away_elo,
             team_rest_days=home_rest, opp_rest_days=away_rest,
             team_context=home_context, opp_context=away_context,
+            team_style=home_style, opp_style=away_style,
         )
         X_away = build_context_aware_features(
             away_stats, home_stats, league_avg, is_home=False,
             team_elo=away_elo, opp_elo=home_elo,
             team_rest_days=away_rest, opp_rest_days=home_rest,
             team_context=away_context, opp_context=home_context,
+            team_style=away_style, opp_style=home_style,
         )
 
         # Backward compat: se modelo foi treinado com menos features, truncar
