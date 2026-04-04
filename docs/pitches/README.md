@@ -10,7 +10,7 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-(nenhum pitch ativo)
+- [[advanced-predictor]] — v0.5.0: Pipeline 6 estágios (xG + pressing + xT + RAPM + regressão à média + Monte Carlo)
 
 ## Backlog
 
