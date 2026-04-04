@@ -152,16 +152,23 @@ def get_predictions(repo=Depends(get_repo)):
             coherent = []
             for b in match_bets:
                 if b["market"] == "h2h":
-                    # 1X2: recomendar só o favorito do modelo
+                    # 1X2: recomendar só se coerente com maior prob do modelo
+                    # outcome pode ser "Home"/"Away"/"Draw" OU o nome do time
                     hp = pred.get("home_win_prob", 0)
                     dp = pred.get("draw_prob", 0)
                     ap = pred.get("away_win_prob", 0)
                     max_p = max(hp, dp, ap)
-                    if b["outcome"] == "Draw" and dp == max_p:
+                    outcome = b["outcome"]
+                    home_name = pred.get("home_team", "")
+                    away_name = pred.get("away_team", "")
+                    is_home_bet = outcome == "Home" or outcome == home_name
+                    is_away_bet = outcome == "Away" or outcome == away_name
+                    is_draw_bet = outcome == "Draw"
+                    if is_draw_bet and dp == max_p:
                         coherent.append(b)
-                    elif b["outcome"] != "Draw" and hp == max_p and b["outcome"] != pred.get("away_team"):
+                    elif is_home_bet and hp == max_p:
                         coherent.append(b)
-                    elif b["outcome"] != "Draw" and ap == max_p and b["outcome"] != pred.get("home_team"):
+                    elif is_away_bet and ap == max_p:
                         coherent.append(b)
                 elif b["market"] == "totals":
                     over25 = pred.get("over_25", 0.5)
@@ -172,6 +179,44 @@ def get_predictions(repo=Depends(get_repo)):
                 else:
                     coherent.append(b)
 
+            # Traduzir outcome "Home"/"Away" → nome do time
+            home_name = pred.get("home_team", "")
+            away_name = pred.get("away_team", "")
+            def _label(outcome: str) -> str:
+                if outcome == "Over":
+                    return "Mais de 2.5 gols"
+                if outcome == "Under":
+                    return "Menos de 2.5 gols"
+                if outcome == "Draw":
+                    return "Empate"
+                if outcome == "Home":
+                    return f"Vitória {home_name}"
+                if outcome == "Away":
+                    return f"Vitória {away_name}"
+                if outcome in ("Yes",):
+                    return "Ambas marcam"
+                if outcome in ("No",):
+                    return "Algum time não marca"
+                return f"Vitória {outcome}"
+
+            def _model_prob_for(outcome: str) -> float:
+                """Traduz outcome pra probabilidade correspondente do modelo."""
+                if outcome == "Over":
+                    return float(pred.get("over_25", 0) or 0)
+                if outcome == "Under":
+                    return 1.0 - float(pred.get("over_25", 0) or 0)
+                if outcome == "Draw":
+                    return float(pred.get("draw_prob", 0) or 0)
+                if outcome == "Home" or outcome == home_name:
+                    return float(pred.get("home_win_prob", 0) or 0)
+                if outcome == "Away" or outcome == away_name:
+                    return float(pred.get("away_win_prob", 0) or 0)
+                if outcome == "Yes":
+                    return float(pred.get("btts_prob", 0) or 0)
+                if outcome == "No":
+                    return 1.0 - float(pred.get("btts_prob", 0) or 0)
+                return 0.0
+
             pred["recommended_bets"] = [
                 {
                     "market": b["market"],
@@ -180,9 +225,8 @@ def get_predictions(repo=Depends(get_repo)):
                     "bookmaker": b["bookmaker"],
                     "edge": b["edge"],
                     "stake": b.get("stake", 0),
-                    "label": "Mais de 2.5 gols" if b["outcome"] == "Over" else
-                             "Menos de 2.5 gols" if b["outcome"] == "Under" else
-                             f"Vitória {b['outcome']}" if b["outcome"] != "Draw" else "Empate",
+                    "model_prob": b.get("model_prob") or _model_prob_for(b["outcome"]),
+                    "label": _label(b["outcome"]),
                 }
                 for b in coherent
             ]
