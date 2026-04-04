@@ -37,8 +37,8 @@ class TestBuildTeamFeatures:
     def test_feature_names_match_dim(self):
         assert len(FEATURE_NAMES) == FEATURE_DIM
 
-    def test_24_features(self):
-        assert FEATURE_DIM == 24
+    def test_40_features(self):
+        assert FEATURE_DIM == 40
 
     def test_team_vs_opp_ordering(self):
         team = {"goals_for": 2.0, "goals_against": 0.5, "xg_for": 1.8,

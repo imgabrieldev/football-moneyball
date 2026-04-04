@@ -322,9 +322,9 @@ class PredictAll:
         commence_time: str = "",
         season: str = "2026",
     ) -> tuple[float, float]:
-        """Usa LambdaPredictor pra prever (λ_home, λ_away) com rich features."""
+        """Usa LambdaPredictor pra prever (λ_home, λ_away) com rich + context features."""
         from football_moneyball.domain.feature_engineering import (
-            build_rich_team_features, FEATURE_DIM,
+            build_context_aware_features, build_rich_team_features, FEATURE_DIM,
         )
 
         # Elo ratings (current — usado como aprox pre-match nessa chamada)
@@ -336,30 +336,79 @@ class PredictAll:
         home_rest = self.repo.get_rest_days(home_team, commence_time) if commence_time else 7
         away_rest = self.repo.get_rest_days(away_team, commence_time) if commence_time else 7
 
+        # v1.6.0: Context features
+        home_context = None
+        away_context = None
+        try:
+            home_context = self._build_team_context(home_team, away_team, commence_time, is_home=True)
+            away_context = self._build_team_context(away_team, home_team, commence_time, is_home=False)
+        except Exception:
+            pass
+
         league_avg = {
             "goals_per_team": 1.3,
             "corners_per_team": league.get("corners_per_match", 10.0) / 2,
         }
 
-        X_home = build_rich_team_features(
+        X_home = build_context_aware_features(
             home_stats, away_stats, league_avg, is_home=True,
             team_elo=home_elo, opp_elo=away_elo,
             team_rest_days=home_rest, opp_rest_days=away_rest,
+            team_context=home_context, opp_context=away_context,
         )
-        X_away = build_rich_team_features(
+        X_away = build_context_aware_features(
             away_stats, home_stats, league_avg, is_home=False,
             team_elo=away_elo, opp_elo=home_elo,
             team_rest_days=away_rest, opp_rest_days=home_rest,
+            team_context=away_context, opp_context=home_context,
         )
 
-        # Backward compat: se modelo foi treinado com 12 features, fallback
+        # Backward compat: se modelo foi treinado com menos features, truncar
         model = self._ml_models[target]
         if model.model is not None and hasattr(model.model, "n_features_in_"):
             if model.model.n_features_in_ != FEATURE_DIM:
-                # Modelo antigo — usa só primeiras 12 features
                 X_home = X_home[:model.model.n_features_in_]
                 X_away = X_away[:model.model.n_features_in_]
 
         lam_home = model.predict(X_home)
         lam_away = model.predict(X_away)
         return (lam_home, lam_away)
+
+    def _build_team_context(
+        self, team: str, opponent: str, commence_time: str, is_home: bool,
+    ) -> dict:
+        """Monta dict de contexto pro time (coach + injuries + fixtures + position)."""
+        try:
+            coach = self.repo.get_coach_change_info(team, commence_time)
+        except Exception:
+            coach = None
+        try:
+            injuries = self.repo.get_key_players_out(team, ref_date=commence_time)
+        except Exception:
+            injuries = None
+        try:
+            glast = self.repo.get_games_in_window(team, -7, 0, commence_time)
+            gnext = self.repo.get_games_in_window(team, 0, 7, commence_time)
+        except Exception:
+            glast, gnext = 0, 0
+        try:
+            if is_home:
+                gap = self.repo.get_standing_gap(team, opponent, commence_time)
+            else:
+                gap_swap = self.repo.get_standing_gap(opponent, team, commence_time)
+                # Inverter: home/away ficam trocados
+                gap = {
+                    "home_position": gap_swap.get("home_position", 10),
+                    "away_position": gap_swap.get("away_position", 10),
+                    "position_gap": gap_swap.get("position_gap", 0),
+                    "both_in_relegation": gap_swap.get("both_in_relegation", False),
+                }
+        except Exception:
+            gap = None
+
+        return {
+            "coach": coach,
+            "injuries": injuries,
+            "fixtures": {"games_last_7d": glast, "games_next_7d": gnext},
+            "position": gap,
+        }

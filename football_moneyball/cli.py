@@ -1265,6 +1265,37 @@ def train_models_cmd(
         repo.close()
 
 
+@app.command("ingest-context")
+def ingest_context_cmd(
+    season: str = typer.Option("2026", "--season"),
+    backfill: bool = typer.Option(False, "--backfill", help="Processa TODOS os matches"),
+    provider_name: str = typer.Option("sofascore", "--provider"),
+) -> None:
+    """Ingere managers, lesoes e standings (context features v1.6.0)."""
+    from football_moneyball.use_cases.ingest_context import IngestContext
+
+    repo = get_repository()
+    try:
+        provider = get_provider(provider_name)
+        with console.status("[bold green]Ingerindo contexto..."):
+            result = IngestContext(provider, repo).execute(season=season, backfill=backfill)
+
+        console.print(Panel(
+            f"Matches processados: {result['matches_processed']}\n"
+            f"Managers encontrados: {result['managers_found']}\n"
+            f"Lesoes salvas: {result['injuries_saved']}\n"
+            f"Coaches persistidos: {result['coaches_persisted']}\n"
+            f"Standings salvos: {result['standings_saved']}\n"
+            f"Erros: {result['errors']}",
+            title="Ingest Context", border_style="green",
+        ))
+    except Exception as exc:
+        console.print(f"[red]Erro: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
 @app.command("ingest-lineups")
 def ingest_lineups_cmd(
     match_ids: str = typer.Option("", "--match-ids", help="IDs separados por virgula"),

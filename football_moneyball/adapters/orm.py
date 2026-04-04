@@ -377,6 +377,56 @@ class RefereeStats(Base):
     last_updated: Mapped[Optional[str]] = mapped_column(String)
 
 
+class TeamCoach(Base):
+    """Historico de tecnicos por time (quem treinou quando)."""
+
+    __tablename__ = "team_coaches"
+
+    team: Mapped[str] = mapped_column(String, primary_key=True)
+    coach_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    start_match_date: Mapped[str] = mapped_column(String, primary_key=True)
+    coach_name: Mapped[Optional[str]] = mapped_column(String)
+    end_match_date: Mapped[Optional[str]] = mapped_column(String)  # NULL = atual
+    games_coached: Mapped[Optional[int]] = mapped_column(Integer)
+    wins: Mapped[Optional[int]] = mapped_column(Integer)
+    draws: Mapped[Optional[int]] = mapped_column(Integer)
+    losses: Mapped[Optional[int]] = mapped_column(Integer)
+    source: Mapped[Optional[str]] = mapped_column(String)
+
+
+class PlayerInjury(Base):
+    """Jogadores ausentes por partida (lesoes, suspensoes, etc)."""
+
+    __tablename__ = "player_injuries"
+
+    match_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_name: Mapped[Optional[str]] = mapped_column(String)
+    team: Mapped[Optional[str]] = mapped_column(String)
+    reason_code: Mapped[Optional[int]] = mapped_column(Integer)
+    reason_label: Mapped[Optional[str]] = mapped_column(String)
+    fetched_at: Mapped[Optional[str]] = mapped_column(String)
+
+
+class LeagueStanding(Base):
+    """Snapshot de classificacao por data (pra position_gap, pressure)."""
+
+    __tablename__ = "league_standings"
+
+    competition: Mapped[str] = mapped_column(String, primary_key=True)
+    season: Mapped[str] = mapped_column(String, primary_key=True)
+    team: Mapped[str] = mapped_column(String, primary_key=True)
+    snapshot_date: Mapped[str] = mapped_column(String, primary_key=True)
+    position: Mapped[Optional[int]] = mapped_column(Integer)
+    points: Mapped[Optional[int]] = mapped_column(Integer)
+    played: Mapped[Optional[int]] = mapped_column(Integer)
+    wins: Mapped[Optional[int]] = mapped_column(Integer)
+    draws: Mapped[Optional[int]] = mapped_column(Integer)
+    losses: Mapped[Optional[int]] = mapped_column(Integer)
+    goals_for: Mapped[Optional[int]] = mapped_column(Integer)
+    goals_against: Mapped[Optional[int]] = mapped_column(Integer)
+
+
 class MatchLineup(Base):
     """Escalacao (provavel ou confirmada) de uma partida."""
 

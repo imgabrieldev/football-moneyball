@@ -89,6 +89,31 @@ export function Predictions() {
                           {new Date(pred.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
+                      {pred.context?.home?.coach?.coach_change_recent && (
+                        <span className="text-xs bg-purple-900/40 text-purple-300 border border-purple-800 px-2 py-0.5 rounded" title={`${pred.home_team}: técnico novo há ${pred.context.home.coach.games_since_change} jogos`}>
+                          🔄 {pred.home_team} técnico novo
+                        </span>
+                      )}
+                      {pred.context?.away?.coach?.coach_change_recent && (
+                        <span className="text-xs bg-purple-900/40 text-purple-300 border border-purple-800 px-2 py-0.5 rounded" title={`${pred.away_team}: técnico novo há ${pred.context.away.coach.games_since_change} jogos`}>
+                          🔄 {pred.away_team} técnico novo
+                        </span>
+                      )}
+                      {(pred.context?.home?.injuries?.key_players_out >= 2) && (
+                        <span className="text-xs bg-red-900/40 text-red-300 border border-red-800 px-2 py-0.5 rounded">
+                          🚨 {pred.context.home.injuries.key_players_out} titulares fora ({pred.home_team})
+                        </span>
+                      )}
+                      {(pred.context?.away?.injuries?.key_players_out >= 2) && (
+                        <span className="text-xs bg-red-900/40 text-red-300 border border-red-800 px-2 py-0.5 rounded">
+                          🚨 {pred.context.away.injuries.key_players_out} titulares fora ({pred.away_team})
+                        </span>
+                      )}
+                      {pred.context?.standing?.both_in_relegation && (
+                        <span className="text-xs bg-orange-900/40 text-orange-300 border border-orange-800 px-2 py-0.5 rounded">
+                          🔥 Ambos em zona de rebaixamento
+                        </span>
+                      )}
                       {pred.lineup_type === 'confirmed' && (
                         <span className="text-xs bg-green-900/40 text-green-300 border border-green-800 px-2 py-0.5 rounded">
                           Escalação confirmada

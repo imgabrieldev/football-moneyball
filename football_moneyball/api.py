@@ -116,9 +116,28 @@ def get_predictions(repo=Depends(get_repo)):
     from football_moneyball.domain.markets import derive_all_markets
     predictions = repo.get_predictions()
     predictions = [_interpret_prediction(p) for p in predictions]
-    # Enriquecer com todos os mercados derivados
+    # Enriquecer com todos os mercados derivados + context (v1.6.0)
     for pred in predictions:
         pred["markets"] = derive_all_markets(pred)
+        # v1.6.0: enrich com context (coach, injuries, standings)
+        try:
+            home = pred.get("home_team", "")
+            away = pred.get("away_team", "")
+            ct = pred.get("commence_time", "")
+            if home and away and ct:
+                pred["context"] = {
+                    "home": {
+                        "coach": repo.get_coach_change_info(home, ct),
+                        "injuries": repo.get_key_players_out(home, ref_date=ct),
+                    },
+                    "away": {
+                        "coach": repo.get_coach_change_info(away, ct),
+                        "injuries": repo.get_key_players_out(away, ref_date=ct),
+                    },
+                    "standing": repo.get_standing_gap(home, away, ct),
+                }
+        except Exception:
+            pred["context"] = None
 
     # Enriquecer com value bets associadas (deduplicadas, melhor odd por mercado)
     try:

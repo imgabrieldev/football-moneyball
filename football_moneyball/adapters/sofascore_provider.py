@@ -300,6 +300,113 @@ class SofascoreProvider:
         away_ht = int(event.get("awayScore", {}).get("period1", 0) or 0)
         return (home_ht, away_ht)
 
+    def get_event_managers(self, match_id: int) -> dict[str, Any] | None:
+        """Retorna home/away managers de uma partida.
+
+        Sofascore: /event/{id}/managers
+
+        Returns
+        -------
+        dict | None
+            {"home": {id, name, slug}, "away": {id, name, slug}}
+        """
+        data = self._api_get(f"event/{match_id}/managers")
+        if not data:
+            return None
+        home_m = data.get("homeManager")
+        away_m = data.get("awayManager")
+        if not home_m and not away_m:
+            return None
+        return {
+            "home": {
+                "id": int(home_m.get("id", 0) or 0),
+                "name": str(home_m.get("name", "") or ""),
+                "slug": str(home_m.get("slug", "") or ""),
+            } if home_m else None,
+            "away": {
+                "id": int(away_m.get("id", 0) or 0),
+                "name": str(away_m.get("name", "") or ""),
+                "slug": str(away_m.get("slug", "") or ""),
+            } if away_m else None,
+        }
+
+    def get_missing_players(self, match_id: int) -> dict[str, list]:
+        """Retorna jogadores ausentes de uma partida.
+
+        Sofascore: /event/{id}/lineups, fields home.missingPlayers/away.missingPlayers
+
+        Returns
+        -------
+        dict
+            {"home": [{player_id, name, reason_code, reason_label}], "away": [...]}
+        """
+        data = self._api_get(f"event/{match_id}/lineups")
+        if not data:
+            return {"home": [], "away": []}
+
+        # Sofascore reason codes (empirical):
+        # 1 = injury, 2 = suspension, 3 = illness, 4 = international duty
+        reason_labels = {
+            1: "injury", 2: "suspension", 3: "illness",
+            4: "international_duty", 5: "personal",
+        }
+
+        def _extract(side_data: dict) -> list[dict]:
+            result = []
+            for mp in side_data.get("missingPlayers", []) or []:
+                player = mp.get("player", {})
+                code = int(mp.get("reason", 0) or 0)
+                result.append({
+                    "player_id": int(player.get("id", 0) or 0),
+                    "player_name": str(player.get("name", "") or ""),
+                    "reason_code": code,
+                    "reason_label": reason_labels.get(code, "unknown"),
+                })
+            return result
+
+        return {
+            "home": _extract(data.get("home", {}) or {}),
+            "away": _extract(data.get("away", {}) or {}),
+        }
+
+    def get_standings(
+        self, tournament_id: int | None = None, season_id: int | None = None,
+    ) -> list[dict]:
+        """Retorna classificacao atual da liga.
+
+        Sofascore: /unique-tournament/{tid}/season/{sid}/standings/total
+
+        Returns
+        -------
+        list[dict]
+            [{team, position, points, played, wins, draws, losses, gf, ga}]
+        """
+        tid = tournament_id or self.tournament_id
+        sid = season_id or self.season_id
+
+        data = self._api_get(
+            f"unique-tournament/{tid}/season/{sid}/standings/total"
+        )
+        if not data:
+            return []
+
+        result = []
+        for group in data.get("standings", []):
+            for row in group.get("rows", []):
+                team_obj = row.get("team", {})
+                result.append({
+                    "team": str(team_obj.get("name", "") or ""),
+                    "position": int(row.get("position", 0) or 0),
+                    "points": int(row.get("points", 0) or 0),
+                    "played": int(row.get("matches", 0) or 0),
+                    "wins": int(row.get("wins", 0) or 0),
+                    "draws": int(row.get("draws", 0) or 0),
+                    "losses": int(row.get("losses", 0) or 0),
+                    "goals_for": int(row.get("scoresFor", 0) or 0),
+                    "goals_against": int(row.get("scoresAgainst", 0) or 0),
+                })
+        return result
+
     def get_match_info(self, match_id: int) -> dict[str, Any]:
         """Retorna metadados de uma partida especifica.
 

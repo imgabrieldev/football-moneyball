@@ -204,6 +204,46 @@ data:
         last_updated VARCHAR(50)
     );
 
+    CREATE TABLE IF NOT EXISTS team_coaches (
+        team VARCHAR(100),
+        coach_id INTEGER,
+        start_match_date VARCHAR(20),
+        coach_name VARCHAR(100),
+        end_match_date VARCHAR(20),
+        games_coached INTEGER,
+        wins INTEGER, draws INTEGER, losses INTEGER,
+        source VARCHAR(20),
+        PRIMARY KEY (team, coach_id, start_match_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS player_injuries (
+        match_id INTEGER,
+        player_id INTEGER,
+        player_name VARCHAR(100),
+        team VARCHAR(100),
+        reason_code INTEGER,
+        reason_label VARCHAR(50),
+        fetched_at VARCHAR(50),
+        PRIMARY KEY (match_id, player_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS league_standings (
+        competition VARCHAR(100),
+        season VARCHAR(20),
+        team VARCHAR(100),
+        snapshot_date VARCHAR(20),
+        position INTEGER,
+        points INTEGER,
+        played INTEGER,
+        wins INTEGER, draws INTEGER, losses INTEGER,
+        goals_for INTEGER, goals_against INTEGER,
+        PRIMARY KEY (competition, season, team, snapshot_date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_injuries_team ON player_injuries(team);
+    CREATE INDEX IF NOT EXISTS idx_standings_date ON league_standings(snapshot_date);
+    CREATE INDEX IF NOT EXISTS idx_coaches_team ON team_coaches(team);
+
     CREATE TABLE IF NOT EXISTS match_lineups (
         match_key INTEGER,
         player_id INTEGER,

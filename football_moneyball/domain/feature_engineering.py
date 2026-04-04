@@ -30,15 +30,17 @@ import numpy as np
 import pandas as pd
 
 
-FEATURE_DIM = 24
+FEATURE_DIM = 40
 
 FEATURE_NAMES = [
+    # 0-11: existing v1.3.0 (12)
     "team_goals_for", "team_goals_against",
     "team_xg_for", "team_xg_against",
     "team_corners_for", "team_cards_for",
     "opp_goals_for", "opp_goals_against",
     "opp_xg_for", "opp_xg_against",
     "league_goals_per_team", "is_home",
+    # 12-23: v1.5.0 rich features (12)
     "elo_diff",
     "team_goal_diff_ema",
     "team_xg_overperf",
@@ -51,6 +53,23 @@ FEATURE_NAMES = [
     "opp_defensive_intensity",
     "opp_goal_diff_ema",
     "opp_rest_days",
+    # 24-39: v1.6.0 context features (16)
+    "team_coach_win_rate",
+    "team_games_since_coach_change",
+    "team_coach_change_recent",
+    "team_key_players_out",
+    "team_xg_contribution_missing",
+    "team_games_last_7d",
+    "team_games_next_7d",
+    "team_position",
+    "opp_coach_win_rate",
+    "opp_games_since_coach_change",
+    "opp_coach_change_recent",
+    "opp_key_players_out",
+    "opp_xg_contribution_missing",
+    "opp_position",
+    "position_gap",
+    "both_in_relegation",
 ]
 
 
@@ -60,14 +79,15 @@ def build_team_features(
     league_avg: dict,
     is_home: bool,
 ) -> np.ndarray:
-    """Constroi vetor de 12 features (backward compat v1.3.0).
+    """Retorna array de FEATURE_DIM (40) com defaults seguros para v1.6.0.
 
-    Preenche slots 12-23 com defaults seguros (elo_diff=0, rest=7, etc).
+    Backward compat: se chamado sem Elo/rest/context, preenche defaults.
     """
-    return build_rich_team_features(
+    return build_context_aware_features(
         team_stats, opponent_stats, league_avg, is_home,
         team_elo=1500.0, opp_elo=1500.0,
         team_rest_days=7, opp_rest_days=7,
+        team_context=None, opp_context=None,
     )
 
 
@@ -142,6 +162,92 @@ def build_rich_team_features(
     ], dtype=np.float64)
 
     return features
+
+
+def build_context_aware_features(
+    team_stats: dict,
+    opponent_stats: dict,
+    league_avg: dict,
+    is_home: bool,
+    team_elo: float = 1500.0,
+    opp_elo: float = 1500.0,
+    team_rest_days: int = 7,
+    opp_rest_days: int = 7,
+    team_context: dict | None = None,
+    opp_context: dict | None = None,
+) -> np.ndarray:
+    """Constroi vetor de 40 features (v1.6.0 = v1.5.0 + 16 context).
+
+    Parameters
+    ----------
+    team_stats, opponent_stats, league_avg, is_home, team_elo, opp_elo,
+    team_rest_days, opp_rest_days :
+        Mesma semantica de build_rich_team_features.
+    team_context : dict | None
+        {coach, injuries, fixtures, position} dicts do team.
+    opp_context : dict | None
+        Mesmo pro adversario.
+
+    Returns
+    -------
+    np.ndarray
+        Array (40,) de float64.
+    """
+    from football_moneyball.domain.context_features import (
+        coach_features, fixture_features, injury_features, position_features,
+    )
+
+    # Primeiras 24 features (v1.5.0)
+    base = build_rich_team_features(
+        team_stats, opponent_stats, league_avg, is_home,
+        team_elo, opp_elo, team_rest_days, opp_rest_days,
+    )
+
+    # Team context
+    tc = team_context or {}
+    t_coach = coach_features(tc.get("coach"))
+    t_inj = injury_features(tc.get("injuries"))
+    t_fix = fixture_features(
+        tc.get("fixtures", {}).get("games_last_7d", 0),
+        tc.get("fixtures", {}).get("games_next_7d", 0),
+    )
+    t_pos = position_features(tc.get("position"))
+
+    # Opp context
+    oc = opp_context or {}
+    o_coach = coach_features(oc.get("coach"))
+    o_inj = injury_features(oc.get("injuries"))
+
+    # team_position vs opp_position vs gap (from one of them)
+    home_pos = t_pos.get("home_position", 10)
+    away_pos = t_pos.get("away_position", 10)
+    # se is_home, team_position = home_pos, else away_pos
+    team_pos = home_pos if is_home else away_pos
+    opp_pos = away_pos if is_home else home_pos
+
+    context_features = np.array([
+        # 24-31: team context (8)
+        t_coach["coach_win_rate"],
+        float(t_coach["games_since_change"]),
+        float(t_coach["coach_change_recent"]),
+        float(t_inj["key_players_out"]),
+        t_inj["xg_contribution_missing"],
+        float(t_fix["games_last_7d"]),
+        float(t_fix["games_next_7d"]),
+        float(team_pos),
+        # 32-37: opp context (6)
+        o_coach["coach_win_rate"],
+        float(o_coach["games_since_change"]),
+        float(o_coach["coach_change_recent"]),
+        float(o_inj["key_players_out"]),
+        o_inj["xg_contribution_missing"],
+        float(opp_pos),
+        # 38-39: match context (2)
+        float(t_pos["position_gap"]),
+        float(t_pos["both_in_relegation"]),
+    ], dtype=np.float64)
+
+    return np.concatenate([base, context_features])
 
 
 def _team_rolling_stats(
@@ -339,19 +445,21 @@ def build_training_dataset(
         home_rest = _compute_rest_days(past, home, match_date)
         away_rest = _compute_rest_days(past, away, match_date)
 
-        # Sample 1: home ataca
-        X_rows.append(build_rich_team_features(
+        # Sample 1: home ataca (com context defaults por enquanto)
+        X_rows.append(build_context_aware_features(
             home_hist, away_hist, league_avg, is_home=True,
             team_elo=home_elo, opp_elo=away_elo,
             team_rest_days=home_rest, opp_rest_days=away_rest,
+            team_context=None, opp_context=None,
         ))
         y_rows.append(float(row.get(target_col_home, 0) or 0))
 
         # Sample 2: away ataca
-        X_rows.append(build_rich_team_features(
+        X_rows.append(build_context_aware_features(
             away_hist, home_hist, league_avg, is_home=False,
             team_elo=away_elo, opp_elo=home_elo,
             team_rest_days=away_rest, opp_rest_days=home_rest,
+            team_context=None, opp_context=None,
         ))
         y_rows.append(float(row.get(target_col_away, 0) or 0))
 

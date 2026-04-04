@@ -10,6 +10,7 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
+- [[context-aware-predictor]] — v1.6.0: Features contextuais (técnico, desfalques, fadiga, posição, derby)
 - [[feature-rich-predictor]] — v1.5.0: Elo + 10 features novas pro XGBoost (baseado em SHAP research)
 - [[multi-market]] — v1.0.0: Todos os mercados Betfair (correct score, asian handicap, corners, cards, HT)
 - ~~[[comprehensive-predictor]]~~ — v1.1.0-1.4.0: shipped ✓

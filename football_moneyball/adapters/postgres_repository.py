@@ -72,17 +72,20 @@ def _stable_match_key(home: str, away: str) -> int:
 
 from football_moneyball.adapters.orm import (
     ActionValue,
+    LeagueStanding,
     Match,
     MatchLineup,
     MatchOdds,
     MatchStats,
     PassNetwork,
     PlayerEmbedding,
+    PlayerInjury,
     PlayerMatchMetrics,
     PredictionHistory,
     PressingMetrics,
     RefereeStats,
     Stint,
+    TeamCoach,
     ValueBetHistory,
 )
 
@@ -1582,6 +1585,304 @@ class PostgresRepository:
             return closest_round
         except Exception:
             return None
+
+    # =====================================================================
+    # v1.6.0 — Context-Aware features (coaches, injuries, standings)
+    # =====================================================================
+
+    def save_team_coach(
+        self, team: str, coach_id: int, coach_name: str,
+        start_match_date: str, end_match_date: str | None = None,
+    ) -> None:
+        """Upsert de coach-team relationship."""
+        team = _fuzzy_team_match(self._session, team)
+        existing = self._session.get(TeamCoach, (team, coach_id, start_match_date))
+        data = {
+            "team": team, "coach_id": coach_id,
+            "start_match_date": start_match_date,
+            "coach_name": coach_name,
+            "end_match_date": end_match_date,
+            "source": "sofascore",
+        }
+        if existing:
+            for k, v in data.items():
+                setattr(existing, k, v)
+        else:
+            self._session.add(TeamCoach(**data))
+        self._session.commit()
+
+    def save_player_injuries(
+        self, match_id: int, team: str, injuries: list[dict],
+    ) -> None:
+        """Upsert lista de ausentes de um jogo."""
+        from datetime import datetime
+        now = datetime.now().isoformat()
+        team = _fuzzy_team_match(self._session, team)
+
+        for inj in injuries:
+            pid = int(inj.get("player_id", 0) or 0)
+            if pid <= 0:
+                continue
+            data = {
+                "match_id": int(match_id),
+                "player_id": pid,
+                "player_name": str(inj.get("player_name", "") or ""),
+                "team": team,
+                "reason_code": int(inj.get("reason_code", 0) or 0),
+                "reason_label": str(inj.get("reason_label", "") or ""),
+                "fetched_at": now,
+            }
+            existing = self._session.get(PlayerInjury, (data["match_id"], pid))
+            if existing:
+                for k, v in data.items():
+                    setattr(existing, k, v)
+            else:
+                self._session.add(PlayerInjury(**data))
+        self._session.commit()
+
+    def save_league_standing(
+        self, snapshot: list[dict], snapshot_date: str,
+        competition: str, season: str,
+    ) -> None:
+        """Persiste snapshot da classificacao."""
+        for row in snapshot:
+            team = _fuzzy_team_match(self._session, row.get("team", ""))
+            data = {
+                "competition": competition,
+                "season": season,
+                "team": team,
+                "snapshot_date": snapshot_date,
+                "position": int(row.get("position", 0) or 0),
+                "points": int(row.get("points", 0) or 0),
+                "played": int(row.get("played", 0) or 0),
+                "wins": int(row.get("wins", 0) or 0),
+                "draws": int(row.get("draws", 0) or 0),
+                "losses": int(row.get("losses", 0) or 0),
+                "goals_for": int(row.get("goals_for", 0) or 0),
+                "goals_against": int(row.get("goals_against", 0) or 0),
+            }
+            existing = self._session.get(
+                LeagueStanding,
+                (competition, season, team, snapshot_date),
+            )
+            if existing:
+                for k, v in data.items():
+                    setattr(existing, k, v)
+            else:
+                self._session.add(LeagueStanding(**data))
+        self._session.commit()
+
+    # Context queries (pra feature engineering)
+
+    def get_coach_change_info(self, team: str, ref_date: str) -> dict:
+        """Retorna info sobre coach do time na data de referencia.
+
+        Returns
+        -------
+        dict
+            coach_name, games_since_change, coach_change_recent (<30d),
+            coach_win_rate (pra essa relacao team-coach).
+        """
+        team = _fuzzy_team_match(self._session, team)
+        if not ref_date:
+            return {"games_since_change": 10, "coach_change_recent": False, "coach_win_rate": 0.5}
+        date_only = ref_date[:10]
+
+        query = text("""
+            SELECT coach_id, coach_name, start_match_date
+            FROM team_coaches
+            WHERE team = :team
+              AND start_match_date <= :ref
+            ORDER BY start_match_date DESC
+            LIMIT 1
+        """)
+        try:
+            row = self._session.execute(query, {
+                "team": team, "ref": date_only,
+            }).fetchone()
+        except Exception:
+            row = None
+
+        if not row:
+            return {"games_since_change": 10, "coach_change_recent": False, "coach_win_rate": 0.5}
+
+        # Count games coached + wins sob esse coach ate ref_date
+        count_query = text("""
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN (pmm.team = :team AND home_score > away_score AND pmm.team = m.home_team)
+                         OR (pmm.team = :team AND away_score > home_score AND pmm.team = m.away_team)
+                         THEN 1 ELSE 0 END) AS wins
+            FROM matches m
+            JOIN (SELECT DISTINCT match_id, team FROM player_match_metrics) pmm
+                ON pmm.match_id = m.match_id
+            WHERE pmm.team = :team
+              AND m.match_date >= CAST(:start AS date)
+              AND m.match_date < CAST(:ref AS date)
+              AND m.home_score IS NOT NULL
+        """)
+        try:
+            stats = self._session.execute(count_query, {
+                "team": team,
+                "start": row.start_match_date[:10],
+                "ref": date_only,
+            }).fetchone()
+        except Exception:
+            stats = None
+
+        total = int(stats.total or 0) if stats else 0
+        wins = int(stats.wins or 0) if stats else 0
+        win_rate = (wins / total) if total > 0 else 0.5
+
+        # Dias desde inicio do coach
+        from datetime import datetime
+        try:
+            start_d = datetime.fromisoformat(row.start_match_date[:10]).date()
+            ref_d = datetime.fromisoformat(date_only).date()
+            days_since = (ref_d - start_d).days
+            is_recent = days_since < 30
+        except Exception:
+            days_since = 100
+            is_recent = False
+
+        return {
+            "coach_name": row.coach_name,
+            "games_since_change": total,
+            "coach_change_recent": is_recent,
+            "coach_win_rate": win_rate,
+        }
+
+    def get_key_players_out(
+        self, team: str, match_id: int | None = None,
+        ref_date: str | None = None, top_n: int = 3,
+    ) -> dict:
+        """Conta desfalques entre top N por xG/90 + xG contribution perdida.
+
+        Identifica top N players do time por xG/90 historico.
+        Retorna quantos estao ausentes na partida/data de referencia.
+        """
+        team = _fuzzy_team_match(self._session, team)
+
+        # Top N players by xG/90
+        top_query = text("""
+            SELECT player_id, player_name,
+                   SUM(xg) * 90.0 / NULLIF(SUM(minutes_played), 0) AS xg_per_90,
+                   SUM(xg) AS total_xg, SUM(minutes_played) AS minutes
+            FROM player_match_metrics
+            WHERE team = :team
+              AND minutes_played > 0
+            GROUP BY player_id, player_name
+            HAVING SUM(minutes_played) >= 90
+            ORDER BY xg_per_90 DESC
+            LIMIT :top_n
+        """)
+        try:
+            top_rows = self._session.execute(top_query, {
+                "team": team, "top_n": top_n,
+            }).fetchall()
+        except Exception:
+            top_rows = []
+
+        top_ids = {int(r.player_id) for r in top_rows}
+        xg_per_90_map = {int(r.player_id): float(r.xg_per_90 or 0) for r in top_rows}
+        total_top_xg = sum(xg_per_90_map.values())
+
+        if not top_ids:
+            return {"key_players_out": 0, "xg_contribution_missing": 0.0}
+
+        # Injuries for target match
+        if match_id:
+            inj_query = text("""
+                SELECT player_id FROM player_injuries
+                WHERE match_id = :mid AND team = :team
+            """)
+            try:
+                inj_rows = self._session.execute(inj_query, {
+                    "mid": match_id, "team": team,
+                }).fetchall()
+            except Exception:
+                inj_rows = []
+        else:
+            inj_rows = []
+
+        out_ids = {int(r.player_id) for r in inj_rows}
+        key_out = top_ids & out_ids
+        missing_xg = sum(xg_per_90_map.get(pid, 0) for pid in key_out)
+        pct_missing = (missing_xg / total_top_xg) if total_top_xg > 0 else 0.0
+
+        return {
+            "key_players_out": len(key_out),
+            "xg_contribution_missing": round(pct_missing, 3),
+        }
+
+    def get_games_in_window(
+        self, team: str, days_before: int, days_after: int, ref_date: str,
+    ) -> int:
+        """Numero de jogos do time em janela ao redor da data."""
+        team = _fuzzy_team_match(self._session, team)
+        if not ref_date:
+            return 0
+        date_only = ref_date[:10]
+
+        query = text("""
+            SELECT COUNT(*) FROM matches
+            WHERE (home_team = :team OR away_team = :team)
+              AND match_date >= CAST(:ref AS date) + (:days_before * INTERVAL '1 day')
+              AND match_date <= CAST(:ref AS date) + (:days_after * INTERVAL '1 day')
+              AND match_date != CAST(:ref AS date)
+        """)
+        try:
+            result = self._session.execute(query, {
+                "team": team, "ref": date_only,
+                "days_before": days_before, "days_after": days_after,
+            }).scalar()
+            return int(result or 0)
+        except Exception:
+            return 0
+
+    def get_standing_gap(
+        self, home_team: str, away_team: str, ref_date: str,
+    ) -> dict:
+        """Retorna position/points gap entre os times na data de referencia."""
+        home_team = _fuzzy_team_match(self._session, home_team)
+        away_team = _fuzzy_team_match(self._session, away_team)
+        if not ref_date:
+            return {"home_position": 10, "away_position": 10, "position_gap": 0,
+                    "points_gap": 0, "both_in_relegation": False}
+        date_only = ref_date[:10]
+
+        query = text("""
+            SELECT team, position, points FROM league_standings
+            WHERE team IN (:home, :away)
+              AND snapshot_date <= :ref
+            ORDER BY snapshot_date DESC
+        """)
+        try:
+            rows = self._session.execute(query, {
+                "home": home_team, "away": away_team, "ref": date_only,
+            }).fetchall()
+        except Exception:
+            rows = []
+
+        h_pos, a_pos, h_pts, a_pts = 10, 10, 0, 0
+        seen = set()
+        for r in rows:
+            if r.team in seen:
+                continue
+            seen.add(r.team)
+            if r.team == home_team:
+                h_pos, h_pts = int(r.position or 10), int(r.points or 0)
+            elif r.team == away_team:
+                a_pos, a_pts = int(r.position or 10), int(r.points or 0)
+            if len(seen) >= 2:
+                break
+
+        return {
+            "home_position": h_pos,
+            "away_position": a_pos,
+            "position_gap": h_pos - a_pos,
+            "points_gap": h_pts - a_pts,
+            "both_in_relegation": h_pos >= 17 and a_pos >= 17,
+        }
 
     def get_referee_stats_by_name(self, name: str) -> dict | None:
         """Busca arbitro por nome (fuzzy: LIKE)."""
