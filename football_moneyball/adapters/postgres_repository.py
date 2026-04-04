@@ -791,7 +791,7 @@ class PostgresRepository:
             query = query.filter(PredictionHistory.round == round_num)
         if status is not None:
             query = query.filter(PredictionHistory.status == status)
-        query = query.order_by(PredictionHistory.id.desc())
+        query = query.order_by(PredictionHistory.commence_time.desc(), PredictionHistory.id.desc())
 
         rows = query.all()
         columns = [c.key for c in PredictionHistory.__table__.columns]
