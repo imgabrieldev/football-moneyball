@@ -10,9 +10,13 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- ~~[[betting-value-finder]]~~ — v0.4.0: shipped ✓ (Monte Carlo + Kelly + The Odds API)
-- ~~[[hexagonal-architecture]]~~ — v0.3.0: shipped ✓
-- ~~[[state-of-the-art-engine]]~~ — v0.2.0: shipped ✓
+(nenhum pitch ativo)
+
+## Finalizados → `docs/postmortem/`
+
+- [[state-of-the-art-engine]] — v0.2.0
+- [[hexagonal-architecture]] — v0.3.0
+- [[betting-value-finder]] — v0.4.0
 
 ## Template
 
