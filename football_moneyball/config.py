@@ -57,18 +57,17 @@ def get_repository():
 
 
 def get_odds_provider():
-    """Retorna o OddsProvider configurado (Betfair Exchange).
+    """Retorna o OddsProvider configurado (The Odds API).
 
-    Requer variaveis de ambiente BETFAIR_USERNAME, BETFAIR_PASSWORD,
-    BETFAIR_APP_KEY configuradas.
+    Requer ODDS_API_KEY configurada.
 
     Returns
     -------
-    BetfairProvider
+    TheOddsAPIProvider
         Instancia do provider de odds.
     """
-    from football_moneyball.adapters.odds_provider import BetfairProvider
-    return BetfairProvider()
+    from football_moneyball.adapters.odds_provider import TheOddsAPIProvider
+    return TheOddsAPIProvider()
 
 
 def get_visualizer():
