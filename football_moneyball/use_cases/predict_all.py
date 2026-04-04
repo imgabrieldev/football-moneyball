@@ -97,6 +97,8 @@ class PredictAll:
         # Persistir previsoes no banco
         if predictions:
             self.repo.save_predictions(predictions)
+            # Save to immutable history
+            self.repo.save_prediction_history(predictions)
             logger.info(f"{len(predictions)} previsoes salvas no banco")
 
         return {

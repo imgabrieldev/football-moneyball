@@ -287,6 +287,58 @@ class BacktestResult(Base):
     config = mapped_column(JSONB)
 
 
+class PredictionHistory(Base):
+    """Historico imutavel de previsoes."""
+
+    __tablename__ = "prediction_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_key: Mapped[Optional[int]] = mapped_column(Integer)
+    home_team: Mapped[Optional[str]] = mapped_column(String)
+    away_team: Mapped[Optional[str]] = mapped_column(String)
+    commence_time: Mapped[Optional[str]] = mapped_column(String)
+    round: Mapped[Optional[int]] = mapped_column(Integer)
+    home_win_prob: Mapped[Optional[float]] = mapped_column(Float)
+    draw_prob: Mapped[Optional[float]] = mapped_column(Float)
+    away_win_prob: Mapped[Optional[float]] = mapped_column(Float)
+    over_25_prob: Mapped[Optional[float]] = mapped_column(Float)
+    btts_prob: Mapped[Optional[float]] = mapped_column(Float)
+    home_xg_expected: Mapped[Optional[float]] = mapped_column(Float)
+    away_xg_expected: Mapped[Optional[float]] = mapped_column(Float)
+    most_likely_score: Mapped[Optional[str]] = mapped_column(String)
+    predicted_at: Mapped[Optional[str]] = mapped_column(String)
+    actual_home_goals: Mapped[Optional[int]] = mapped_column(Integer)
+    actual_away_goals: Mapped[Optional[int]] = mapped_column(Integer)
+    actual_outcome: Mapped[Optional[str]] = mapped_column(String)
+    resolved_at: Mapped[Optional[str]] = mapped_column(String)
+    status: Mapped[Optional[str]] = mapped_column(String, default="pending")
+    correct_1x2: Mapped[Optional[bool]] = mapped_column(Integer)  # SQLite compat
+    correct_over_under: Mapped[Optional[bool]] = mapped_column(Integer)
+    brier_score: Mapped[Optional[float]] = mapped_column(Float)
+
+
+class ValueBetHistory(Base):
+    """Historico imutavel de value bets."""
+
+    __tablename__ = "value_bet_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    prediction_id: Mapped[Optional[int]] = mapped_column(Integer)
+    match_key: Mapped[Optional[int]] = mapped_column(Integer)
+    home_team: Mapped[Optional[str]] = mapped_column(String)
+    away_team: Mapped[Optional[str]] = mapped_column(String)
+    market: Mapped[Optional[str]] = mapped_column(String)
+    outcome: Mapped[Optional[str]] = mapped_column(String)
+    model_prob: Mapped[Optional[float]] = mapped_column(Float)
+    best_odds: Mapped[Optional[float]] = mapped_column(Float)
+    bookmaker: Mapped[Optional[str]] = mapped_column(String)
+    edge: Mapped[Optional[float]] = mapped_column(Float)
+    kelly_stake: Mapped[Optional[float]] = mapped_column(Float)
+    won: Mapped[Optional[bool]] = mapped_column(Integer)
+    profit: Mapped[Optional[float]] = mapped_column(Float)
+    resolved_at: Mapped[Optional[str]] = mapped_column(String)
+
+
 # ---------------------------------------------------------------------------
 # Engine / Session
 # ---------------------------------------------------------------------------

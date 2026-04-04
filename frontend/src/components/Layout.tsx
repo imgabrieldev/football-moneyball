@@ -1,10 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, TrendingUp, Users, Target, CheckCircle, Home } from 'lucide-react';
+import { BarChart3, TrendingUp, Users, Target, CheckCircle, Home, History } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Home },
   { path: '/predictions', label: 'Previsões', icon: BarChart3 },
   { path: '/value-bets', label: 'Value Bets', icon: TrendingUp },
+  { path: '/track-record', label: 'Track Record', icon: History },
   { path: '/players', label: 'Jogadores', icon: Users },
   { path: '/backtest', label: 'Backtest', icon: Target },
   { path: '/verify', label: 'Verificação', icon: CheckCircle },
@@ -41,7 +42,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </div>
         <div className="p-4 border-t border-gray-800 text-xs text-gray-600">
-          Brasileirão 2026 • v0.7.0
+          Brasileirão 2026 • v0.9.0
         </div>
       </nav>
 

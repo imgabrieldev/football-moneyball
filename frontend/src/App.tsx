@@ -7,6 +7,7 @@ import { ValueBets } from './pages/ValueBets';
 import { Players } from './pages/Players';
 import { Backtest } from './pages/Backtest';
 import { Verify } from './pages/Verify';
+import { TrackRecord } from './pages/TrackRecord';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/players" element={<Players />} />
             <Route path="/backtest" element={<Backtest />} />
             <Route path="/verify" element={<Verify />} />
+            <Route path="/track-record" element={<TrackRecord />} />
           </Routes>
         </Layout>
       </BrowserRouter>

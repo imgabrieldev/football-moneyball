@@ -1308,6 +1308,113 @@ def predict_all_cmd(
 
 
 # ---------------------------------------------------------------------------
+# v0.9.0 — Track Record commands
+# ---------------------------------------------------------------------------
+
+@app.command("resolve")
+def resolve_cmd() -> None:
+    """Resolve previsoes pendentes com resultados reais."""
+    from football_moneyball.use_cases.resolve_predictions import ResolvePredictions
+
+    repo = get_repository()
+    try:
+        with console.status("[bold green]Resolvendo previsoes..."):
+            result = ResolvePredictions(repo).execute()
+
+        console.print(Panel(
+            f"Resolvidos: {result['resolved']}\n"
+            f"Pendentes: {result['still_pending']}\n"
+            f"Erros: {result.get('errors', 0)}",
+            title="Resolve", border_style="green",
+        ))
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro ao resolver previsoes: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+@app.command("track-record")
+def track_record_cmd() -> None:
+    """Mostra track record do modelo."""
+    from football_moneyball.domain.track_record import calculate_track_record
+
+    repo = get_repository()
+    try:
+        preds = repo.get_prediction_history()
+        tr = calculate_track_record(preds)
+
+        # Summary panel
+        if tr["resolved"] == 0:
+            console.print(Panel(
+                f"Total: {tr['total']} previsoes ({tr['pending']} pendentes)\n"
+                f"Nenhuma previsao resolvida ainda. Rode [bold]moneyball resolve[/bold] primeiro.",
+                title="Track Record", border_style="yellow",
+            ))
+            return
+
+        acc_color = "green" if tr["accuracy_1x2"] > 40 else "red"
+        brier_color = "green" if tr["avg_brier"] < 0.25 else "yellow"
+        console.print(Panel(
+            f"Total: {tr['total']} previsoes ({tr['resolved']} resolvidas, {tr['pending']} pendentes)\n"
+            f"[{acc_color}]Accuracy 1X2: {tr['accuracy_1x2']:.1f}%[/{acc_color}]\n"
+            f"Accuracy O/U: {tr['accuracy_over_under']:.1f}%\n"
+            f"[{brier_color}]Brier: {tr['avg_brier']:.4f}[/{brier_color}]",
+            title="Track Record", border_style="cyan",
+        ))
+
+        # By round table
+        if tr["by_round"]:
+            round_table = Table(title="Acuracia por Rodada")
+            round_table.add_column("Rodada", justify="right")
+            round_table.add_column("Jogos", justify="right")
+            round_table.add_column("1X2 %", justify="right")
+            round_table.add_column("O/U %", justify="right")
+            round_table.add_column("Brier", justify="right")
+
+            for rd in tr["by_round"]:
+                round_table.add_row(
+                    str(rd["round"]),
+                    str(rd["total"]),
+                    f"{rd['accuracy_1x2']:.0f}%",
+                    f"{rd['accuracy_ou']:.0f}%",
+                    f"{rd['avg_brier']:.4f}",
+                )
+            console.print(round_table)
+
+        # By team table (top 10 by total)
+        if tr["by_team"]:
+            sorted_teams = sorted(
+                tr["by_team"].items(),
+                key=lambda x: x[1]["total"],
+                reverse=True,
+            )[:10]
+
+            team_table = Table(title="Acuracia por Time (Top 10)")
+            team_table.add_column("Time", style="bold")
+            team_table.add_column("Jogos", justify="right")
+            team_table.add_column("1X2 %", justify="right")
+
+            for team, stats in sorted_teams:
+                team_table.add_row(
+                    team[:25],
+                    str(stats["total"]),
+                    f"{stats['accuracy_1x2']:.0f}%",
+                )
+            console.print(team_table)
+
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro ao exibir track record: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

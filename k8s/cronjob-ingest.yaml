@@ -15,7 +15,7 @@ spec:
           containers:
             - name: ingest
               image: moneyball:0.6.0
-              command: ["moneyball", "ingest", "--provider", "sofascore"]
+              command: ["sh", "-c", "moneyball ingest --provider sofascore && moneyball resolve"]
               env:
                 - name: DATABASE_URL
                   value: "postgresql://moneyball:moneyball@postgres:5432/moneyball"

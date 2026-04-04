@@ -21,8 +21,10 @@ from football_moneyball.adapters.orm import (
     PassNetwork,
     PlayerEmbedding,
     PlayerMatchMetrics,
+    PredictionHistory,
     PressingMetrics,
     Stint,
+    ValueBetHistory,
 )
 
 
@@ -656,6 +658,160 @@ class PostgresRepository:
             }
             for r in rows
         ]
+
+    # =====================================================================
+    # v0.9.0 — Track Record
+    # =====================================================================
+
+    def save_prediction_history(self, predictions: list[dict]) -> None:
+        """Insere previsoes no historico imutavel.
+
+        Nao atualiza registros existentes — cada snapshot e imutavel.
+        Usa match_key + predicted_at para evitar duplicatas exatas.
+        """
+        from datetime import datetime
+
+        def _float(v):
+            if v is None:
+                return None
+            return float(v)
+
+        now = datetime.now().isoformat()
+
+        for pred in predictions:
+            home = str(pred.get("home_team", ""))
+            away = str(pred.get("away_team", ""))
+            match_key = abs(hash(f"{home}-{away}")) % (10**9)
+            predicted_at = pred.get("predicted_at", now)
+
+            # Avoid exact duplicates (same match + same prediction timestamp)
+            existing = (
+                self._session.query(PredictionHistory)
+                .filter(
+                    PredictionHistory.match_key == match_key,
+                    PredictionHistory.predicted_at == predicted_at,
+                )
+                .first()
+            )
+            if existing:
+                continue
+
+            row = PredictionHistory(
+                match_key=match_key,
+                home_team=home,
+                away_team=away,
+                commence_time=str(pred.get("commence_time", "")),
+                round=pred.get("round"),
+                home_win_prob=_float(pred.get("home_win_prob")),
+                draw_prob=_float(pred.get("draw_prob")),
+                away_win_prob=_float(pred.get("away_win_prob")),
+                over_25_prob=_float(pred.get("over_25")),
+                btts_prob=_float(pred.get("btts_prob")),
+                home_xg_expected=_float(pred.get("home_xg")),
+                away_xg_expected=_float(pred.get("away_xg")),
+                most_likely_score=str(pred.get("most_likely_score", "")),
+                predicted_at=predicted_at,
+                status="pending",
+            )
+            self._session.add(row)
+
+        self._session.commit()
+
+    def save_value_bet_history(self, bets: list[dict]) -> None:
+        """Insere value bets no historico imutavel."""
+        for bet in bets:
+            home = str(bet.get("home_team", ""))
+            away = str(bet.get("away_team", ""))
+            match_key = abs(hash(f"{home}-{away}")) % (10**9)
+
+            row = ValueBetHistory(
+                prediction_id=bet.get("prediction_id"),
+                match_key=match_key,
+                home_team=home,
+                away_team=away,
+                market=bet.get("market"),
+                outcome=bet.get("outcome"),
+                model_prob=float(bet["model_prob"]) if bet.get("model_prob") is not None else None,
+                best_odds=float(bet["best_odds"]) if bet.get("best_odds") is not None else None,
+                bookmaker=bet.get("bookmaker"),
+                edge=float(bet["edge"]) if bet.get("edge") is not None else None,
+                kelly_stake=float(bet.get("kelly_stake") or bet.get("stake") or 0),
+            )
+            self._session.add(row)
+
+        self._session.commit()
+
+    def get_pending_predictions(self) -> list[dict]:
+        """Retorna previsoes pendentes (status='pending')."""
+        rows = (
+            self._session.query(PredictionHistory)
+            .filter(PredictionHistory.status == "pending")
+            .all()
+        )
+        columns = [c.key for c in PredictionHistory.__table__.columns]
+        return [{col: getattr(r, col) for col in columns} for r in rows]
+
+    def resolve_prediction_in_db(self, pred_id: int, result: dict) -> None:
+        """Atualiza previsao com resultado real."""
+        from datetime import datetime
+
+        row = self._session.get(PredictionHistory, pred_id)
+        if not row:
+            return
+        row.actual_home_goals = result.get("actual_home_goals")
+        row.actual_away_goals = result.get("actual_away_goals")
+        row.actual_outcome = result.get("actual_outcome")
+        row.correct_1x2 = result.get("correct_1x2")
+        row.correct_over_under = result.get("correct_over_under")
+        row.brier_score = result.get("brier_score")
+        row.status = "resolved"
+        row.resolved_at = datetime.now().isoformat()
+        self._session.commit()
+
+    def resolve_value_bet_in_db(self, bet_id: int, result: dict) -> None:
+        """Atualiza value bet com resultado real."""
+        from datetime import datetime
+
+        row = self._session.get(ValueBetHistory, bet_id)
+        if not row:
+            return
+        row.won = result.get("won")
+        row.profit = result.get("profit")
+        row.resolved_at = datetime.now().isoformat()
+        self._session.commit()
+
+    def get_prediction_history(
+        self,
+        round_num: int | None = None,
+        status: str | None = None,
+    ) -> list[dict]:
+        """Retorna historico de previsoes com filtros opcionais."""
+        query = self._session.query(PredictionHistory)
+        if round_num is not None:
+            query = query.filter(PredictionHistory.round == round_num)
+        if status is not None:
+            query = query.filter(PredictionHistory.status == status)
+        query = query.order_by(PredictionHistory.id.desc())
+
+        rows = query.all()
+        columns = [c.key for c in PredictionHistory.__table__.columns]
+        return [{col: getattr(r, col) for col in columns} for r in rows]
+
+    def get_value_bet_history(self) -> list[dict]:
+        """Retorna todo o historico de value bets."""
+        rows = (
+            self._session.query(ValueBetHistory)
+            .order_by(ValueBetHistory.id.desc())
+            .all()
+        )
+        columns = [c.key for c in ValueBetHistory.__table__.columns]
+        return [{col: getattr(r, col) for col in columns} for r in rows]
+
+    def get_track_record_summary(self) -> dict:
+        """Retorna estatisticas agregadas do track record."""
+        from football_moneyball.domain.track_record import calculate_track_record
+        preds = self.get_prediction_history()
+        return calculate_track_record(preds)
 
     # =====================================================================
     # v0.6.0 — Odds persistence

@@ -234,6 +234,37 @@ def get_value_bets(
         return {"error": str(e), "value_bets": []}
 
 
+@app.get("/api/track-record")
+def get_track_record(repo=Depends(get_repo)):
+    """Resumo do track record."""
+    from football_moneyball.domain.track_record import calculate_track_record
+    preds = repo.get_prediction_history()
+    return calculate_track_record(preds)
+
+
+@app.get("/api/track-record/predictions")
+def get_track_record_predictions(
+    round: int | None = None,
+    status: str | None = None,
+    repo=Depends(get_repo),
+):
+    """Retorna historico de previsoes com filtros opcionais."""
+    return repo.get_prediction_history(round_num=round, status=status)
+
+
+@app.get("/api/track-record/value-bets")
+def get_track_record_value_bets(repo=Depends(get_repo)):
+    """Retorna historico de value bets."""
+    return repo.get_value_bet_history()
+
+
+@app.post("/api/resolve")
+def trigger_resolve(repo=Depends(get_repo)):
+    """Resolve previsoes pendentes com resultados reais."""
+    from football_moneyball.use_cases.resolve_predictions import ResolvePredictions
+    return ResolvePredictions(repo).execute()
+
+
 @app.get("/api/verify")
 def get_verify(
     competition: str = "Brasileirão Série A",
