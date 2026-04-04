@@ -188,6 +188,118 @@ class SofascoreProvider:
         rows = [self._convert_match_info(m) for m in all_matches]
         return pd.DataFrame(rows)
 
+    def get_match_stats(self, match_id: int) -> dict[str, Any] | None:
+        """Busca estatisticas team-level da partida via event/{id}/statistics.
+
+        Returns
+        -------
+        dict | None
+            Com chaves: home_corners, away_corners, home_yellow, away_yellow,
+            home_red, away_red, home_fouls, away_fouls, home_shots, away_shots,
+            home_sot, away_sot, home_saves, away_saves, home_possession,
+            away_possession. None se nao disponivel.
+        """
+        data = self._api_get(f"event/{match_id}/statistics")
+        if not data or "statistics" not in data:
+            return None
+
+        # Pegar periodo ALL
+        all_period = None
+        for period in data.get("statistics", []):
+            if period.get("period") == "ALL":
+                all_period = period
+                break
+        if not all_period:
+            return None
+
+        # Flatten all statisticsItems
+        items: dict[str, tuple[float, float]] = {}
+        for group in all_period.get("groups", []):
+            for item in group.get("statisticsItems", []):
+                key = item.get("key", "")
+                home_v = item.get("homeValue", 0) or 0
+                away_v = item.get("awayValue", 0) or 0
+                items[key] = (float(home_v), float(away_v))
+
+        def _pair(key: str) -> tuple[int, int]:
+            h, a = items.get(key, (0, 0))
+            return int(h), int(a)
+
+        def _pair_f(key: str) -> tuple[float, float]:
+            h, a = items.get(key, (0.0, 0.0))
+            return float(h), float(a)
+
+        home_corners, away_corners = _pair("cornerKicks")
+        home_yellow, away_yellow = _pair("yellowCards")
+        home_red, away_red = _pair("redCards")
+        home_fouls, away_fouls = _pair("fouls")
+        home_shots, away_shots = _pair("totalShotsOnGoal")
+        home_saves, away_saves = _pair("goalkeeperSaves")
+        home_poss, away_poss = _pair_f("ballPossession")
+        # SoT = goals + saves (saves are by opponent's keeper)
+        home_sot = away_saves
+        away_sot = home_saves
+
+        return {
+            "home_corners": home_corners, "away_corners": away_corners,
+            "home_yellow": home_yellow, "away_yellow": away_yellow,
+            "home_red": home_red, "away_red": away_red,
+            "home_fouls": home_fouls, "away_fouls": away_fouls,
+            "home_shots": home_shots, "away_shots": away_shots,
+            "home_sot": home_sot, "away_sot": away_sot,
+            "home_saves": home_saves, "away_saves": away_saves,
+            "home_possession": home_poss, "away_possession": away_poss,
+        }
+
+    def get_referee_info(self, match_id: int) -> dict[str, Any] | None:
+        """Extrai informacao do arbitro do event/{id}.
+
+        Returns
+        -------
+        dict | None
+            Com chaves: referee_id, name, matches, yellow_total, red_total,
+            yellowred_total, cards_per_game. None se nao disponivel.
+        """
+        data = self._api_get(f"event/{match_id}")
+        if not data or "event" not in data:
+            return None
+        ref = data["event"].get("referee")
+        if not ref:
+            return None
+
+        matches = int(ref.get("games", 0) or 0)
+        yellow = int(ref.get("yellowCards", 0) or 0)
+        red = int(ref.get("redCards", 0) or 0)
+        yellowred = int(ref.get("yellowRedCards", 0) or 0)
+        total_cards = yellow + yellowred + red
+        cards_per_game = (total_cards / matches) if matches > 0 else 0.0
+
+        return {
+            "referee_id": int(ref.get("id", 0) or 0),
+            "name": str(ref.get("name", "")),
+            "matches": matches,
+            "yellow_total": yellow,
+            "red_total": red,
+            "yellowred_total": yellowred,
+            "cards_per_game": round(cards_per_game, 3),
+        }
+
+    def get_ht_scores(self, match_id: int) -> tuple[int, int]:
+        """Extrai HT scores (period1) do event/{id}.
+
+        Returns
+        -------
+        tuple[int, int]
+            (home_ht, away_ht). (0, 0) se nao disponivel.
+        """
+        data = self._api_get(f"event/{match_id}")
+        if not data or "event" not in data:
+            return (0, 0)
+        event = data["event"]
+        home_ht = int(event.get("homeScore", {}).get("period1", 0) or 0)
+        away_ht = int(event.get("awayScore", {}).get("period1", 0) or 0)
+        return (home_ht, away_ht)
+
     def get_match_info(self, match_id: int) -> dict[str, Any]:
         """Retorna metadados de uma partida especifica.
 

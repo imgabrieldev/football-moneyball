@@ -1221,6 +1221,89 @@ def ingest(
         repo.close()
 
 
+@app.command("train-models")
+def train_models_cmd(
+    season: str = typer.Option("2026", "--season"),
+    models_dir: str = typer.Option(
+        "football_moneyball/models", "--models-dir",
+    ),
+) -> None:
+    """Treina modelos ML (GBR) pra gols, corners, cartoes."""
+    from football_moneyball.use_cases.train_ml_models import TrainMLModels
+
+    repo = get_repository()
+    try:
+        with console.status("[bold green]Treinando modelos..."):
+            result = TrainMLModels(repo, models_dir).execute(season)
+
+        if "error" in result:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(1)
+
+        table = Table(title="Modelos ML treinados", border_style="green")
+        table.add_column("Target")
+        table.add_column("MAE (CV)")
+        table.add_column("Amostras")
+        table.add_column("Arquivo")
+        for target, metrics in result.items():
+            if "error" in metrics:
+                table.add_row(target, "—", "—", f"[red]{metrics['error']}[/red]")
+            else:
+                table.add_row(
+                    target,
+                    f"{metrics['cv_mae_mean']:.3f} ± {metrics['cv_mae_std']:.3f}",
+                    str(metrics["n_samples"]),
+                    metrics.get("saved_to", ""),
+                )
+        console.print(table)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
+@app.command("ingest-lineups")
+def ingest_lineups_cmd(
+    match_ids: str = typer.Option("", "--match-ids", help="IDs separados por virgula"),
+    provider_name: str = typer.Option("sofascore", "--provider"),
+) -> None:
+    """Ingere escalacoes confirmadas (lineups) de partidas."""
+    from football_moneyball.use_cases.ingest_lineups import IngestLineups
+
+    if not match_ids:
+        console.print("[red]Informe --match-ids com IDs separados por virgula[/red]")
+        raise typer.Exit(1)
+
+    ids = [int(x) for x in match_ids.split(",") if x.strip()]
+    repo = get_repository()
+    try:
+        provider = get_provider(provider_name)
+        with console.status("[bold green]Ingerindo lineups..."):
+            result = IngestLineups(provider, repo).execute(match_ids=ids)
+
+        if "error" in result:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(1)
+
+        console.print(Panel(
+            f"Lineups ingeridas: {result['ingested']}\n"
+            f"Erros: {result['errors']}",
+            title="Ingest Lineups", border_style="green",
+        ))
+        for d in result.get("details", []):
+            console.print(f"  {d['home']} vs {d['away']}: {d['players']} jogadores")
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
 @app.command("snapshot-odds")
 def snapshot_odds() -> None:
     """Busca odds atuais e salva no PostgreSQL."""

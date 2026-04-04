@@ -72,6 +72,23 @@ class IngestMatches:
                     if not metrics_df.empty:
                         self.repo.save_player_metrics(metrics_df, mid)
 
+                # v1.2.0 — Ingerir match_stats + referee + HT score
+                try:
+                    if hasattr(self.provider, "get_match_stats"):
+                        stats = self.provider.get_match_stats(mid)
+                        if stats:
+                            ht_home, ht_away = self.provider.get_ht_scores(mid)
+                            stats["ht_home_score"] = ht_home
+                            stats["ht_away_score"] = ht_away
+                            referee = self.provider.get_referee_info(mid)
+                            if referee:
+                                stats["referee_id"] = referee["referee_id"]
+                                stats["referee_name"] = referee["name"]
+                                self.repo.save_referee_stats(referee)
+                            self.repo.save_match_stats(mid, stats)
+                except Exception as e:
+                    logger.warning(f"Erro match_stats {mid}: {e}")
+
                 ingested += 1
                 logger.info(f"Ingerido: {match_info.get('home_team', '')} vs {match_info.get('away_team', '')} (ID: {mid})")
 

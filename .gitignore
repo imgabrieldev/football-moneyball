@@ -11,3 +11,4 @@ data/
 data/
 frontend/node_modules/
 frontend/dist/
+football_moneyball/models/*.pkl

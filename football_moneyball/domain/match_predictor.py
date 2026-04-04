@@ -442,6 +442,122 @@ def predict_match(
 
 
 # ---------------------------------------------------------------------------
+# 6b. Pipeline Player-Aware (v1.1.0)
+# ---------------------------------------------------------------------------
+
+def predict_match_player_aware(
+    home_team: str,
+    away_team: str,
+    all_match_data: pd.DataFrame,
+    home_player_aggregates: pd.DataFrame,
+    away_player_aggregates: pd.DataFrame,
+    n_simulations: int = 10_000,
+    seed: int | None = None,
+    last_n: int = 5,
+) -> dict:
+    """Pipeline player-aware — λ derivado dos 11 titulares provaveis.
+
+    Substitui o path team-level: em vez de `league_avg × attack_strength`,
+    usa `Σ(xG/90 dos 11 titulares × weight)` como base do lambda. Mantem
+    todos os outros ajustes (defesa oposta, home advantage, regressao).
+
+    Parameters
+    ----------
+    home_team, away_team : str
+        Nomes dos times.
+    all_match_data : pd.DataFrame
+        Dados team-level pra calcular home_advantage e defesa oposta.
+        Colunas: match_id, team, goals, xg, is_home.
+    home_player_aggregates, away_player_aggregates : pd.DataFrame
+        Agregacoes por jogador dos ultimos N jogos. Colunas:
+        player_id, player_name, matches_played, minutes_total, xg_total.
+    n_simulations : int
+        Numero de simulacoes Monte Carlo.
+    seed : int, optional
+        Seed para reprodutibilidade.
+    last_n : int
+        Janela de referencia usada no probable_xi (default 5).
+
+    Returns
+    -------
+    dict
+        Mesmas chaves do predict_match() + metadados player-aware:
+        lineup_type, home_xi, away_xi, home_team_attack, away_team_attack.
+    """
+    from football_moneyball.domain.lineup_prediction import probable_xi
+    from football_moneyball.domain.player_lambda import (
+        team_lambda_from_players, summarize_xi,
+    )
+
+    # 0. Fuzzy match team names (odds API retorna sem acentos)
+    home_team = _fuzzy_match_team(home_team, all_match_data["team"].unique())
+    away_team = _fuzzy_match_team(away_team, all_match_data["team"].unique())
+
+    # 1. Medias da liga (pra home_advantage)
+    league = calculate_league_averages(all_match_data)
+
+    # 2. Defesa de cada time (team-level — player-level nao tem xGA)
+    home_data = all_match_data[all_match_data["team"] == home_team]
+    away_data = all_match_data[all_match_data["team"] == away_team]
+    home_str = calculate_team_strength(home_data, all_match_data, league)
+    away_str = calculate_team_strength(away_data, all_match_data, league)
+
+    # 3. Probable XI de cada time
+    home_xi = probable_xi(home_player_aggregates, last_n_matches=last_n)
+    away_xi = probable_xi(away_player_aggregates, last_n_matches=last_n)
+
+    # 4. λ = Σ(xG/90 × weight) × opp_defense
+    home_xg = team_lambda_from_players(home_xi, away_str["defense_strength"])
+    away_xg = team_lambda_from_players(away_xi, home_str["defense_strength"])
+
+    # 5. Regressao a media (ainda a nivel de time)
+    home_xg = apply_regression_to_mean(
+        home_xg,
+        home_str["goals_total"],
+        home_str["xg_total"],
+        home_str["matches"],
+    )
+    away_xg = apply_regression_to_mean(
+        away_xg,
+        away_str["goals_total"],
+        away_str["xg_total"],
+        away_str["matches"],
+    )
+
+    # 6. Home advantage (dinamico)
+    home_xg += league["home_advantage"]
+
+    # Clamp
+    home_xg = max(home_xg, 0.15)
+    away_xg = max(away_xg, 0.15)
+
+    # 7. Monte Carlo
+    result = simulate_match(home_xg, away_xg, n_simulations, seed)
+
+    # Metadados player-aware
+    home_team_attack = float((home_xi["xg_per_90"] * home_xi["weight"]).sum()) if not home_xi.empty else 0.0
+    away_team_attack = float((away_xi["xg_per_90"] * away_xi["weight"]).sum()) if not away_xi.empty else 0.0
+
+    result["lineup_type"] = "probable-xi"
+    result["model_version"] = "v1.1.0"
+    result["home_xi"] = summarize_xi(home_xi)
+    result["away_xi"] = summarize_xi(away_xi)
+    result["pipeline"] = {
+        "league_avg_xg": league["avg_xg"],
+        "home_advantage": league["home_advantage"],
+        "home_team_attack": round(home_team_attack, 3),
+        "away_team_attack": round(away_team_attack, 3),
+        "home_defense": home_str["defense_strength"],
+        "away_defense": away_str["defense_strength"],
+        "n_matches_league": league["n_matches"],
+        "home_xi_size": len(home_xi),
+        "away_xi_size": len(away_xi),
+    }
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # 7. Fuzzy team name matching
 # ---------------------------------------------------------------------------
 

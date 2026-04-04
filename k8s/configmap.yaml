@@ -139,7 +139,12 @@ data:
         btts_prob REAL,
         most_likely_score VARCHAR(10),
         simulations INTEGER,
-        predicted_at VARCHAR(50)
+        predicted_at VARCHAR(50),
+        commence_time VARCHAR(50),
+        lineup_type VARCHAR(30),
+        model_version VARCHAR(20),
+        multi_markets JSONB,
+        player_props JSONB
     );
 
     CREATE TABLE IF NOT EXISTS value_bets (
@@ -173,7 +178,49 @@ data:
         config JSONB DEFAULT '{}'
     );
 
+    CREATE TABLE IF NOT EXISTS match_stats (
+        match_id INTEGER PRIMARY KEY REFERENCES matches(match_id),
+        home_corners INTEGER, away_corners INTEGER,
+        home_yellow INTEGER, away_yellow INTEGER,
+        home_red INTEGER, away_red INTEGER,
+        home_fouls INTEGER, away_fouls INTEGER,
+        home_shots INTEGER, away_shots INTEGER,
+        home_sot INTEGER, away_sot INTEGER,
+        home_saves INTEGER, away_saves INTEGER,
+        home_possession REAL, away_possession REAL,
+        ht_home_score INTEGER, ht_away_score INTEGER,
+        referee_id INTEGER,
+        referee_name VARCHAR(100)
+    );
+
+    CREATE TABLE IF NOT EXISTS referee_stats (
+        referee_id INTEGER PRIMARY KEY,
+        name VARCHAR(100),
+        matches INTEGER,
+        yellow_total INTEGER,
+        red_total INTEGER,
+        yellowred_total INTEGER,
+        cards_per_game REAL,
+        last_updated VARCHAR(50)
+    );
+
+    CREATE TABLE IF NOT EXISTS match_lineups (
+        match_key INTEGER,
+        player_id INTEGER,
+        team VARCHAR(100),
+        side VARCHAR(10),
+        player_name VARCHAR(100),
+        position VARCHAR(5),
+        is_starter INTEGER,
+        jersey_number INTEGER,
+        source VARCHAR(20),
+        fetched_at VARCHAR(50),
+        PRIMARY KEY (match_key, player_id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_value_bets_match ON value_bets(match_id);
     CREATE INDEX IF NOT EXISTS idx_match_odds_match ON match_odds(match_id);
 
     CREATE INDEX IF NOT EXISTS idx_action_values_player ON action_values(player_id);
+
+    CREATE INDEX IF NOT EXISTS idx_match_lineups_team ON match_lineups(team);

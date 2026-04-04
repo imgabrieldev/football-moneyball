@@ -17,12 +17,15 @@ from sqlalchemy.orm import Session
 from football_moneyball.adapters.orm import (
     ActionValue,
     Match,
+    MatchLineup,
     MatchOdds,
+    MatchStats,
     PassNetwork,
     PlayerEmbedding,
     PlayerMatchMetrics,
     PredictionHistory,
     PressingMetrics,
+    RefereeStats,
     Stint,
     ValueBetHistory,
 )
@@ -569,6 +572,129 @@ class PostgresRepository:
             "comp": competition, "season": season,
         })
 
+    def get_player_aggregates(
+        self,
+        team: str,
+        season: str | None = None,
+        last_n: int = 5,
+    ) -> pd.DataFrame:
+        """Retorna agregacao por jogador nos ultimos N jogos do time.
+
+        Usado pelo pipeline player-aware pra construir probable XI e
+        calcular xG/90 individual.
+
+        Parameters
+        ----------
+        team : str
+            Nome do time.
+        season : str, optional
+            Temporada. Se None, todas.
+        last_n : int
+            Quantos jogos recentes considerar.
+
+        Returns
+        -------
+        pd.DataFrame
+            Colunas: player_id, player_name, matches_played, minutes_total,
+            xg_total, xa_total, shots_total, shots_on_target_total,
+            goals_total, assists_total, fouls_total, crosses_total, tackles_total.
+        """
+        query = text("""
+            WITH recent_matches AS (
+                SELECT DISTINCT pmm.match_id, m.match_date
+                FROM player_match_metrics pmm
+                JOIN matches m ON m.match_id = pmm.match_id
+                WHERE pmm.team = :team
+                  AND (:season IS NULL OR m.season = :season)
+                ORDER BY m.match_date DESC, pmm.match_id DESC
+                LIMIT :last_n
+            )
+            SELECT pmm.player_id,
+                   MAX(pmm.player_name) AS player_name,
+                   COUNT(DISTINCT pmm.match_id) AS matches_played,
+                   COALESCE(SUM(pmm.minutes_played), 0) AS minutes_total,
+                   COALESCE(SUM(pmm.xg), 0) AS xg_total,
+                   COALESCE(SUM(pmm.xa), 0) AS xa_total,
+                   COALESCE(SUM(pmm.shots), 0) AS shots_total,
+                   COALESCE(SUM(pmm.shots_on_target), 0) AS shots_on_target_total,
+                   COALESCE(SUM(pmm.goals), 0) AS goals_total,
+                   COALESCE(SUM(pmm.assists), 0) AS assists_total,
+                   COALESCE(SUM(pmm.fouls_committed), 0) AS fouls_total,
+                   COALESCE(SUM(pmm.crosses), 0) AS crosses_total,
+                   COALESCE(SUM(pmm.tackles), 0) AS tackles_total
+            FROM player_match_metrics pmm
+            JOIN recent_matches rm ON rm.match_id = pmm.match_id
+            WHERE pmm.team = :team
+            GROUP BY pmm.player_id
+            ORDER BY minutes_total DESC
+        """)
+        return pd.read_sql(query, self._session.bind, params={
+            "team": team, "season": season, "last_n": last_n,
+        })
+
+    def save_match_lineups(self, lineups: list[dict]) -> None:
+        """Persiste lineups (provaveis ou confirmadas) de partidas.
+
+        Parameters
+        ----------
+        lineups : list[dict]
+            Cada dict: match_key, player_id, team, side, player_name,
+            position, is_starter, jersey_number, source, fetched_at.
+        """
+        from datetime import datetime
+        now = datetime.now().isoformat()
+
+        for row in lineups:
+            data = {
+                "match_key": int(row["match_key"]),
+                "player_id": int(row["player_id"]),
+                "team": str(row.get("team", "")),
+                "side": str(row.get("side", "")),
+                "player_name": str(row.get("player_name", "")),
+                "position": str(row.get("position", "")),
+                "is_starter": int(bool(row.get("is_starter", True))),
+                "jersey_number": int(row.get("jersey_number", 0) or 0),
+                "source": str(row.get("source", "probable")),
+                "fetched_at": str(row.get("fetched_at", now)),
+            }
+            existing = self._session.get(
+                MatchLineup, (data["match_key"], data["player_id"])
+            )
+            if existing:
+                for k, v in data.items():
+                    setattr(existing, k, v)
+            else:
+                self._session.add(MatchLineup(**data))
+        self._session.commit()
+
+    def get_match_lineup(self, match_key: int) -> dict[str, list[dict]]:
+        """Retorna lineup de uma partida indexada por lado.
+
+        Returns
+        -------
+        dict
+            {"home": [...], "away": [...]} com dicts de jogadores.
+            Vazio se nao houver lineup.
+        """
+        rows = (
+            self._session.query(MatchLineup)
+            .filter(MatchLineup.match_key == match_key)
+            .all()
+        )
+        result: dict[str, list[dict]] = {"home": [], "away": []}
+        for r in rows:
+            side = r.side or "home"
+            result.setdefault(side, []).append({
+                "player_id": r.player_id,
+                "player_name": r.player_name,
+                "team": r.team,
+                "position": r.position,
+                "is_starter": bool(r.is_starter),
+                "jersey_number": r.jersey_number,
+                "source": r.source,
+            })
+        return result
+
     def get_team_shots(self, team: str, n_matches: int = 6) -> list[float]:
         """Lista de xG por chute do time nos ultimos N jogos (via action_values)."""
         query = text("""
@@ -633,6 +759,10 @@ class PostgresRepository:
                 "simulations": int(pred.get("simulations", 10000)),
                 "predicted_at": now,
                 "commence_time": str(pred.get("commence_time", "")),
+                "lineup_type": str(pred.get("lineup_type", "team")),
+                "model_version": str(pred.get("model_version", "v1.0.0")),
+                "multi_markets": pred.get("multi_markets"),
+                "player_props": pred.get("player_props"),
             }
             existing = self._session.get(MatchPrediction, match_key)
             if existing:
@@ -655,6 +785,9 @@ class PostgresRepository:
                 "btts_prob": r.btts_prob, "most_likely_score": r.most_likely_score,
                 "simulations": r.simulations, "predicted_at": r.predicted_at,
                 "commence_time": r.commence_time,
+                "lineup_type": r.lineup_type, "model_version": r.model_version,
+                "multi_markets": r.multi_markets,
+                "player_props": r.player_props,
             }
             for r in rows
         ]
@@ -712,6 +845,8 @@ class PostgresRepository:
                 most_likely_score=str(pred.get("most_likely_score", "")),
                 predicted_at=predicted_at,
                 status="pending",
+                lineup_type=str(pred.get("lineup_type", "team")),
+                model_version=str(pred.get("model_version", "v1.0.0")),
             )
             self._session.add(row)
 
@@ -921,6 +1056,228 @@ class PostgresRepository:
                 "point": r.point, "odds": r.odds, "implied_prob": r.implied_prob,
             })
         return [{"name": k, "markets": v} for k, v in bm_dict.items()]
+
+    # =====================================================================
+    # v1.2.0 — Match stats + referee
+    # =====================================================================
+
+    def save_match_stats(self, match_id: int, stats: dict) -> None:
+        """Persiste estatisticas match-level (corners, cards, fouls, HT score)."""
+        data = {
+            "match_id": int(match_id),
+            "home_corners": int(stats.get("home_corners", 0) or 0),
+            "away_corners": int(stats.get("away_corners", 0) or 0),
+            "home_yellow": int(stats.get("home_yellow", 0) or 0),
+            "away_yellow": int(stats.get("away_yellow", 0) or 0),
+            "home_red": int(stats.get("home_red", 0) or 0),
+            "away_red": int(stats.get("away_red", 0) or 0),
+            "home_fouls": int(stats.get("home_fouls", 0) or 0),
+            "away_fouls": int(stats.get("away_fouls", 0) or 0),
+            "home_shots": int(stats.get("home_shots", 0) or 0),
+            "away_shots": int(stats.get("away_shots", 0) or 0),
+            "home_sot": int(stats.get("home_sot", 0) or 0),
+            "away_sot": int(stats.get("away_sot", 0) or 0),
+            "home_saves": int(stats.get("home_saves", 0) or 0),
+            "away_saves": int(stats.get("away_saves", 0) or 0),
+            "home_possession": float(stats.get("home_possession", 0) or 0),
+            "away_possession": float(stats.get("away_possession", 0) or 0),
+            "ht_home_score": int(stats.get("ht_home_score", 0) or 0),
+            "ht_away_score": int(stats.get("ht_away_score", 0) or 0),
+            "referee_id": int(stats.get("referee_id", 0) or 0) or None,
+            "referee_name": str(stats.get("referee_name", "") or ""),
+        }
+        existing = self._session.get(MatchStats, match_id)
+        if existing:
+            for k, v in data.items():
+                setattr(existing, k, v)
+        else:
+            self._session.add(MatchStats(**data))
+        self._session.commit()
+
+    def save_referee_stats(self, referee: dict) -> None:
+        """Upsert de estatisticas de arbitro."""
+        from datetime import datetime
+        rid = int(referee.get("referee_id", 0) or 0)
+        if rid <= 0:
+            return
+        data = {
+            "referee_id": rid,
+            "name": str(referee.get("name", "")),
+            "matches": int(referee.get("matches", 0) or 0),
+            "yellow_total": int(referee.get("yellow_total", 0) or 0),
+            "red_total": int(referee.get("red_total", 0) or 0),
+            "yellowred_total": int(referee.get("yellowred_total", 0) or 0),
+            "cards_per_game": float(referee.get("cards_per_game", 0) or 0),
+            "last_updated": datetime.now().isoformat(),
+        }
+        existing = self._session.get(RefereeStats, rid)
+        if existing:
+            for k, v in data.items():
+                setattr(existing, k, v)
+        else:
+            self._session.add(RefereeStats(**data))
+        self._session.commit()
+
+    def get_team_stats_aggregates(
+        self, team: str, season: str | None = None, last_n: int = 5,
+    ) -> dict:
+        """Retorna medias de goals/xg/corners/cards/shots/fouls do time nos ultimos N jogos.
+
+        Considera tambem o que o time SOFREU (pra calcular opponent factor).
+
+        Returns
+        -------
+        dict
+            Chaves: goals_for, goals_against, xg_for, xg_against,
+            corners_for, corners_against, cards_for, shots_for,
+            shots_against, fouls_committed, matches.
+        """
+        query = text("""
+            WITH recent_matches AS (
+                SELECT m.match_id, m.home_team, m.away_team,
+                       m.home_score, m.away_score,
+                       CASE WHEN m.home_team = :team THEN 'home' ELSE 'away' END AS side
+                FROM matches m
+                WHERE (m.home_team = :team OR m.away_team = :team)
+                  AND (:season IS NULL OR m.season = :season)
+                ORDER BY m.match_date DESC, m.match_id DESC
+                LIMIT :last_n
+            ),
+            xg_per_match AS (
+                SELECT match_id, team, SUM(xg) AS xg
+                FROM player_match_metrics
+                GROUP BY match_id, team
+            )
+            SELECT
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN rm.home_score ELSE rm.away_score END), 0) AS goals_for,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN rm.away_score ELSE rm.home_score END), 0) AS goals_against,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN home_xg.xg ELSE away_xg.xg END), 0) AS xg_for,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN away_xg.xg ELSE home_xg.xg END), 0) AS xg_against,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN ms.home_corners ELSE ms.away_corners END), 0) AS corners_for,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN ms.away_corners ELSE ms.home_corners END), 0) AS corners_against,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN ms.home_yellow + ms.home_red ELSE ms.away_yellow + ms.away_red END), 0) AS cards_for,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN ms.home_shots ELSE ms.away_shots END), 0) AS shots_for,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN ms.away_shots ELSE ms.home_shots END), 0) AS shots_against,
+                COALESCE(AVG(CASE WHEN rm.side = 'home' THEN ms.home_fouls ELSE ms.away_fouls END), 0) AS fouls_committed,
+                COUNT(*) AS matches
+            FROM recent_matches rm
+            LEFT JOIN match_stats ms ON ms.match_id = rm.match_id
+            LEFT JOIN xg_per_match home_xg
+                ON home_xg.match_id = rm.match_id AND home_xg.team = rm.home_team
+            LEFT JOIN xg_per_match away_xg
+                ON away_xg.match_id = rm.match_id AND away_xg.team = rm.away_team
+        """)
+        result = self._session.execute(query, {
+            "team": team, "season": season, "last_n": last_n,
+        }).fetchone()
+        if not result:
+            return {"goals_for": 1.3, "goals_against": 1.3, "xg_for": 1.3,
+                    "xg_against": 1.3, "corners_for": 5.0, "corners_against": 5.0,
+                    "cards_for": 2.0, "shots_for": 10.0, "shots_against": 10.0,
+                    "fouls_committed": 13.0, "matches": 0}
+        return {
+            "goals_for": float(result.goals_for or 0),
+            "goals_against": float(result.goals_against or 0),
+            "xg_for": float(result.xg_for or 0),
+            "xg_against": float(result.xg_against or 0),
+            "corners_for": float(result.corners_for or 0),
+            "corners_against": float(result.corners_against or 0),
+            "cards_for": float(result.cards_for or 0),
+            "shots_for": float(result.shots_for or 0),
+            "shots_against": float(result.shots_against or 0),
+            "fouls_committed": float(result.fouls_committed or 0),
+            "matches": int(result.matches or 0),
+        }
+
+    def get_league_stats_averages(self, season: str | None = None) -> dict:
+        """Retorna medias da liga: corners/jogo, cards/jogo, shots/jogo, HT goals."""
+        query = text("""
+            SELECT
+                COALESCE(AVG(ms.home_corners + ms.away_corners), 10.0) AS corners_per_match,
+                COALESCE(AVG(ms.home_yellow + ms.away_yellow + ms.home_red + ms.away_red), 4.5) AS cards_per_match,
+                COALESCE(AVG(ms.home_shots + ms.away_shots), 20.0) AS shots_per_match,
+                COALESCE(AVG(ms.ht_home_score + ms.ht_away_score), 1.1) AS ht_goals_per_match,
+                COUNT(*) AS matches
+            FROM match_stats ms
+            JOIN matches m ON m.match_id = ms.match_id
+            WHERE (:season IS NULL OR m.season = :season)
+        """)
+        result = self._session.execute(query, {"season": season}).fetchone()
+        if not result or result.matches == 0:
+            return {"corners_per_match": 10.0, "cards_per_match": 4.5,
+                    "shots_per_match": 20.0, "ht_goals_per_match": 1.1,
+                    "matches": 0}
+        return {
+            "corners_per_match": float(result.corners_per_match or 10.0),
+            "cards_per_match": float(result.cards_per_match or 4.5),
+            "shots_per_match": float(result.shots_per_match or 20.0),
+            "ht_goals_per_match": float(result.ht_goals_per_match or 1.1),
+            "matches": int(result.matches or 0),
+        }
+
+    def get_training_dataset(
+        self, season: str | None = None,
+    ) -> pd.DataFrame:
+        """Retorna todas partidas resolvidas com stats pra treino ML.
+
+        Join de matches + match_stats + player_match_metrics (pra xG agregado).
+
+        Returns
+        -------
+        pd.DataFrame
+            Colunas: match_id, match_date, home_team, away_team,
+            home_goals, away_goals, home_xg, away_xg,
+            home_corners, away_corners, home_cards, away_cards.
+        """
+        query = text("""
+            SELECT
+                m.match_id, m.match_date, m.home_team, m.away_team,
+                m.home_score AS home_goals, m.away_score AS away_goals,
+                COALESCE(home_xg.xg, 0) AS home_xg,
+                COALESCE(away_xg.xg, 0) AS away_xg,
+                COALESCE(ms.home_corners, 0) AS home_corners,
+                COALESCE(ms.away_corners, 0) AS away_corners,
+                COALESCE(ms.home_yellow + ms.home_red, 0) AS home_cards,
+                COALESCE(ms.away_yellow + ms.away_red, 0) AS away_cards
+            FROM matches m
+            LEFT JOIN match_stats ms ON ms.match_id = m.match_id
+            LEFT JOIN (
+                SELECT match_id, team, SUM(xg) AS xg
+                FROM player_match_metrics
+                GROUP BY match_id, team
+            ) home_xg ON home_xg.match_id = m.match_id AND home_xg.team = m.home_team
+            LEFT JOIN (
+                SELECT match_id, team, SUM(xg) AS xg
+                FROM player_match_metrics
+                GROUP BY match_id, team
+            ) away_xg ON away_xg.match_id = m.match_id AND away_xg.team = m.away_team
+            WHERE (:season IS NULL OR m.season = :season)
+              AND m.home_score IS NOT NULL
+              AND m.away_score IS NOT NULL
+            ORDER BY m.match_date, m.match_id
+        """)
+        return pd.read_sql(query, self._session.bind, params={"season": season})
+
+    def get_referee_stats_by_name(self, name: str) -> dict | None:
+        """Busca arbitro por nome (fuzzy: LIKE)."""
+        if not name:
+            return None
+        row = (
+            self._session.query(RefereeStats)
+            .filter(RefereeStats.name.ilike(f"%{name}%"))
+            .first()
+        )
+        if not row:
+            return None
+        return {
+            "referee_id": row.referee_id,
+            "name": row.name,
+            "matches": row.matches,
+            "yellow_total": row.yellow_total,
+            "red_total": row.red_total,
+            "yellowred_total": row.yellowred_total,
+            "cards_per_game": row.cards_per_game,
+        }
 
     # =====================================================================
     # Lifecycle

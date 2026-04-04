@@ -246,6 +246,13 @@ class MatchPrediction(Base):
     simulations: Mapped[Optional[int]] = mapped_column(Integer)
     predicted_at: Mapped[Optional[str]] = mapped_column(String)
     commence_time: Mapped[Optional[str]] = mapped_column(String)
+    # v1.1.0 — player-aware
+    lineup_type: Mapped[Optional[str]] = mapped_column(String)
+    model_version: Mapped[Optional[str]] = mapped_column(String)
+    # v1.2.0 — multi-output markets (corners, cards, shots, HT)
+    multi_markets = mapped_column(JSONB)
+    # v1.4.0 — player props (marcador, assistencia, chutes individuais)
+    player_props = mapped_column(JSONB)
 
 
 class ValueBet(Base):
@@ -315,6 +322,69 @@ class PredictionHistory(Base):
     correct_1x2: Mapped[Optional[bool]] = mapped_column(Integer)  # SQLite compat
     correct_over_under: Mapped[Optional[bool]] = mapped_column(Integer)
     brier_score: Mapped[Optional[float]] = mapped_column(Float)
+    # v1.1.0 — player-aware
+    lineup_type: Mapped[Optional[str]] = mapped_column(String)
+    model_version: Mapped[Optional[str]] = mapped_column(String)
+
+
+class MatchStats(Base):
+    """Estatisticas match-level: corners, cards, fouls, shots, HT score."""
+
+    __tablename__ = "match_stats"
+
+    match_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    home_corners: Mapped[Optional[int]] = mapped_column(Integer)
+    away_corners: Mapped[Optional[int]] = mapped_column(Integer)
+    home_yellow: Mapped[Optional[int]] = mapped_column(Integer)
+    away_yellow: Mapped[Optional[int]] = mapped_column(Integer)
+    home_red: Mapped[Optional[int]] = mapped_column(Integer)
+    away_red: Mapped[Optional[int]] = mapped_column(Integer)
+    home_fouls: Mapped[Optional[int]] = mapped_column(Integer)
+    away_fouls: Mapped[Optional[int]] = mapped_column(Integer)
+    home_shots: Mapped[Optional[int]] = mapped_column(Integer)
+    away_shots: Mapped[Optional[int]] = mapped_column(Integer)
+    home_sot: Mapped[Optional[int]] = mapped_column(Integer)
+    away_sot: Mapped[Optional[int]] = mapped_column(Integer)
+    home_saves: Mapped[Optional[int]] = mapped_column(Integer)
+    away_saves: Mapped[Optional[int]] = mapped_column(Integer)
+    home_possession: Mapped[Optional[float]] = mapped_column(Float)
+    away_possession: Mapped[Optional[float]] = mapped_column(Float)
+    ht_home_score: Mapped[Optional[int]] = mapped_column(Integer)
+    ht_away_score: Mapped[Optional[int]] = mapped_column(Integer)
+    referee_id: Mapped[Optional[int]] = mapped_column(Integer)
+    referee_name: Mapped[Optional[str]] = mapped_column(String)
+
+
+class RefereeStats(Base):
+    """Estatisticas de arbitros (totais de carreira via Sofascore)."""
+
+    __tablename__ = "referee_stats"
+
+    referee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[Optional[str]] = mapped_column(String)
+    matches: Mapped[Optional[int]] = mapped_column(Integer)
+    yellow_total: Mapped[Optional[int]] = mapped_column(Integer)
+    red_total: Mapped[Optional[int]] = mapped_column(Integer)
+    yellowred_total: Mapped[Optional[int]] = mapped_column(Integer)
+    cards_per_game: Mapped[Optional[float]] = mapped_column(Float)
+    last_updated: Mapped[Optional[str]] = mapped_column(String)
+
+
+class MatchLineup(Base):
+    """Escalacao (provavel ou confirmada) de uma partida."""
+
+    __tablename__ = "match_lineups"
+
+    match_key: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team: Mapped[Optional[str]] = mapped_column(String)
+    side: Mapped[Optional[str]] = mapped_column(String)  # 'home' | 'away'
+    player_name: Mapped[Optional[str]] = mapped_column(String)
+    position: Mapped[Optional[str]] = mapped_column(String)
+    is_starter: Mapped[Optional[bool]] = mapped_column(Integer)  # SQLite compat
+    jersey_number: Mapped[Optional[int]] = mapped_column(Integer)
+    source: Mapped[Optional[str]] = mapped_column(String)  # 'probable' | 'confirmed'
+    fetched_at: Mapped[Optional[str]] = mapped_column(String)
 
 
 class ValueBetHistory(Base):
@@ -355,5 +425,39 @@ def get_session() -> Session:
 
 
 def init_db(engine) -> None:
-    """Cria todas as tabelas definidas nos modelos ORM."""
+    """Cria todas as tabelas definidas nos modelos ORM e aplica migracoes."""
     Base.metadata.create_all(engine)
+    apply_migrations(engine)
+
+
+# ---------------------------------------------------------------------------
+# Migracoes idempotentes (ALTER TABLE em tabelas existentes)
+# ---------------------------------------------------------------------------
+
+def apply_migrations(engine) -> None:
+    """Aplica ALTER TABLEs idempotentes em tabelas existentes.
+
+    Use quando adicionar colunas novas em tabelas ja criadas. PostgreSQL
+    16 suporta ``ADD COLUMN IF NOT EXISTS`` nativamente.
+    """
+    migrations = [
+        # v1.1.0 — player-aware predictions
+        "ALTER TABLE prediction_history ADD COLUMN IF NOT EXISTS lineup_type VARCHAR",
+        "ALTER TABLE prediction_history ADD COLUMN IF NOT EXISTS model_version VARCHAR",
+        "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS lineup_type VARCHAR",
+        "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS model_version VARCHAR",
+        # v1.2.0
+        "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS multi_markets JSONB",
+        # v1.4.0
+        "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS player_props JSONB",
+    ]
+
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                from sqlalchemy import text
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                # Ignora erros (tabela ainda nao existe, etc)
+                conn.rollback()

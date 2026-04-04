@@ -78,7 +78,7 @@ export function Predictions() {
               <div key={i} className={`bg-gray-900 rounded-lg border ${confColor} p-4`}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-lg">{pred.home_team}</span>
                       <span className="text-gray-600">vs</span>
                       <span className="font-bold text-lg">{pred.away_team}</span>
@@ -87,6 +87,21 @@ export function Predictions() {
                           {new Date(pred.commence_time).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                           {' '}
                           {new Date(pred.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                      {pred.lineup_type === 'confirmed' && (
+                        <span className="text-xs bg-green-900/40 text-green-300 border border-green-800 px-2 py-0.5 rounded">
+                          Escalação confirmada
+                        </span>
+                      )}
+                      {pred.lineup_type === 'probable-xi' && (
+                        <span className="text-xs bg-blue-900/40 text-blue-300 border border-blue-800 px-2 py-0.5 rounded" title="Modelo usa os 11 jogadores mais usados dos últimos 5 jogos">
+                          Provável escalação
+                        </span>
+                      )}
+                      {pred.lineup_type === 'team' && (
+                        <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded" title="Modelo usa média do time, não dos jogadores">
+                          Modelo time
                         </span>
                       )}
                     </div>
@@ -184,6 +199,100 @@ export function Predictions() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                )}
+
+                {/* v1.2.0: Multi-markets (corners, cards, HT) */}
+                {pred.multi_markets && (
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    {/* Escanteios */}
+                    {pred.multi_markets.corners && (
+                      <div className="bg-gray-800/50 rounded-lg p-2.5">
+                        <div className="text-gray-500 font-medium mb-2">Escanteios no jogo</div>
+                        {pred.multi_markets.corners.slice(0, 4).map((ou: any) => {
+                          const dominant = ou.over_prob > ou.under_prob ? 'over' : 'under';
+                          return (
+                            <div key={ou.line} className="flex justify-between py-0.5">
+                              <span className={dominant === 'over' ? 'text-green-400' : 'text-gray-500'}>
+                                {dominant === 'over' ? 'Mais de' : 'Menos de'} {ou.line}
+                              </span>
+                              <span className={dominant === 'over' ? 'text-green-400 font-medium' : 'text-gray-400'}>
+                                {(Math.max(ou.over_prob, ou.under_prob) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Cartões */}
+                    {pred.multi_markets.cards && (
+                      <div className="bg-gray-800/50 rounded-lg p-2.5">
+                        <div className="text-gray-500 font-medium mb-2">Cartões no jogo</div>
+                        {pred.multi_markets.cards.slice(0, 4).map((ou: any) => {
+                          const dominant = ou.over_prob > ou.under_prob ? 'over' : 'under';
+                          return (
+                            <div key={ou.line} className="flex justify-between py-0.5">
+                              <span className={dominant === 'over' ? 'text-yellow-400' : 'text-gray-500'}>
+                                {dominant === 'over' ? 'Mais de' : 'Menos de'} {ou.line}
+                              </span>
+                              <span className={dominant === 'over' ? 'text-yellow-400 font-medium' : 'text-gray-400'}>
+                                {(Math.max(ou.over_prob, ou.under_prob) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* HT Result */}
+                    {pred.multi_markets.ht_result && (
+                      <div className="bg-gray-800/50 rounded-lg p-2.5">
+                        <div className="text-gray-500 font-medium mb-2">Quem vence no 1º tempo?</div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="text-gray-400">{pred.home_team}</span>
+                          <span className="text-gray-300">{(pred.multi_markets.ht_result.home_prob*100).toFixed(0)}%</span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="text-gray-400">Empate HT</span>
+                          <span className="text-gray-300">{(pred.multi_markets.ht_result.draw_prob*100).toFixed(0)}%</span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="text-gray-400">{pred.away_team}</span>
+                          <span className="text-gray-300">{(pred.multi_markets.ht_result.away_prob*100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* v1.4.0: Player Props */}
+                {pred.player_props && (pred.player_props.home?.length > 0 || pred.player_props.away?.length > 0) && (
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    {/* Home players */}
+                    <div className="bg-gray-800/50 rounded-lg p-2.5">
+                      <div className="text-gray-500 font-medium mb-2">Quem marca pelo {pred.home_team}?</div>
+                      {pred.player_props.home?.slice(0, 4).map((p: any) => (
+                        <div key={p.player_id} className="flex justify-between py-0.5">
+                          <span className="text-gray-300 truncate mr-2">{p.player_name}</span>
+                          <span className={(p.goal_prob || 0) > 0.3 ? 'text-green-400 font-medium' : 'text-gray-400'}>
+                            {((p.goal_prob || 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Away players */}
+                    <div className="bg-gray-800/50 rounded-lg p-2.5">
+                      <div className="text-gray-500 font-medium mb-2">Quem marca pelo {pred.away_team}?</div>
+                      {pred.player_props.away?.slice(0, 4).map((p: any) => (
+                        <div key={p.player_id} className="flex justify-between py-0.5">
+                          <span className="text-gray-300 truncate mr-2">{p.player_name}</span>
+                          <span className={(p.goal_prob || 0) > 0.3 ? 'text-green-400 font-medium' : 'text-gray-400'}>
+                            {((p.goal_prob || 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
