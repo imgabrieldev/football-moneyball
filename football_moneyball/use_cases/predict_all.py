@@ -129,10 +129,18 @@ class PredictAll:
                 home_aggs = self.repo.get_player_aggregates(home, season, last_n=5)
                 away_aggs = self.repo.get_player_aggregates(away, season, last_n=5)
 
-                # Rho calibrado (se disponivel) ou default -0.10
+                # Parâmetros de score sampling do calibration.pkl
                 _rho = (
                     self._calibration.get("dixon_coles_rho", -0.10)
                     if self._calibration else -0.10
+                )
+                _lambda3 = (
+                    self._calibration.get("bivariate_lambda3", 0.10)
+                    if self._calibration else 0.10
+                )
+                _score_method = (
+                    self._calibration.get("score_method", "bivariate")
+                    if self._calibration else "bivariate"
                 )
 
                 if (
@@ -146,6 +154,8 @@ class PredictAll:
                         home_player_aggregates=home_aggs,
                         away_player_aggregates=away_aggs,
                         dixon_coles_rho=_rho,
+                        score_method=_score_method,
+                        bivariate_lambda3=_lambda3,
                     )
                 else:
                     # Fallback: path team-level v1.0.0
@@ -158,6 +168,8 @@ class PredictAll:
                         home_shots=home_shots or None,
                         away_shots=away_shots or None,
                         dixon_coles_rho=_rho,
+                        score_method=_score_method,
+                        bivariate_lambda3=_lambda3,
                     )
                     pred["lineup_type"] = "team"
                     pred["model_version"] = "v1.0.0"

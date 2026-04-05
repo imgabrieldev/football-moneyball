@@ -6,6 +6,7 @@ from football_moneyball.domain.calibration import (
     IsotonicCalibrator,
     PlattParams,
     TemperatureScaler,
+    bivariate_poisson_score_matrix,
     calibrate_1x2,
     calibrate_1x2_isotonic,
     calibrate_1x2_temperature,
@@ -15,8 +16,10 @@ from football_moneyball.domain.calibration import (
     dixon_coles_tau,
     fit_dixon_coles_rho,
     fit_isotonic_binary,
+    fit_lambda3,
     fit_platt_binary,
     fit_temperature,
+    sample_scores_bivariate,
     sample_scores_dixon_coles,
 )
 
@@ -387,3 +390,80 @@ class TestComputeECE:
         probs = np.zeros((0, 3))
         y = np.zeros((0, 3))
         assert compute_ece(probs, y) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Bivariate Poisson diagonal-inflated (v1.12.0)
+# ---------------------------------------------------------------------------
+
+class TestBivariatePoissonScoreMatrix:
+    def test_sums_to_one(self):
+        m = bivariate_poisson_score_matrix(1.5, 1.0, lambda3=0.10)
+        assert abs(m.sum() - 1.0) < 1e-9
+
+    def test_draw_inflation_vs_independent(self):
+        indep = bivariate_poisson_score_matrix(1.5, 1.0, lambda3=0.0)
+        inflated = bivariate_poisson_score_matrix(1.5, 1.0, lambda3=0.15)
+        draw_indep = sum(indep[i, i] for i in range(11))
+        draw_inflated = sum(inflated[i, i] for i in range(11))
+        assert draw_inflated > draw_indep
+
+    def test_lambda3_zero_equals_independent_poisson(self):
+        biv = bivariate_poisson_score_matrix(1.5, 1.0, lambda3=0.0)
+        indep = dixon_coles_score_matrix(1.5, 1.0, rho=0.0)
+        assert np.allclose(biv, indep, atol=1e-6)
+
+    def test_shape(self):
+        m = bivariate_poisson_score_matrix(1.5, 1.0, lambda3=0.10, max_goals=8)
+        assert m.shape == (9, 9)
+
+    def test_non_negative(self):
+        m = bivariate_poisson_score_matrix(2.0, 0.5, lambda3=0.20)
+        assert np.all(m >= 0)
+
+
+class TestSampleScoresBivariate:
+    def test_shape(self):
+        h, a = sample_scores_bivariate(1.5, 1.0, lambda3=0.10, n_simulations=100, seed=0)
+        assert h.shape == (100,)
+        assert a.shape == (100,)
+
+    def test_mean_near_lambda(self):
+        h, a = sample_scores_bivariate(1.5, 1.0, lambda3=0.10, n_simulations=50_000, seed=42)
+        assert abs(h.mean() - 1.5) < 0.05
+        assert abs(a.mean() - 1.0) < 0.05
+
+    def test_seed_reproducible(self):
+        h1, a1 = sample_scores_bivariate(1.5, 1.0, lambda3=0.10, n_simulations=100, seed=7)
+        h2, a2 = sample_scores_bivariate(1.5, 1.0, lambda3=0.10, n_simulations=100, seed=7)
+        assert np.array_equal(h1, h2)
+        assert np.array_equal(a1, a2)
+
+    def test_more_draws_than_independent(self):
+        h_biv, a_biv = sample_scores_bivariate(1.5, 1.0, lambda3=0.15, n_simulations=100_000, seed=0)
+        h_ind, a_ind = sample_scores_bivariate(1.5, 1.0, lambda3=0.0, n_simulations=100_000, seed=0)
+        draws_biv = (h_biv == a_biv).mean()
+        draws_ind = (h_ind == a_ind).mean()
+        assert draws_biv > draws_ind
+
+
+class TestFitLambda3:
+    def test_recovers_lambda3_from_synthetic(self):
+        # Gerar dados com lambda3=0.12
+        rng = np.random.default_rng(42)
+        matches = []
+        for _ in range(300):
+            lh, la = rng.uniform(0.8, 2.0), rng.uniform(0.5, 1.5)
+            l3_true = 0.12
+            x1 = rng.poisson(max(lh - l3_true, 0.05))
+            x2 = rng.poisson(max(la - l3_true, 0.05))
+            x3 = rng.poisson(l3_true)
+            matches.append((lh, la, int(x1 + x3), int(x2 + x3)))
+        fitted = fit_lambda3(matches)
+        assert 0.05 < fitted < 0.25  # within reasonable range
+
+    def test_zero_draws_gives_small_lambda3(self):
+        # Sem empates → lambda3 deve ser baixo
+        matches = [(1.5, 1.0, 3, 0)] * 50 + [(1.5, 1.0, 0, 2)] * 50
+        fitted = fit_lambda3(matches)
+        assert fitted < 0.10

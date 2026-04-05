@@ -123,6 +123,110 @@ def fit_dixon_coles_rho(
 
 
 # ---------------------------------------------------------------------------
+# Bivariate Poisson diagonal-inflated (Karlis & Ntzoufras, 2003)
+# ---------------------------------------------------------------------------
+
+def bivariate_poisson_score_matrix(
+    home_xg: float,
+    away_xg: float,
+    lambda3: float = 0.10,
+    max_goals: int = 10,
+) -> np.ndarray:
+    """PMF conjunta via bivariate Poisson diagonal-inflated.
+
+    X = X1 + X3,  Y = X2 + X3  onde X1~Poi(λ1), X2~Poi(λ2), X3~Poi(λ3).
+    λ1 = max(home_xg - λ3, 0.05), λ2 = max(away_xg - λ3, 0.05).
+
+    λ3 > 0 infla P(X=Y) naturalmente (empates), sem distorcer o resto.
+
+    Returns
+    -------
+    np.ndarray
+        Matriz (max_goals+1, max_goals+1).
+    """
+    lam3 = max(float(lambda3), 0.0)
+    lam1 = max(float(home_xg) - lam3, 0.05)
+    lam2 = max(float(away_xg) - lam3, 0.05)
+
+    n = max_goals + 1
+    joint = np.zeros((n, n), dtype=np.float64)
+
+    # P(X=x, Y=y) = Σ_{k=0}^{min(x,y)} P(X1=x-k) P(X2=y-k) P(X3=k)
+    pmf1 = poisson.pmf(np.arange(n), lam1)
+    pmf2 = poisson.pmf(np.arange(n), lam2)
+    pmf3 = poisson.pmf(np.arange(n), lam3)
+
+    for k in range(n):
+        if pmf3[k] < 1e-15:
+            break
+        for x in range(k, n):
+            for y in range(k, n):
+                joint[x, y] += pmf1[x - k] * pmf2[y - k] * pmf3[k]
+
+    total = joint.sum()
+    if total > 0:
+        joint /= total
+    return joint
+
+
+def sample_scores_bivariate(
+    home_xg: float,
+    away_xg: float,
+    lambda3: float = 0.10,
+    n_simulations: int = 10_000,
+    seed: int | None = None,
+    max_goals: int = 10,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Amostra (home_goals, away_goals) da distribuição bivariate Poisson."""
+    rng = np.random.default_rng(seed)
+    matrix = bivariate_poisson_score_matrix(home_xg, away_xg, lambda3, max_goals)
+    flat = matrix.flatten()
+    flat = flat / flat.sum()
+
+    indices = rng.choice(len(flat), size=n_simulations, p=flat)
+    n_cols = max_goals + 1
+    home_goals = indices // n_cols
+    away_goals = indices % n_cols
+    return home_goals.astype(np.int64), away_goals.astype(np.int64)
+
+
+def bivariate_poisson_log_likelihood(
+    matches: list[tuple[float, float, int, int]],
+    lambda3: float,
+    max_goals: int = 10,
+) -> float:
+    """Log-likelihood de λ3 dado matches [(λh, λa, goals_h, goals_a)]."""
+    ll = 0.0
+    for home_xg, away_xg, gh, ga in matches:
+        matrix = bivariate_poisson_score_matrix(home_xg, away_xg, lambda3, max_goals)
+        x = min(int(gh), max_goals)
+        y = min(int(ga), max_goals)
+        p = matrix[x, y]
+        if p > 0:
+            ll += np.log(p)
+        else:
+            ll += -1e9
+    return ll
+
+
+def fit_lambda3(
+    matches: list[tuple[float, float, int, int]],
+    bounds: tuple[float, float] = (0.0, 0.40),
+) -> float:
+    """Fitta λ3 via MLE. Recebe list[(home_xg, away_xg, home_goals, away_goals)]."""
+    def neg_ll(lam3: float) -> float:
+        return -bivariate_poisson_log_likelihood(matches, lam3)
+
+    result = minimize_scalar(
+        neg_ll,
+        bounds=bounds,
+        method="bounded",
+        options={"xatol": 1e-4},
+    )
+    return float(result.x)
+
+
+# ---------------------------------------------------------------------------
 # Platt scaling
 # ---------------------------------------------------------------------------
 

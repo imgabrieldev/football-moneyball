@@ -20,6 +20,7 @@ from football_moneyball.domain.calibration import (
     compute_ece,
     fit_dixon_coles_rho,
     fit_isotonic_binary,
+    fit_lambda3,
     fit_platt_binary,
     fit_temperature,
 )
@@ -109,9 +110,16 @@ class FitCalibration:
         if not all_recs:
             return {"error": "Sem dados para calibração."}
 
-        # Dixon-Coles ρ (MLE analítico, independe do método de calibração)
+        # Dixon-Coles ρ + Bivariate λ₃ (MLE, independe do método de calibração)
         matches = [(r["home_xg"], r["away_xg"], r["hg"], r["ag"]) for r in all_recs]
         rho = fit_dixon_coles_rho(matches)
+        lambda3 = fit_lambda3(matches)
+        # Auto-select score method: bivariate se lambda3 significativo, senão DC
+        score_method = "bivariate" if lambda3 > 0.02 else "dixon-coles"
+        logger.info(
+            f"Score params: rho={rho:.4f}, lambda3={lambda3:.4f}, "
+            f"score_method={score_method}"
+        )
 
         # Monta raw probs + labels one-hot
         raw = np.array([[r["p_home"], r["p_draw"], r["p_away"]] for r in all_recs])
@@ -181,6 +189,8 @@ class FitCalibration:
         calib: dict[str, Any] = {
             "method": chosen,
             "dixon_coles_rho": rho,
+            "bivariate_lambda3": lambda3,
+            "score_method": score_method,
             # Platt sempre salvo (backward compat + fallback)
             "platt_home": {"a": p_home_full.a, "b": p_home_full.b},
             "platt_draw": {"a": p_draw_full.a, "b": p_draw_full.b},
@@ -240,7 +250,9 @@ class FitCalibration:
 
         return {
             "method": chosen,
+            "score_method": score_method,
             "rho": rho,
+            "lambda3": lambda3,
             "n_samples": n,
             "n_train": cut,
             "n_val": n - cut,

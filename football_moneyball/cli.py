@@ -1309,8 +1309,10 @@ def fit_calibration_cmd(
 
         console.print(Panel(
             f"[bold]Calibracao fittada[/bold]\n\n"
-            f"Metodo escolhido: [bold green]{result['method']}[/bold green]\n"
-            f"Dixon-Coles rho: {result['rho']:.4f}\n"
+            f"Metodo calibracao: [bold green]{result['method']}[/bold green]\n"
+            f"Score method: {result.get('score_method', 'dixon-coles')}\n"
+            f"Dixon-Coles rho: {result['rho']:.4f} | "
+            f"Bivariate lambda3: {result.get('lambda3', 0):.4f}\n"
             f"Amostras: {result['n_samples']} (train={result['n_train']}, val={result['n_val']})\n"
             f"Por temporada: {result['per_season']}\n\n"
             f"{cv_table}\n"

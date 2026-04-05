@@ -277,12 +277,15 @@ def simulate_match(
     n_simulations: int = 10_000,
     seed: int | None = None,
     dixon_coles_rho: float | None = -0.10,
+    score_method: str = "dixon-coles",
+    bivariate_lambda3: float = 0.10,
 ) -> dict:
-    """Simula uma partida N vezes via Monte Carlo + Poisson (com correcao Dixon-Coles).
+    """Simula uma partida N vezes via Monte Carlo.
 
-    Sorteia gols de cada time a partir da distribuicao conjunta corrigida
-    pelo fator tau(x,y) do Dixon-Coles (1997), que calibra placares baixos
-    onde Poisson independente subestima empates.
+    Suporta 3 motores de sampling:
+    - ``"bivariate"``: bivariate Poisson diagonal-inflated (Karlis & Ntzoufras 2003)
+    - ``"dixon-coles"``: Poisson independente + correcao tau (Dixon & Coles 1997)
+    - ``"poisson"``: Poisson independente puro
 
     Parameters
     ----------
@@ -293,8 +296,11 @@ def simulate_match(
     seed : int, optional
         Seed para reprodutibilidade.
     dixon_coles_rho : float | None
-        Parametro de correcao (negativo = mais empates). None desativa a correcao
-        (reverte pra Poisson independente).
+        Parametro ρ (Dixon-Coles). Ignorado se score_method != "dixon-coles".
+    score_method : str
+        Motor de sampling: "bivariate", "dixon-coles", "poisson".
+    bivariate_lambda3 : float
+        Parametro λ3 (bivariate Poisson). Ignorado se score_method != "bivariate".
 
     Returns
     -------
@@ -303,7 +309,12 @@ def simulate_match(
     """
     rng = np.random.default_rng(seed)
 
-    if dixon_coles_rho is not None:
+    if score_method == "bivariate":
+        from football_moneyball.domain.calibration import sample_scores_bivariate
+        home_goals, away_goals = sample_scores_bivariate(
+            home_xg, away_xg, bivariate_lambda3, n_simulations, seed=seed,
+        )
+    elif score_method == "dixon-coles" and dixon_coles_rho is not None:
         from football_moneyball.domain.calibration import sample_scores_dixon_coles
         home_goals, away_goals = sample_scores_dixon_coles(
             home_xg, away_xg, dixon_coles_rho, n_simulations, seed=seed,
@@ -367,6 +378,8 @@ def predict_match(
     n_simulations: int = 10_000,
     seed: int | None = None,
     dixon_coles_rho: float | None = -0.10,
+    score_method: str = "dixon-coles",
+    bivariate_lambda3: float = 0.10,
 ) -> dict:
     """Pipeline completo de previsao — calcula TUDO do DataFrame.
 
@@ -440,7 +453,9 @@ def predict_match(
 
     # 7. Monte Carlo
     result = simulate_match(home_xg, away_xg, n_simulations, seed,
-                            dixon_coles_rho=dixon_coles_rho)
+                            dixon_coles_rho=dixon_coles_rho,
+                            score_method=score_method,
+                            bivariate_lambda3=bivariate_lambda3)
 
     # Metadados do pipeline
     result["pipeline"] = {
@@ -470,6 +485,8 @@ def predict_match_player_aware(
     seed: int | None = None,
     last_n: int = 5,
     dixon_coles_rho: float | None = -0.10,
+    score_method: str = "dixon-coles",
+    bivariate_lambda3: float = 0.10,
 ) -> dict:
     """Pipeline player-aware — λ derivado dos 11 titulares provaveis.
 
@@ -549,7 +566,9 @@ def predict_match_player_aware(
 
     # 7. Monte Carlo
     result = simulate_match(home_xg, away_xg, n_simulations, seed,
-                            dixon_coles_rho=dixon_coles_rho)
+                            dixon_coles_rho=dixon_coles_rho,
+                            score_method=score_method,
+                            bivariate_lambda3=bivariate_lambda3)
 
     # Metadados player-aware
     home_team_attack = float((home_xi["xg_per_90"] * home_xi["weight"]).sum()) if not home_xi.empty else 0.0
