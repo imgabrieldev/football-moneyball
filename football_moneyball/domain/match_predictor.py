@@ -276,11 +276,13 @@ def simulate_match(
     away_xg: float,
     n_simulations: int = 10_000,
     seed: int | None = None,
+    dixon_coles_rho: float | None = -0.10,
 ) -> dict:
-    """Simula uma partida N vezes via Monte Carlo + Poisson.
+    """Simula uma partida N vezes via Monte Carlo + Poisson (com correcao Dixon-Coles).
 
-    Sorteia gols de cada time a partir de distribuicao Poisson com
-    parametro lambda = xG esperado.
+    Sorteia gols de cada time a partir da distribuicao conjunta corrigida
+    pelo fator tau(x,y) do Dixon-Coles (1997), que calibra placares baixos
+    onde Poisson independente subestima empates.
 
     Parameters
     ----------
@@ -290,6 +292,9 @@ def simulate_match(
         Numero de simulacoes.
     seed : int, optional
         Seed para reprodutibilidade.
+    dixon_coles_rho : float | None
+        Parametro de correcao (negativo = mais empates). None desativa a correcao
+        (reverte pra Poisson independente).
 
     Returns
     -------
@@ -298,8 +303,14 @@ def simulate_match(
     """
     rng = np.random.default_rng(seed)
 
-    home_goals = rng.poisson(home_xg, n_simulations)
-    away_goals = rng.poisson(away_xg, n_simulations)
+    if dixon_coles_rho is not None:
+        from football_moneyball.domain.calibration import sample_scores_dixon_coles
+        home_goals, away_goals = sample_scores_dixon_coles(
+            home_xg, away_xg, dixon_coles_rho, n_simulations, seed=seed,
+        )
+    else:
+        home_goals = rng.poisson(home_xg, n_simulations)
+        away_goals = rng.poisson(away_xg, n_simulations)
     total_goals = home_goals + away_goals
 
     home_wins = (home_goals > away_goals).sum()

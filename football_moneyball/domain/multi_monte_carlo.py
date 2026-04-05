@@ -16,8 +16,9 @@ def simulate_full_match(
     lambdas: dict,
     n_simulations: int = 10_000,
     seed: int | None = None,
+    dixon_coles_rho: float | None = -0.10,
 ) -> pd.DataFrame:
-    """Simula N jogos completos.
+    """Simula N jogos completos (gols com correcao Dixon-Coles).
 
     Parameters
     ----------
@@ -31,6 +32,9 @@ def simulate_full_match(
     n_simulations : int
         Numero de simulacoes.
     seed : int, optional
+    dixon_coles_rho : float | None
+        Correcao Dixon-Coles aplicada apenas aos gols (negativo = mais empates).
+        None desativa (reverte pra Poisson independente).
 
     Returns
     -------
@@ -41,8 +45,16 @@ def simulate_full_match(
     """
     rng = np.random.default_rng(seed)
 
-    home_goals = rng.poisson(max(lambdas.get("home_goals", 1.3), 0.1), n_simulations)
-    away_goals = rng.poisson(max(lambdas.get("away_goals", 1.1), 0.1), n_simulations)
+    lam_h = max(lambdas.get("home_goals", 1.3), 0.1)
+    lam_a = max(lambdas.get("away_goals", 1.1), 0.1)
+    if dixon_coles_rho is not None:
+        from football_moneyball.domain.calibration import sample_scores_dixon_coles
+        home_goals, away_goals = sample_scores_dixon_coles(
+            lam_h, lam_a, dixon_coles_rho, n_simulations, seed=seed,
+        )
+    else:
+        home_goals = rng.poisson(lam_h, n_simulations)
+        away_goals = rng.poisson(lam_a, n_simulations)
     home_corners = rng.poisson(max(lambdas.get("home_corners", 5.0), 0.5), n_simulations)
     away_corners = rng.poisson(max(lambdas.get("away_corners", 4.5), 0.5), n_simulations)
     home_cards = rng.poisson(max(lambdas.get("home_cards", 2.0), 0.1), n_simulations)

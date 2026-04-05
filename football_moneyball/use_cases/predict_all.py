@@ -37,7 +37,27 @@ class PredictAll:
         self.repo = repo
         self.odds_provider = odds_provider
         self._ml_models = self._try_load_ml_models()
+        self._calibration = self._try_load_calibration()
         self._elo_ratings: dict[str, float] = {}  # lazy-loaded per season
+
+    def _try_load_calibration(self) -> dict | None:
+        """Carrega calibracao (Dixon-Coles rho + Platt scaling) se existe."""
+        import pickle
+        models_dir = os.getenv("MONEYBALL_MODELS_DIR", "football_moneyball/models")
+        path = os.path.join(models_dir, "calibration.pkl")
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "rb") as f:
+                calib = pickle.load(f)
+            logger.info(
+                f"Calibracao carregada: rho={calib.get('dixon_coles_rho'):.4f}, "
+                f"n_samples={calib.get('n_samples')}"
+            )
+            return calib
+        except Exception as e:
+            logger.warning(f"Erro carregando calibracao: {e}")
+            return None
 
     def _try_load_ml_models(self) -> dict:
         """Carrega modelos ML se existem. Retorna {} se nao treinados."""
@@ -162,6 +182,10 @@ class PredictAll:
                 except Exception as e:
                     logger.debug(f"player_props failed for {home}-{away}: {e}")
 
+                # v1.9.0: Platt scaling calibration em 1x2
+                if self._calibration:
+                    self._apply_platt_calibration(pred)
+
                 predictions.append(pred)
 
                 logger.info(
@@ -184,6 +208,34 @@ class PredictAll:
             "predictions": predictions,
             "total": len(predictions),
         }
+
+    def _apply_platt_calibration(self, pred: dict) -> None:
+        """Aplica Platt scaling 3-class (one-vs-rest) nas probs 1x2."""
+        import numpy as np
+        from football_moneyball.domain.calibration import (
+            PlattParams,
+            calibrate_1x2,
+        )
+
+        if not self._calibration:
+            return
+
+        raw = np.array([
+            pred.get("home_win_prob", 0.33),
+            pred.get("draw_prob", 0.33),
+            pred.get("away_win_prob", 0.33),
+        ])
+
+        p_home = PlattParams(**self._calibration["platt_home"])
+        p_draw = PlattParams(**self._calibration["platt_draw"])
+        p_away = PlattParams(**self._calibration["platt_away"])
+
+        cal = calibrate_1x2(raw, p_home, p_draw, p_away)
+
+        pred["home_win_prob"] = round(float(cal[0]), 4)
+        pred["draw_prob"] = round(float(cal[1]), 4)
+        pred["away_win_prob"] = round(float(cal[2]), 4)
+        pred["calibrated"] = True
 
     def _compute_multi_markets(
         self, home: str, away: str, pred: dict, season: str,

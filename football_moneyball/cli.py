@@ -1277,6 +1277,44 @@ def train_models_cmd(
         repo.close()
 
 
+@app.command("fit-calibration")
+def fit_calibration_cmd(
+    models_dir: str = typer.Option("football_moneyball/models", "--models-dir"),
+    seasons: str = typer.Option("2024,2026", "--seasons", help="Temporadas separadas por virgula"),
+) -> None:
+    """Fitta calibracao (Dixon-Coles rho + Platt scaling) em dados historicos."""
+    from football_moneyball.use_cases.fit_calibration import FitCalibration
+
+    repo = get_repository()
+    try:
+        seasons_list = [s.strip() for s in seasons.split(",")]
+        with console.status("[bold green]Fittando calibracao..."):
+            result = FitCalibration(repo, models_dir).execute(seasons=seasons_list)
+
+        if "error" in result:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(1)
+
+        console.print(Panel(
+            f"[bold]Calibracao fittada[/bold]\n\n"
+            f"Dixon-Coles rho: {result['rho']:.4f}\n"
+            f"Amostras: {result['n_samples']}\n"
+            f"Por temporada: {result['per_season']}\n\n"
+            f"[bold]In-sample metrics:[/bold]\n"
+            f"Brier raw → cal: {result['brier_raw']:.4f} → {result['brier_calibrated']:.4f}\n"
+            f"Accuracy raw → cal: {result['accuracy_raw']:.1f}% → {result['accuracy_calibrated']:.1f}%\n\n"
+            f"Salvo em: {result['saved_to']}",
+            title="Calibration", border_style="green",
+        ))
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
 @app.command("ingest-context")
 def ingest_context_cmd(
     season: str = typer.Option("2026", "--season"),
