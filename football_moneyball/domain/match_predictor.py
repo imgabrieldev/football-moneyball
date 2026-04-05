@@ -51,7 +51,7 @@ def calculate_league_averages(
         return {
             "avg_xg": 1.25, "avg_goals": 1.30,
             "avg_xg_home": 1.40, "avg_xg_away": 1.10,
-            "home_advantage": 0.30, "n_matches": 0,
+            "home_advantage": 0.20, "n_matches": 0,
         }
 
     # Ordenar por match_id (proxy cronologico) e atribuir pesos
@@ -87,7 +87,7 @@ def calculate_league_averages(
         "avg_goals": float(max(avg_goals, 0.5)),
         "avg_xg_home": float(avg_xg_home),
         "avg_xg_away": float(avg_xg_away),
-        "home_advantage": float(max(home_advantage, 0.0)),
+        "home_advantage": float(home_advantage),
         "n_matches": n,
     }
 
@@ -366,6 +366,7 @@ def predict_match(
     away_shots: list[float] | None = None,
     n_simulations: int = 10_000,
     seed: int | None = None,
+    dixon_coles_rho: float | None = -0.10,
 ) -> dict:
     """Pipeline completo de previsao — calcula TUDO do DataFrame.
 
@@ -384,6 +385,8 @@ def predict_match(
     n_simulations : int
         Numero de simulacoes Monte Carlo.
     seed : int, optional
+    dixon_coles_rho : float | None
+        Parametro de correcao Dixon-Coles. None = Poisson independente.
         Seed para reprodutibilidade.
 
     Returns
@@ -436,7 +439,8 @@ def predict_match(
     away_xg = max(away_xg, 0.15)
 
     # 7. Monte Carlo
-    result = simulate_match(home_xg, away_xg, n_simulations, seed)
+    result = simulate_match(home_xg, away_xg, n_simulations, seed,
+                            dixon_coles_rho=dixon_coles_rho)
 
     # Metadados do pipeline
     result["pipeline"] = {
@@ -465,6 +469,7 @@ def predict_match_player_aware(
     n_simulations: int = 10_000,
     seed: int | None = None,
     last_n: int = 5,
+    dixon_coles_rho: float | None = -0.10,
 ) -> dict:
     """Pipeline player-aware — λ derivado dos 11 titulares provaveis.
 
@@ -543,7 +548,8 @@ def predict_match_player_aware(
     away_xg = max(away_xg, 0.15)
 
     # 7. Monte Carlo
-    result = simulate_match(home_xg, away_xg, n_simulations, seed)
+    result = simulate_match(home_xg, away_xg, n_simulations, seed,
+                            dixon_coles_rho=dixon_coles_rho)
 
     # Metadados player-aware
     home_team_attack = float((home_xi["xg_per_90"] * home_xi["weight"]).sum()) if not home_xi.empty else 0.0
