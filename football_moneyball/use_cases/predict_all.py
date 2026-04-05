@@ -186,6 +186,9 @@ class PredictAll:
                 if self._calibration:
                     self._apply_platt_calibration(pred)
 
+                # v1.10.0: Market blending (pós-calibração)
+                self._apply_market_blending(pred, home, away)
+
                 predictions.append(pred)
 
                 logger.info(
@@ -236,6 +239,50 @@ class PredictAll:
         pred["draw_prob"] = round(float(cal[1]), 4)
         pred["away_win_prob"] = round(float(cal[2]), 4)
         pred["calibrated"] = True
+
+    def _apply_market_blending(self, pred: dict, home: str, away: str) -> None:
+        """v1.10.0: Blenda probs do modelo com consensus devigged do mercado.
+
+        Blend ratio alpha=0.65 (65% modelo, 35% mercado) — ajustável.
+        """
+        try:
+            from football_moneyball.domain.market_features import (
+                blend_with_market,
+                consensus_devig,
+            )
+
+            # Busca odds de casas confiáveis (Pinnacle + Betfair têm liquidez)
+            sharp_books = ["pinnacle", "betfair_ex_uk", "matchbook", "smarkets"]
+            odds_list = self.repo.get_market_odds_consensus(
+                home, away, preferred_bookmakers=sharp_books,
+            )
+            # Fallback: qualquer casa
+            if not odds_list:
+                odds_list = self.repo.get_market_odds_consensus(home, away)
+
+            if not odds_list:
+                return
+
+            market = consensus_devig(odds_list)
+            if not market:
+                return
+
+            blended = blend_with_market(
+                {
+                    "home_win_prob": pred.get("home_win_prob", 0.33),
+                    "draw_prob": pred.get("draw_prob", 0.33),
+                    "away_win_prob": pred.get("away_win_prob", 0.33),
+                },
+                market,
+                alpha=0.65,
+            )
+            pred["home_win_prob"] = round(float(blended["home_win_prob"]), 4)
+            pred["draw_prob"] = round(float(blended["draw_prob"]), 4)
+            pred["away_win_prob"] = round(float(blended["away_win_prob"]), 4)
+            pred["market_blended"] = True
+            pred["market_implied"] = {k: round(float(v), 4) for k, v in market.items()}
+        except Exception as e:
+            logger.debug(f"market blending failed: {e}")
 
     def _compute_multi_markets(
         self, home: str, away: str, pred: dict, season: str,
@@ -407,6 +454,25 @@ class PredictAll:
         except Exception:
             pass
 
+        # v1.10.0: H2H + Referee features
+        h2h_home_feats = None
+        h2h_away_feats = None
+        ref_feats = None
+        try:
+            from football_moneyball.domain.h2h_features import compute_h2h_features
+            from football_moneyball.domain.referee_features import (
+                compute_referee_features,
+            )
+            h2h_history = self.repo.get_h2h_history(
+                home_team, away_team, ref_date=commence_time, last_n=5,
+            )
+            h2h_home_feats = compute_h2h_features(h2h_history, home_team, away_team)
+            h2h_away_feats = compute_h2h_features(h2h_history, away_team, home_team)
+            # Referee: sem match_id de futuro, usa None (defaults)
+            ref_feats = compute_referee_features(None)
+        except Exception:
+            pass
+
         league_avg = {
             "goals_per_team": 1.3,
             "corners_per_team": league.get("corners_per_match", 10.0) / 2,
@@ -418,6 +484,7 @@ class PredictAll:
             team_rest_days=home_rest, opp_rest_days=away_rest,
             team_context=home_context, opp_context=away_context,
             team_style=home_style, opp_style=away_style,
+            h2h_features=h2h_home_feats, referee_features=ref_feats,
         )
         X_away = build_context_aware_features(
             away_stats, home_stats, league_avg, is_home=False,
@@ -425,6 +492,7 @@ class PredictAll:
             team_rest_days=away_rest, opp_rest_days=home_rest,
             team_context=away_context, opp_context=home_context,
             team_style=away_style, opp_style=home_style,
+            h2h_features=h2h_away_feats, referee_features=ref_feats,
         )
 
         # Backward compat: se modelo foi treinado com menos features, truncar

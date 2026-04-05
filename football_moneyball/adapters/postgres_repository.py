@@ -2010,6 +2010,143 @@ class PostgresRepository:
         }
 
     # =====================================================================
+    # v1.10.0 — H2H + Referee + Market
+    # =====================================================================
+
+    def get_h2h_history(
+        self,
+        home_team: str,
+        away_team: str,
+        ref_date: str | None = None,
+        last_n: int = 5,
+    ) -> list[dict]:
+        """Retorna últimas N partidas entre os dois times (qualquer mando).
+
+        Parameters
+        ----------
+        home_team, away_team : str
+        ref_date : str | None
+            Data ISO (YYYY-MM-DD). Só considera partidas ANTERIORES a essa data.
+            None = todas as partidas.
+        last_n : int
+            Máximo de partidas a retornar.
+        """
+        home_team = _fuzzy_team_match(self._session, home_team)
+        away_team = _fuzzy_team_match(self._session, away_team)
+
+        query = text("""
+            SELECT home_team, away_team, home_score, away_score, match_date
+            FROM matches
+            WHERE home_score IS NOT NULL
+              AND ((home_team = :home AND away_team = :away)
+                OR (home_team = :away AND away_team = :home))
+              AND (:ref_date IS NULL OR match_date < CAST(:ref_date AS DATE))
+            ORDER BY match_date DESC
+            LIMIT :limit
+        """)
+        ref = ref_date[:10] if ref_date else None
+        try:
+            rows = self._session.execute(query, {
+                "home": home_team, "away": away_team,
+                "ref_date": ref, "limit": last_n,
+            }).fetchall()
+        except Exception:
+            return []
+
+        return [
+            {
+                "home_team": r.home_team,
+                "away_team": r.away_team,
+                "home_goals": r.home_score,
+                "away_goals": r.away_score,
+                "match_date": str(r.match_date),
+            }
+            for r in rows
+        ]
+
+    def get_referee_for_match(self, match_id: int) -> dict | None:
+        """Retorna stats do árbitro designado pra uma partida (via match_stats.referee_id)."""
+        query = text("""
+            SELECT rs.referee_id, rs.name, rs.matches, rs.yellow_total,
+                   rs.red_total, rs.yellowred_total, rs.cards_per_game
+            FROM match_stats ms
+            JOIN referee_stats rs ON ms.referee_id = rs.referee_id
+            WHERE ms.match_id = :mid
+            LIMIT 1
+        """)
+        try:
+            row = self._session.execute(query, {"mid": match_id}).fetchone()
+        except Exception:
+            return None
+        if not row:
+            return None
+        return {
+            "referee_id": row.referee_id,
+            "name": row.name,
+            "matches": row.matches,
+            "yellow_total": row.yellow_total,
+            "red_total": row.red_total,
+            "yellowred_total": row.yellowred_total,
+            "cards_per_game": row.cards_per_game,
+        }
+
+    def get_market_odds_consensus(
+        self,
+        home_team: str,
+        away_team: str,
+        preferred_bookmakers: list[str] | None = None,
+    ) -> list[dict] | None:
+        """Retorna odds h2h de várias casas pra consensus devig.
+
+        Parameters
+        ----------
+        home_team, away_team : str
+        preferred_bookmakers : list[str] | None
+            Se informado, filtra só essas casas. Útil pra usar só Pinnacle/Betfair.
+
+        Returns
+        -------
+        list[dict] com odds_home, odds_draw, odds_away de cada casa. None se vazio.
+        """
+        query_base = """
+            SELECT bookmaker, outcome, odds
+            FROM match_odds
+            WHERE market = 'h2h'
+              AND home_team = :home AND away_team = :away
+        """
+        params = {"home": home_team, "away": away_team}
+        if preferred_bookmakers:
+            query_base += " AND bookmaker = ANY(:books)"
+            params["books"] = preferred_bookmakers
+
+        try:
+            rows = self._session.execute(text(query_base), params).fetchall()
+        except Exception:
+            return None
+
+        if not rows:
+            return None
+
+        # Agrupar por bookmaker
+        by_book: dict[str, dict[str, float]] = {}
+        for r in rows:
+            book = r.bookmaker
+            if book not in by_book:
+                by_book[book] = {}
+            if r.outcome == "Home" or r.outcome == home_team:
+                by_book[book]["odds_home"] = r.odds
+            elif r.outcome == "Away" or r.outcome == away_team:
+                by_book[book]["odds_away"] = r.odds
+            elif r.outcome == "Draw":
+                by_book[book]["odds_draw"] = r.odds
+
+        # Só retorna casas com todos 3 outcomes
+        return [
+            odds for odds in by_book.values()
+            if "odds_home" in odds and "odds_draw" in odds and "odds_away" in odds
+        ]
+
+    # =====================================================================
     # Lifecycle
     # =====================================================================
 

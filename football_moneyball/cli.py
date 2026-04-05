@@ -1235,18 +1235,19 @@ def ingest(
 
 @app.command("train-models")
 def train_models_cmd(
-    season: str = typer.Option("2026", "--season"),
+    season: str = typer.Option("all", "--season", help="Temporada ou 'all' pra todas"),
     models_dir: str = typer.Option(
         "football_moneyball/models", "--models-dir",
     ),
 ) -> None:
     """Treina modelos ML (GBR) pra gols, corners, cartoes."""
     from football_moneyball.use_cases.train_ml_models import TrainMLModels
+    season_arg: str | None = None if season == "all" else season
 
     repo = get_repository()
     try:
         with console.status("[bold green]Treinando modelos..."):
-            result = TrainMLModels(repo, models_dir).execute(season)
+            result = TrainMLModels(repo, models_dir).execute(season_arg)
 
         if "error" in result:
             console.print(f"[red]{result['error']}[/red]")

@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 
-FEATURE_DIM = 48
+FEATURE_DIM = 56
 
 FEATURE_NAMES = [
     # 0-11: existing v1.3.0 (12)
@@ -79,6 +79,15 @@ FEATURE_NAMES = [
     "opp_sot_rate",
     "opp_gk_quality",
     "opp_possession_avg",
+    # 48-55: v1.10.0 H2H + Referee (8)
+    "h2h_home_win_rate",
+    "h2h_away_win_rate",
+    "h2h_draw_rate",
+    "h2h_home_goals_avg",
+    "h2h_away_goals_avg",
+    "ref_cards_per_game",
+    "ref_strictness",
+    "ref_experience",
 ]
 
 
@@ -186,6 +195,8 @@ def build_context_aware_features(
     opp_context: dict | None = None,
     team_style: dict | None = None,
     opp_style: dict | None = None,
+    h2h_features: dict | None = None,
+    referee_features: dict | None = None,
 ) -> np.ndarray:
     """Constroi vetor de 40 features (v1.6.0 = v1.5.0 + 16 context).
 
@@ -274,7 +285,23 @@ def build_context_aware_features(
         float(os_.get("possession_avg", 50.0)),
     ], dtype=np.float64)
 
-    return np.concatenate([base, context_features, style_features])
+    # v1.10.0 — H2H + Referee features (8)
+    h2h = h2h_features or {}
+    ref = referee_features or {}
+    extra_features = np.array([
+        # 48-52: H2H (5)
+        float(h2h.get("h2h_home_win_rate", 0.33)),
+        float(h2h.get("h2h_away_win_rate", 0.33)),
+        float(h2h.get("h2h_draw_rate", 0.25)),
+        float(h2h.get("h2h_home_goals_avg", 1.3)),
+        float(h2h.get("h2h_away_goals_avg", 1.3)),
+        # 53-55: Referee (3)
+        float(ref.get("ref_cards_per_game", 4.2)),
+        float(ref.get("ref_strictness", 0.0)),
+        float(ref.get("ref_experience", 0.0)),
+    ], dtype=np.float64)
+
+    return np.concatenate([base, context_features, style_features, extra_features])
 
 
 def _team_rolling_stats(
@@ -416,17 +443,44 @@ def _compute_rest_days(
         return default
 
 
+def _compute_h2h_from_past(
+    past: pd.DataFrame, home: str, away: str, last_n: int = 5,
+) -> dict[str, float]:
+    """Calcula H2H features do DataFrame passado (leak-proof)."""
+    from football_moneyball.domain.h2h_features import compute_h2h_features
+    h2h_matches = past[
+        ((past["home_team"] == home) & (past["away_team"] == away))
+        | ((past["home_team"] == away) & (past["away_team"] == home))
+    ].tail(last_n)
+    history = [
+        {
+            "home_team": r["home_team"], "away_team": r["away_team"],
+            "home_goals": r.get("home_goals", 0) or 0,
+            "away_goals": r.get("away_goals", 0) or 0,
+        }
+        for _, r in h2h_matches.iterrows()
+    ]
+    return compute_h2h_features(history, home, away)
+
+
 def build_training_dataset(
     matches_with_stats: pd.DataFrame,
     target: str = "goals",
     last_n: int = 5,
     min_prior: int = 3,
+    match_referees: dict[int, dict] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Constroi (X, y) para treino usando APENAS dados anteriores a cada partida.
 
-    v1.5.0 — usa rich features com Elo + rest_days + advanced stats.
+    v1.10.0 — inclui H2H (leak-proof) + referee features.
+
+    Parameters
+    ----------
+    match_referees : dict[int, dict] | None
+        Mapping match_id -> referee_stats dict. Se None, ref features usam defaults.
     """
     from football_moneyball.domain.elo import compute_elo_timeline
+    from football_moneyball.domain.referee_features import compute_referee_features
 
     target_col_home = f"home_{target}"
     target_col_away = f"away_{target}"
@@ -472,12 +526,19 @@ def build_training_dataset(
         home_rest = _compute_rest_days(past, home, match_date)
         away_rest = _compute_rest_days(past, away, match_date)
 
-        # Sample 1: home ataca (com context defaults por enquanto)
+        # v1.10.0: H2H + Referee features (leak-proof)
+        h2h_home = _compute_h2h_from_past(past, home, away, last_n=5)
+        h2h_away = _compute_h2h_from_past(past, away, home, last_n=5)
+        ref_stats = (match_referees or {}).get(match_id)
+        ref_feats = compute_referee_features(ref_stats)
+
+        # Sample 1: home ataca
         X_rows.append(build_context_aware_features(
             home_hist, away_hist, league_avg, is_home=True,
             team_elo=home_elo, opp_elo=away_elo,
             team_rest_days=home_rest, opp_rest_days=away_rest,
             team_context=None, opp_context=None,
+            h2h_features=h2h_home, referee_features=ref_feats,
         ))
         y_rows.append(float(row.get(target_col_home, 0) or 0))
 
@@ -487,6 +548,7 @@ def build_training_dataset(
             team_elo=away_elo, opp_elo=home_elo,
             team_rest_days=away_rest, opp_rest_days=home_rest,
             team_context=None, opp_context=None,
+            h2h_features=h2h_away, referee_features=ref_feats,
         ))
         y_rows.append(float(row.get(target_col_away, 0) or 0))
 

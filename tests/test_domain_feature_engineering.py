@@ -37,8 +37,8 @@ class TestBuildTeamFeatures:
     def test_feature_names_match_dim(self):
         assert len(FEATURE_NAMES) == FEATURE_DIM
 
-    def test_48_features(self):
-        assert FEATURE_DIM == 48
+    def test_56_features(self):
+        assert FEATURE_DIM == 56
 
     def test_team_vs_opp_ordering(self):
         team = {"goals_for": 2.0, "goals_against": 0.5, "xg_for": 1.8,
@@ -83,6 +83,41 @@ class TestBuildTeamFeatures:
         league = {}
         features = build_team_features(team, opp, league, is_home=False)
         assert features.shape == (FEATURE_DIM,)
+
+    def test_h2h_features_slot(self):
+        from football_moneyball.domain.feature_engineering import (
+            build_context_aware_features,
+        )
+        team = {"goals_for": 1.5}
+        opp = {"goals_for": 1.2}
+        league = {"goals_per_team": 1.3}
+        h2h = {
+            "h2h_home_win_rate": 0.8, "h2h_away_win_rate": 0.0,
+            "h2h_draw_rate": 0.2, "h2h_home_goals_avg": 2.4, "h2h_away_goals_avg": 0.6,
+        }
+        features = build_context_aware_features(
+            team, opp, league, is_home=True, h2h_features=h2h,
+        )
+        # H2H wins at index 48
+        assert features[48] == 0.8
+        assert features[49] == 0.0
+        assert features[50] == 0.2
+
+    def test_referee_features_slot(self):
+        from football_moneyball.domain.feature_engineering import (
+            build_context_aware_features,
+        )
+        team = {"goals_for": 1.5}
+        opp = {"goals_for": 1.2}
+        league = {"goals_per_team": 1.3}
+        ref = {"ref_cards_per_game": 5.1, "ref_strictness": 0.25, "ref_experience": 0.9}
+        features = build_context_aware_features(
+            team, opp, league, is_home=True, referee_features=ref,
+        )
+        # Referee at indices 53-55
+        assert features[53] == 5.1
+        assert features[54] == 0.25
+        assert features[55] == 0.9
 
 
 class TestTeamRollingStats:

@@ -28,13 +28,13 @@ class TrainMLModels:
         self.repo = repo
         self.models_dir = models_dir
 
-    def execute(self, season: str = "2026") -> dict[str, Any]:
+    def execute(self, season: str | None = "2026") -> dict[str, Any]:
         """Treina 3 modelos e salva.
 
         Parameters
         ----------
-        season : str
-            Temporada pra treinar.
+        season : str | None
+            Temporada pra treinar. None = todas as temporadas disponiveis.
 
         Returns
         -------
@@ -58,10 +58,15 @@ class TrainMLModels:
                 ),
             }
 
+        # v1.10.0: carregar mapping match_id -> referee_stats pros features
+        match_referees = self._load_match_referees(matches_df)
+
         results: dict[str, Any] = {}
         for target in self.TARGETS:
             try:
-                X, y = build_training_dataset(matches_df, target=target)
+                X, y = build_training_dataset(
+                    matches_df, target=target, match_referees=match_referees,
+                )
                 if len(X) < self.MIN_SAMPLES:
                     results[target] = {
                         "error": f"Apenas {len(X)} amostras. Minimo {self.MIN_SAMPLES}.",
@@ -84,3 +89,17 @@ class TrainMLModels:
                 results[target] = {"error": str(e)}
 
         return results
+
+    def _load_match_referees(self, matches_df) -> dict[int, dict]:
+        """Carrega mapping match_id -> referee_stats pros jogos do dataset."""
+        mapping: dict[int, dict] = {}
+        if matches_df.empty:
+            return mapping
+        for mid in matches_df["match_id"].unique():
+            try:
+                ref = self.repo.get_referee_for_match(int(mid))
+                if ref:
+                    mapping[int(mid)] = ref
+            except Exception:
+                continue
+        return mapping
