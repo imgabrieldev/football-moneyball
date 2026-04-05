@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 
-FEATURE_DIM = 56
+FEATURE_DIM = 59
 
 FEATURE_NAMES = [
     # 0-11: existing v1.3.0 (12)
@@ -88,6 +88,10 @@ FEATURE_NAMES = [
     "ref_cards_per_game",
     "ref_strictness",
     "ref_experience",
+    # 56-58: v1.13.0 Market-implied probs (3)
+    "market_home_prob",
+    "market_draw_prob",
+    "market_away_prob",
 ]
 
 
@@ -197,8 +201,9 @@ def build_context_aware_features(
     opp_style: dict | None = None,
     h2h_features: dict | None = None,
     referee_features: dict | None = None,
+    market_probs: dict | None = None,
 ) -> np.ndarray:
-    """Constroi vetor de 40 features (v1.6.0 = v1.5.0 + 16 context).
+    """Constroi vetor de FEATURE_DIM features.
 
     Parameters
     ----------
@@ -301,7 +306,15 @@ def build_context_aware_features(
         float(ref.get("ref_experience", 0.0)),
     ], dtype=np.float64)
 
-    return np.concatenate([base, context_features, style_features, extra_features])
+    # v1.13.0 — Market-implied probs (3)
+    mkt = market_probs or {}
+    market_features = np.array([
+        float(mkt.get("market_home_prob", 0.40)),
+        float(mkt.get("market_draw_prob", 0.28)),
+        float(mkt.get("market_away_prob", 0.32)),
+    ], dtype=np.float64)
+
+    return np.concatenate([base, context_features, style_features, extra_features, market_features])
 
 
 def _team_rolling_stats(

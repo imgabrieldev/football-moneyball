@@ -206,7 +206,10 @@ class PredictAll:
                 if self._calibration:
                     self._apply_calibration(pred)
 
-                # v1.10.0: Market blending (pós-calibração)
+                # v1.13.0: Draw floor — empírico Brasileirão ~25-26%
+                self._apply_draw_floor(pred)
+
+                # v1.10.0/v1.13.0: Market blending (pós-calibração)
                 self._apply_market_blending(pred, home, away)
 
                 predictions.append(pred)
@@ -279,10 +282,31 @@ class PredictAll:
         pred["calibrated"] = True
         pred["calibration_method"] = method
 
-    def _apply_market_blending(self, pred: dict, home: str, away: str) -> None:
-        """v1.10.0: Blenda probs do modelo com consensus devigged do mercado.
+    def _apply_draw_floor(self, pred: dict, min_draw: float = 0.22) -> None:
+        """v1.13.0: Garante draw probability mínima baseada em taxa empírica.
 
-        Blend ratio alpha=0.65 (65% modelo, 35% mercado) — ajustável.
+        Brasileirão histórico: 25-26% draws. Modelo Poisson sistematicamente
+        subestima. Floor de 22% é conservador (abaixo da taxa real).
+        """
+        d = pred.get("draw_prob", 0.0)
+        if d >= min_draw:
+            return
+        h = pred.get("home_win_prob", 0.33)
+        a = pred.get("away_win_prob", 0.33)
+        # Boost draw, tirar proporcionalmente de H e A
+        deficit = min_draw - d
+        total_ha = h + a
+        if total_ha <= 0:
+            return
+        pred["draw_prob"] = round(min_draw, 4)
+        pred["home_win_prob"] = round(h - deficit * (h / total_ha), 4)
+        pred["away_win_prob"] = round(a - deficit * (a / total_ha), 4)
+
+    def _apply_market_blending(self, pred: dict, home: str, away: str) -> None:
+        """v1.10.0/v1.13.0: Blenda probs do modelo com consensus devigged.
+
+        Blend ratio alpha=0.35 (35% modelo, 65% mercado).
+        Research: mercado é mais calibrado que modelo (RPS 0.20 vs 0.24).
         """
         try:
             from football_moneyball.domain.market_features import (
@@ -313,7 +337,7 @@ class PredictAll:
                     "away_win_prob": pred.get("away_win_prob", 0.33),
                 },
                 market,
-                alpha=0.65,
+                alpha=0.35,
             )
             pred["home_win_prob"] = round(float(blended["home_win_prob"]), 4)
             pred["draw_prob"] = round(float(blended["draw_prob"]), 4)
@@ -337,6 +361,15 @@ class PredictAll:
 
         league_corners_per_team = league["corners_per_match"] / 2
         league_shots_per_team = league["shots_per_match"] / 2
+
+        # v1.13.0: market probs como features pro ML
+        _market_probs = pred.get("market_implied")
+        if _market_probs:
+            _market_probs = {
+                "market_home_prob": _market_probs.get("home_win_prob", 0.40),
+                "market_draw_prob": _market_probs.get("draw_prob", 0.28),
+                "market_away_prob": _market_probs.get("away_win_prob", 0.32),
+            }
 
         ml_used = False
 
@@ -394,6 +427,7 @@ class PredictAll:
                 home_stats, away_stats, league, target="goals",
                 home_team=home, away_team=away,
                 commence_time=pred.get("commence_time", ""), season=season,
+                market_probs=_market_probs,
             )
             # Ensemble: 60% analytical + 40% ML (v1.8.0 com 810 samples)
             # Research: com 10+ samples/feature, ML bate analytical em accuracy
@@ -517,6 +551,9 @@ class PredictAll:
             "corners_per_team": league.get("corners_per_match", 10.0) / 2,
         }
 
+        # v1.13.0: Market-implied probs como features
+        market_probs = kwargs.get("market_probs")
+
         X_home = build_context_aware_features(
             home_stats, away_stats, league_avg, is_home=True,
             team_elo=home_elo, opp_elo=away_elo,
@@ -524,6 +561,7 @@ class PredictAll:
             team_context=home_context, opp_context=away_context,
             team_style=home_style, opp_style=away_style,
             h2h_features=h2h_home_feats, referee_features=ref_feats,
+            market_probs=market_probs,
         )
         X_away = build_context_aware_features(
             away_stats, home_stats, league_avg, is_home=False,
@@ -532,6 +570,7 @@ class PredictAll:
             team_context=away_context, opp_context=home_context,
             team_style=away_style, opp_style=home_style,
             h2h_features=h2h_away_feats, referee_features=ref_feats,
+            market_probs=market_probs,
         )
 
         # Backward compat: se modelo foi treinado com menos features, truncar
