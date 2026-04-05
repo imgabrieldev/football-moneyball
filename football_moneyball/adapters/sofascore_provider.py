@@ -90,7 +90,8 @@ class SofascoreProvider:
 
         Combina dados de lineups (estatisticas individuais) e shotmap
         (finalizacoes) em um DataFrame com colunas compativeis com o
-        schema de PlayerMatchMetrics.
+        schema de PlayerMatchMetrics. Preenche 'team' com nome real
+        buscando via event info (fallback: home/away literal).
         """
         lineups_data = self._api_get(f"event/{match_id}/lineups")
         shotmap_data = self._api_get(f"event/{match_id}/shotmap")
@@ -102,7 +103,19 @@ class SofascoreProvider:
             return pd.DataFrame()
 
         shotmap = (shotmap_data or {}).get("shotmap", [])
-        return self._convert_player_stats(lineups_data, shotmap, match_id)
+        df = self._convert_player_stats(lineups_data, shotmap, match_id)
+
+        # Substituir 'home'/'away' pelos nomes reais dos times
+        if not df.empty and "team" in df.columns:
+            try:
+                info = self.get_match_info(match_id)
+                home_name = info.get("home_team", "")
+                away_name = info.get("away_team", "")
+                if home_name and away_name:
+                    df["team"] = df["team"].replace({"home": home_name, "away": away_name})
+            except Exception:
+                pass
+        return df
 
     def get_lineups(self, match_id: int) -> dict[str, pd.DataFrame]:
         """Retorna os lineups de uma partida, indexados por lado (home/away).

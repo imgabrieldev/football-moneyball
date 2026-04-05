@@ -1191,15 +1191,27 @@ def ingest(
     provider_name: str = typer.Option("sofascore", "--provider", help="Data provider"),
     competition: str = typer.Option("Brasileirão Série A", "--competition"),
     season: str = typer.Option("2026", "--season"),
+    competition_id: int = typer.Option(325, "--competition-id", help="Sofascore tournament_id"),
+    season_id: int = typer.Option(87678, "--season-id", help="Sofascore season_id (2026=87678, 2025=72034, 2024=58766)"),
 ) -> None:
     """Ingere partidas novas do provider (delta — so jogos que faltam)."""
     from football_moneyball.use_cases.ingest_matches import IngestMatches
 
     repo = get_repository()
     try:
-        provider = get_provider(provider_name)
-        with console.status(f"[bold green]Ingerindo de {provider_name}..."):
-            result = IngestMatches(provider, repo).execute(competition, season)
+        if provider_name == "sofascore":
+            from football_moneyball.adapters.sofascore_provider import SofascoreProvider
+            provider = SofascoreProvider(
+                tournament_id=competition_id, season_id=season_id,
+                competition_name=competition, season_name=season,
+            )
+        else:
+            provider = get_provider(provider_name)
+        with console.status(f"[bold green]Ingerindo {season} de {provider_name}..."):
+            result = IngestMatches(provider, repo).execute(
+                competition=competition, season=season,
+                competition_id=competition_id, season_id=season_id,
+            )
 
         if "error" in result:
             console.print(f"[red]{result['error']}[/red]")

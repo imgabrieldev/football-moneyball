@@ -257,9 +257,10 @@ class PredictAll:
                 home_team=home, away_team=away,
                 commence_time=pred.get("commence_time", ""), season=season,
             )
-            # Ensemble: 70% analytical (battle-tested) + 30% ML (emerging signal)
-            lam_home_goals = 0.7 * lam_home_goals_analytical + 0.3 * lam_home_ml
-            lam_away_goals = 0.7 * lam_away_goals_analytical + 0.3 * lam_away_ml
+            # Ensemble: 60% analytical + 40% ML (v1.8.0 com 810 samples)
+            # Research: com 10+ samples/feature, ML bate analytical em accuracy
+            lam_home_goals = 0.6 * lam_home_goals_analytical + 0.4 * lam_home_ml
+            lam_away_goals = 0.6 * lam_away_goals_analytical + 0.4 * lam_away_ml
             ml_used = True
         else:
             lam_home_goals = lam_home_goals_analytical
