@@ -182,9 +182,9 @@ class PredictAll:
                 except Exception as e:
                     logger.debug(f"player_props failed for {home}-{away}: {e}")
 
-                # v1.9.0: Platt scaling calibration em 1x2
+                # v1.9.0/v1.11.0: calibração 1x2 (platt/isotonic/temperature)
                 if self._calibration:
-                    self._apply_platt_calibration(pred)
+                    self._apply_calibration(pred)
 
                 # v1.10.0: Market blending (pós-calibração)
                 self._apply_market_blending(pred, home, away)
@@ -212,33 +212,52 @@ class PredictAll:
             "total": len(predictions),
         }
 
-    def _apply_platt_calibration(self, pred: dict) -> None:
-        """Aplica Platt scaling 3-class (one-vs-rest) nas probs 1x2."""
+    def _apply_calibration(self, pred: dict) -> None:
+        """Aplica calibração 1x2 (platt/isotonic/temperature) baseado no método persistido."""
         import numpy as np
-        from football_moneyball.domain.calibration import (
-            PlattParams,
-            calibrate_1x2,
-        )
 
         if not self._calibration:
             return
 
-        raw = np.array([
+        method = self._calibration.get("method", "platt")
+
+        raw = np.array([[
             pred.get("home_win_prob", 0.33),
             pred.get("draw_prob", 0.33),
             pred.get("away_win_prob", 0.33),
-        ])
+        ]])
 
-        p_home = PlattParams(**self._calibration["platt_home"])
-        p_draw = PlattParams(**self._calibration["platt_draw"])
-        p_away = PlattParams(**self._calibration["platt_away"])
+        if method == "platt":
+            from football_moneyball.domain.calibration import PlattParams, calibrate_1x2
+            p_home = PlattParams(**self._calibration["platt_home"])
+            p_draw = PlattParams(**self._calibration["platt_draw"])
+            p_away = PlattParams(**self._calibration["platt_away"])
+            cal = calibrate_1x2(raw, p_home, p_draw, p_away)
+        elif method == "isotonic":
+            from football_moneyball.domain.calibration import (
+                IsotonicCalibrator,
+                calibrate_1x2_isotonic,
+            )
+            iso_h = IsotonicCalibrator(**self._calibration["iso_home"])
+            iso_d = IsotonicCalibrator(**self._calibration["iso_draw"])
+            iso_a = IsotonicCalibrator(**self._calibration["iso_away"])
+            cal = calibrate_1x2_isotonic(raw, iso_h, iso_d, iso_a)
+        elif method == "temperature":
+            from football_moneyball.domain.calibration import (
+                TemperatureScaler,
+                calibrate_1x2_temperature,
+            )
+            temp = TemperatureScaler(**self._calibration["temperature"])
+            cal = calibrate_1x2_temperature(raw, temp)
+        else:
+            logger.warning(f"Método de calibração desconhecido: {method}. Skip.")
+            return
 
-        cal = calibrate_1x2(raw, p_home, p_draw, p_away)
-
-        pred["home_win_prob"] = round(float(cal[0]), 4)
-        pred["draw_prob"] = round(float(cal[1]), 4)
-        pred["away_win_prob"] = round(float(cal[2]), 4)
+        pred["home_win_prob"] = round(float(cal[0, 0]), 4)
+        pred["draw_prob"] = round(float(cal[0, 1]), 4)
+        pred["away_win_prob"] = round(float(cal[0, 2]), 4)
         pred["calibrated"] = True
+        pred["calibration_method"] = method
 
     def _apply_market_blending(self, pred: dict, home: str, away: str) -> None:
         """v1.10.0: Blenda probs do modelo com consensus devigged do mercado.

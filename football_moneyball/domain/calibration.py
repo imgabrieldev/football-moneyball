@@ -2,18 +2,22 @@
 
 Implementa:
 1. Dixon-Coles correction (1997) — corrige Poisson independente em placares baixos
-2. Platt scaling — calibra probabilidades via regressão logística
+2. Platt scaling — calibra probabilidades via regressão logística (sigmoid)
+3. Isotonic regression — calibração non-parametric monotônica (v1.11.0)
+4. Temperature scaling — calibração 1-parâmetro via softmax reescalado (v1.11.0)
+5. Métricas de calibração: Brier multi-class, ECE
 
 Lógica pura — zero deps de infra.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.optimize import minimize_scalar
 from scipy.stats import poisson
+from sklearn.isotonic import IsotonicRegression
 
 
 @dataclass
@@ -202,6 +206,198 @@ def calibrate_1x2(
     cal = cal / totals
 
     return cal if raw_probs.ndim > 1 else cal[0]
+
+
+# ---------------------------------------------------------------------------
+# Temperature scaling (v1.11.0)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TemperatureScaler:
+    """Calibração via temperature scaling 3-class.
+
+    Aplica p_cal_k = p_k^(1/T) / Z, onde Z normaliza pra somar 1.
+    T > 1 comprime (reduz overconfidence), T < 1 afia.
+    """
+    T: float = 1.0
+
+    def apply(self, probs_3class: np.ndarray | list) -> np.ndarray:
+        """Input/output: (n, 3) ou (3,). Aplica p^(1/T) + renormaliza."""
+        p = np.clip(np.asarray(probs_3class, dtype=np.float64), 1e-12, 1.0)
+        original_ndim = p.ndim
+        if p.ndim == 1:
+            p = p.reshape(1, -1)
+        # p^(1/T)
+        scaled = np.power(p, 1.0 / max(self.T, 1e-6))
+        totals = scaled.sum(axis=1, keepdims=True)
+        totals = np.where(totals > 0, totals, 1.0)
+        cal = scaled / totals
+        return cal if original_ndim > 1 else cal[0]
+
+
+def fit_temperature(
+    raw_probs_3class: np.ndarray,
+    y_3class: np.ndarray,
+) -> TemperatureScaler:
+    """Fit T via minimização de NLL multi-class (Nelder-Mead).
+
+    Parameters
+    ----------
+    raw_probs_3class : np.ndarray
+        Shape (n, 3) com [p_home, p_draw, p_away].
+    y_3class : np.ndarray
+        Shape (n, 3) one-hot do resultado real.
+    """
+    from scipy.optimize import minimize
+
+    raw = np.clip(np.asarray(raw_probs_3class, dtype=np.float64), 1e-12, 1.0)
+    y = np.asarray(y_3class, dtype=np.float64)
+
+    def neg_log_likelihood(params):
+        T = max(params[0], 1e-6)
+        scaled = np.power(raw, 1.0 / T)
+        totals = scaled.sum(axis=1, keepdims=True)
+        totals = np.where(totals > 0, totals, 1.0)
+        cal = scaled / totals
+        cal = np.clip(cal, 1e-12, 1.0)
+        # NLL = -sum(y * log(p))
+        return float(-np.sum(y * np.log(cal)))
+
+    result = minimize(
+        neg_log_likelihood,
+        x0=np.array([1.0]),
+        method="Nelder-Mead",
+        options={"xatol": 1e-4, "fatol": 1e-6, "maxiter": 200},
+    )
+    return TemperatureScaler(T=float(max(result.x[0], 1e-6)))
+
+
+def calibrate_1x2_temperature(
+    raw_probs: np.ndarray,
+    temp: TemperatureScaler,
+) -> np.ndarray:
+    """Aplica temperature scaling 3-class direto."""
+    return temp.apply(raw_probs)
+
+
+# ---------------------------------------------------------------------------
+# Isotonic regression (v1.11.0)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class IsotonicCalibrator:
+    """Calibração isotonic binary — interpola linearmente nos thresholds fittados.
+
+    Extraído de sklearn.isotonic.IsotonicRegression pra serialização limpa.
+    Monotônico não-decrescente por construção.
+    """
+    x_thresholds: list = field(default_factory=list)
+    y_thresholds: list = field(default_factory=list)
+
+    def apply(self, p: np.ndarray | float) -> np.ndarray | float:
+        """Aplica calibração isotonic a probabilidade(s) binary raw."""
+        x = np.asarray(self.x_thresholds, dtype=np.float64)
+        y = np.asarray(self.y_thresholds, dtype=np.float64)
+        if len(x) == 0:
+            return np.asarray(p, dtype=np.float64)
+        p_arr = np.clip(np.asarray(p, dtype=np.float64), 0.0, 1.0)
+        # np.interp faz interpolação linear; extrapola constante fora dos bounds
+        return np.interp(p_arr, x, y)
+
+
+def fit_isotonic_binary(
+    raw_probs: np.ndarray,
+    labels: np.ndarray,
+) -> IsotonicCalibrator:
+    """Fit isotonic regression binary via sklearn.
+
+    Extrai X_thresholds_/y_thresholds_ pra serialização dataclass-friendly.
+    """
+    p = np.clip(np.asarray(raw_probs, dtype=np.float64), 0.0, 1.0)
+    y = np.asarray(labels, dtype=np.float64)
+
+    iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+    iso.fit(p, y)
+    return IsotonicCalibrator(
+        x_thresholds=iso.X_thresholds_.tolist(),
+        y_thresholds=iso.y_thresholds_.tolist(),
+    )
+
+
+def calibrate_1x2_isotonic(
+    raw_probs: np.ndarray,
+    iso_home: IsotonicCalibrator,
+    iso_draw: IsotonicCalibrator,
+    iso_away: IsotonicCalibrator,
+) -> np.ndarray:
+    """Aplica isotonic one-vs-rest 3-class e renormaliza."""
+    raw = np.asarray(raw_probs, dtype=np.float64)
+    original_ndim = raw.ndim
+    if raw.ndim == 1:
+        raw = raw.reshape(1, -1)
+
+    cal = np.zeros_like(raw)
+    cal[:, 0] = iso_home.apply(raw[:, 0])
+    cal[:, 1] = iso_draw.apply(raw[:, 1])
+    cal[:, 2] = iso_away.apply(raw[:, 2])
+
+    totals = cal.sum(axis=1, keepdims=True)
+    totals = np.where(totals > 0, totals, 1.0)
+    cal = cal / totals
+
+    return cal if original_ndim > 1 else cal[0]
+
+
+# ---------------------------------------------------------------------------
+# Métricas de calibração (v1.11.0)
+# ---------------------------------------------------------------------------
+
+def compute_brier_3class(
+    probs: np.ndarray,
+    y: np.ndarray,
+) -> float:
+    """Brier multi-class: media de sum_k (p_k - y_k)^2."""
+    p = np.asarray(probs, dtype=np.float64)
+    yv = np.asarray(y, dtype=np.float64)
+    return float(np.mean(np.sum((p - yv) ** 2, axis=1)))
+
+
+def compute_ece(
+    probs_3class: np.ndarray,
+    y_3class: np.ndarray,
+    n_bins: int = 10,
+) -> float:
+    """Expected Calibration Error via binning da confiança max.
+
+    Agrupa predições pela confiança da classe mais provável, compara com
+    acurácia empírica dentro de cada bin. ECE = sum_b (|B_b|/n) * |acc_b - conf_b|.
+    """
+    probs = np.asarray(probs_3class, dtype=np.float64)
+    y = np.asarray(y_3class, dtype=np.float64)
+    n = len(probs)
+    if n == 0:
+        return 0.0
+
+    conf = probs.max(axis=1)
+    pred_idx = probs.argmax(axis=1)
+    true_idx = y.argmax(axis=1)
+    correct = (pred_idx == true_idx).astype(np.float64)
+
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        lo, hi = bin_edges[i], bin_edges[i + 1]
+        if i == n_bins - 1:
+            mask = (conf >= lo) & (conf <= hi)
+        else:
+            mask = (conf >= lo) & (conf < hi)
+        count = int(mask.sum())
+        if count == 0:
+            continue
+        acc_bin = float(correct[mask].mean())
+        conf_bin = float(conf[mask].mean())
+        ece += (count / n) * abs(acc_bin - conf_bin)
+    return float(ece)
 
 
 # ---------------------------------------------------------------------------

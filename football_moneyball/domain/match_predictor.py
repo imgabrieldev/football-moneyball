@@ -550,7 +550,7 @@ def predict_match_player_aware(
     away_team_attack = float((away_xi["xg_per_90"] * away_xi["weight"]).sum()) if not away_xi.empty else 0.0
 
     result["lineup_type"] = "probable-xi"
-    result["model_version"] = "v1.1.0"
+    result["model_version"] = "v1.10.0"
     result["home_xi"] = summarize_xi(home_xi)
     result["away_xi"] = summarize_xi(away_xi)
     result["pipeline"] = {

@@ -10,24 +10,18 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[context-aware-predictor]] — v1.6.0: Features contextuais (técnico, desfalques, fadiga, posição, derby)
-- [[feature-rich-predictor]] — v1.5.0: Elo + 10 features novas pro XGBoost (baseado em SHAP research)
-- [[multi-market]] — v1.0.0: Todos os mercados Betfair (correct score, asian handicap, corners, cards, HT)
-- ~~[[comprehensive-predictor]]~~ — v1.1.0-1.4.0: shipped ✓
-- ~~[[track-record]]~~ — v0.9.0: shipped ✓
-- ~~[[frontend-dashboard]]~~ — v0.7.0: shipped ✓
-- ~~[[infra-automation]]~~ — v0.6.0: shipped ✓
-- ~~[[advanced-predictor]]~~ — v0.5.0: shipped ✓
+- [[isotonic-calibration-v1.11]] — v1.11.0: Isotonic + Temperature + auto-select via CV Brier (shipped 2026-04-05)
 
 ## Backlog
 
-- **v0.8.0 — UX Polish** — Deduplicar value bets (1 linha = melhor odd por aposta). Cards com interpretação textual ("Bahia forte favorito"). Filtro de bookmaker (apostar só na Betfair/Bet365). Datas dos jogos. Cards maiores com mais contexto. Cores de confiança. Responsivo mobile básico.
+- [[ux-polish]] — v0.8.0: Deduplicar value bets, cards com interpretação textual, filtro de bookmaker, datas, responsivo
+- **v1.12.0 — Backfill 2022/2023** — ingestão histórica extra (~760 matches) pra destravar isotonic (precisa n≥1000)
+- **v1.13.0 — Calibração monitorada** — cron de re-fit automático quando ECE > 0.015
+- **v1.14.0 — Beta calibration / hybrid** — se isotonic sozinho não atingir meta Brier 0.20
 
 ## Finalizados → `docs/postmortem/`
 
-- [[state-of-the-art-engine]] — v0.2.0
-- [[hexagonal-architecture]] — v0.3.0
-- [[betting-value-finder]] — v0.4.0
+Ver índice completo em [[../postmortem/README|postmortem/README]].
 
 ## Template
 

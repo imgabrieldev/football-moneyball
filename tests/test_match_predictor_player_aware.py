@@ -72,7 +72,7 @@ class TestPredictMatchPlayerAware:
         )
 
         assert result["lineup_type"] == "probable-xi"
-        assert result["model_version"] == "v1.1.0"
+        assert result["model_version"] == "v1.10.0"
         assert len(result["home_xi"]) == 11
         assert len(result["away_xi"]) == 11
         assert "home_team_attack" in result["pipeline"]

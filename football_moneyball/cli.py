@@ -1282,27 +1282,41 @@ def train_models_cmd(
 def fit_calibration_cmd(
     models_dir: str = typer.Option("football_moneyball/models", "--models-dir"),
     seasons: str = typer.Option("2024,2026", "--seasons", help="Temporadas separadas por virgula"),
+    method: str = typer.Option("auto", "--method", help="Metodo: auto|platt|isotonic|temperature"),
 ) -> None:
-    """Fitta calibracao (Dixon-Coles rho + Platt scaling) em dados historicos."""
+    """Fitta calibracao (Dixon-Coles rho + Platt/Isotonic/Temperature) em dados historicos."""
     from football_moneyball.use_cases.fit_calibration import FitCalibration
 
     repo = get_repository()
     try:
         seasons_list = [s.strip() for s in seasons.split(",")]
         with console.status("[bold green]Fittando calibracao..."):
-            result = FitCalibration(repo, models_dir).execute(seasons=seasons_list)
+            result = FitCalibration(repo, models_dir).execute(
+                seasons=seasons_list, method=method,
+            )
 
         if "error" in result:
             console.print(f"[red]{result['error']}[/red]")
             raise typer.Exit(1)
 
+        cv = result["cv_results"]
+        cv_table = (
+            f"[bold]CV comparison (val split):[/bold]\n"
+            f"  platt:       brier={cv['platt']['brier_val']:.4f}  ece={cv['platt']['ece_val']:.4f}\n"
+            f"  isotonic:    brier={cv['isotonic']['brier_val']:.4f}  ece={cv['isotonic']['ece_val']:.4f}\n"
+            f"  temperature: brier={cv['temperature']['brier_val']:.4f}  ece={cv['temperature']['ece_val']:.4f}\n"
+        )
+
         console.print(Panel(
             f"[bold]Calibracao fittada[/bold]\n\n"
+            f"Metodo escolhido: [bold green]{result['method']}[/bold green]\n"
             f"Dixon-Coles rho: {result['rho']:.4f}\n"
-            f"Amostras: {result['n_samples']}\n"
+            f"Amostras: {result['n_samples']} (train={result['n_train']}, val={result['n_val']})\n"
             f"Por temporada: {result['per_season']}\n\n"
-            f"[bold]In-sample metrics:[/bold]\n"
-            f"Brier raw → cal: {result['brier_raw']:.4f} → {result['brier_calibrated']:.4f}\n"
+            f"{cv_table}\n"
+            f"[bold]Full-sample metrics ({result['method']}):[/bold]\n"
+            f"Brier raw → cal:    {result['brier_raw']:.4f} → {result['brier_calibrated']:.4f}\n"
+            f"ECE raw → cal:      {result['ece_raw']:.4f} → {result['ece_calibrated']:.4f}\n"
             f"Accuracy raw → cal: {result['accuracy_raw']:.1f}% → {result['accuracy_calibrated']:.1f}%\n\n"
             f"Salvo em: {result['saved_to']}",
             title="Calibration", border_style="green",
