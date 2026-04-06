@@ -95,7 +95,7 @@ _PREDICTION_TO_MARKET = {
 def find_value_bets(
     predictions: dict,
     odds_data: list[dict],
-    min_edge: float = 0.03,
+    min_edge: float = 0.05,
     markets: list[str] | None = None,
 ) -> list[dict]:
     """Identifica value bets comparando modelo com odds.

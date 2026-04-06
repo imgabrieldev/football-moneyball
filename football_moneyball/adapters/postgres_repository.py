@@ -1218,6 +1218,31 @@ class PostgresRepository:
             self._session.add(MatchStats(**data))
         self._session.commit()
 
+    def get_all_match_stats(
+        self, competition: str = "Brasileirão Série A",
+        seasons: list[str] | None = None,
+    ) -> "pd.DataFrame":
+        """Retorna match_stats de todas as temporadas como DataFrame."""
+        import pandas as pd
+        from sqlalchemy import text
+        q = text("""
+            SELECT ms.* FROM match_stats ms
+            JOIN matches m ON m.match_id = ms.match_id
+            WHERE m.competition = :comp
+        """)
+        params: dict = {"comp": competition}
+        if seasons:
+            q = text("""
+                SELECT ms.* FROM match_stats ms
+                JOIN matches m ON m.match_id = ms.match_id
+                WHERE m.competition = :comp AND m.season = ANY(:seasons)
+            """)
+            params["seasons"] = seasons
+        rows = self._session.execute(q, params).fetchall()
+        if not rows:
+            return pd.DataFrame()
+        return pd.DataFrame([dict(r._mapping) for r in rows])
+
     def save_referee_stats(self, referee: dict) -> None:
         """Upsert de estatisticas de arbitro."""
         from datetime import datetime

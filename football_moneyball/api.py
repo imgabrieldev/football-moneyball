@@ -145,7 +145,7 @@ def get_predictions(repo=Depends(get_repo)):
         from football_moneyball.use_cases.find_value_bets import FindValueBets
         odds_provider = get_odds_provider()
         odds_provider.repo = repo
-        vb_result = FindValueBets(odds_provider, repo).execute(bankroll=1000, min_edge=0.03)
+        vb_result = FindValueBets(odds_provider, repo).execute(bankroll=1000, min_edge=0.05)
         all_bets = vb_result.get("value_bets", [])
 
         # Filtrar Betfair only

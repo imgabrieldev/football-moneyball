@@ -53,8 +53,19 @@ class TrainCatBoost:
         total_matches = int(all_data["match_id"].nunique())
         logger.info(f"Total: {total_matches} matches, construindo dataset...")
 
+        # Carregar match_stats pra features expandidas
+        match_stats = None
+        try:
+            match_stats = self.repo.get_all_match_stats(competition, seasons)
+            logger.info(f"Match stats carregados: {len(match_stats)} rows")
+        except Exception as e:
+            logger.warning(f"Match stats não disponíveis: {e}")
+
         # Build training dataset (leak-proof)
-        X, y = build_training_dataset(all_data, pi_gamma=0.04, min_history=30)
+        X, y = build_training_dataset(
+            all_data, match_stats=match_stats,
+            pi_gamma=0.04, min_history=30,
+        )
         logger.info(f"Dataset: {len(X)} samples, {X.shape[1]} features")
 
         if len(X) < 100:

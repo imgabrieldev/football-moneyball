@@ -26,7 +26,7 @@ class FindValueBets:
     def execute(
         self,
         bankroll: float = 1000.0,
-        min_edge: float = 0.03,
+        min_edge: float = 0.05,
         markets: list[str] | None = None,
         bookmaker_filter: str | None = None,
     ) -> dict[str, Any]:

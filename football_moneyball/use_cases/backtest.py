@@ -33,7 +33,7 @@ class Backtest:
         competition: str = "Brasileirão Série A",
         season: str = "2026",
         initial_bankroll: float = 1000.0,
-        min_edge: float = 0.03,
+        min_edge: float = 0.05,
         kelly_fraction: float = 0.25,
         min_matches_history: int = 3,
     ) -> dict[str, Any]:

@@ -967,7 +967,7 @@ def predict(
 @app.command("value-bets")
 def value_bets(
     bankroll: float = typer.Option(1000.0, "--bankroll", help="Bankroll atual"),
-    min_edge: float = typer.Option(0.03, "--min-edge", help="Edge minimo (0.03 = 3%)"),
+    min_edge: float = typer.Option(0.05, "--min-edge", help="Edge minimo (0.05 = 5%)"),
 ) -> None:
     """Busca value bets nas proximas partidas via Betfair Exchange."""
     from football_moneyball.config import get_odds_provider
@@ -1034,7 +1034,7 @@ def backtest(
     season: str = typer.Option("2026", "--season", help="Temporada"),
     competition: str = typer.Option("Brasileirão Série A", "--competition", help="Competicao"),
     bankroll: float = typer.Option(1000.0, "--bankroll", help="Bankroll inicial"),
-    min_edge: float = typer.Option(0.03, "--min-edge", help="Edge minimo (0.03 = 3%)"),
+    min_edge: float = typer.Option(0.05, "--min-edge", help="Edge minimo (0.05 = 5%)"),
 ) -> None:
     """Roda backtesting com dados historicos do Brasileirao."""
     from football_moneyball.use_cases.backtest import Backtest
