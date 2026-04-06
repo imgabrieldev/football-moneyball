@@ -5,6 +5,8 @@ import os
 from typing import Any
 import logging
 
+import numpy as np
+
 from football_moneyball.domain.match_predictor import (
     predict_match, predict_match_player_aware,
 )
@@ -38,7 +40,9 @@ class PredictAll:
         self.odds_provider = odds_provider
         self._ml_models = self._try_load_ml_models()
         self._calibration = self._try_load_calibration()
+        self._catboost_1x2 = self._try_load_catboost()
         self._elo_ratings: dict[str, float] = {}  # lazy-loaded per season
+        self._pi_ratings: dict = {}  # lazy-loaded per season
 
     def _try_load_calibration(self) -> dict | None:
         """Carrega calibracao (Dixon-Coles rho + Platt scaling) se existe."""
@@ -57,6 +61,22 @@ class PredictAll:
             return calib
         except Exception as e:
             logger.warning(f"Erro carregando calibracao: {e}")
+            return None
+
+    def _try_load_catboost(self):
+        """Carrega CatBoost 1x2 se existe."""
+        models_dir = os.getenv("MONEYBALL_MODELS_DIR", "football_moneyball/models")
+        path = os.path.join(models_dir, "catboost_1x2.cbm")
+        if not os.path.exists(path):
+            return None
+        try:
+            from catboost import CatBoostClassifier
+            model = CatBoostClassifier()
+            model.load_model(path)
+            logger.info("CatBoost 1x2 carregado")
+            return model
+        except Exception as e:
+            logger.warning(f"Erro carregando CatBoost: {e}")
             return None
 
     def _try_load_ml_models(self) -> dict:
@@ -202,14 +222,16 @@ class PredictAll:
                 except Exception as e:
                     logger.debug(f"player_props failed for {home}-{away}: {e}")
 
-                # v1.9.0/v1.11.0: calibração 1x2 (platt/isotonic/temperature)
-                if self._calibration:
-                    self._apply_calibration(pred)
+                # v1.14.0: CatBoost 1x2 substitui Poisson probs se disponível
+                if self._catboost_1x2:
+                    self._apply_catboost_1x2(pred, home, away, all_data, season)
+                else:
+                    # Fallback: calibração Poisson
+                    if self._calibration:
+                        self._apply_calibration(pred)
+                    self._apply_draw_floor(pred)
 
-                # v1.13.0: Draw floor — empírico Brasileirão ~25-26%
-                self._apply_draw_floor(pred)
-
-                # v1.10.0/v1.13.0: Market blending (pós-calibração)
+                # v1.10.0/v1.13.0: Market blending (pós-calibração/CatBoost)
                 self._apply_market_blending(pred, home, away)
 
                 predictions.append(pred)
@@ -281,6 +303,92 @@ class PredictAll:
         pred["away_win_prob"] = round(float(cal[0, 2]), 4)
         pred["calibrated"] = True
         pred["calibration_method"] = method
+
+    def _apply_catboost_1x2(
+        self, pred: dict, home: str, away: str,
+        all_data, season: str,
+    ) -> None:
+        """v1.14.0: Substitui probs 1x2 do Poisson pelo CatBoost."""
+        try:
+            from football_moneyball.domain.catboost_predictor import (
+                build_match_features, predict_1x2, compute_form_ema, compute_gd_ema,
+            )
+            from football_moneyball.domain.pi_rating import (
+                compute_all_ratings, PiRating,
+            )
+
+            # Pi-Ratings (cached per season)
+            if not self._pi_ratings:
+                self._pi_ratings = compute_all_ratings(all_data, gamma=0.04)
+
+            # Form history
+            team_results = {}
+            team_gd = {}
+            team_xg = {}
+            for team in [home, away]:
+                tdata = all_data[all_data["team"] == team].sort_values("match_id")
+                results = []
+                gds = []
+                xgs = []
+                for _, r in tdata.iterrows():
+                    g = r.get("goals", 0)
+                    # Approximate opponent goals from same match
+                    mid = r["match_id"]
+                    opp = all_data[(all_data["match_id"] == mid) & (all_data["team"] != team)]
+                    og = int(opp.iloc[0]["goals"]) if not opp.empty else 0
+                    results.append(1.0 if g > og else (0.5 if g == og else 0.0))
+                    gds.append(float(g - og))
+                    xgs.append(float(r.get("xg", 1.2)))
+                team_results[team] = results[-20:]
+                team_gd[team] = gds[-20:]
+                team_xg[team] = xgs[-5:]
+
+            home_xg_avg = float(np.mean(team_xg.get(home, [1.3])))
+            away_xg_avg = float(np.mean(team_xg.get(away, [1.1])))
+
+            # Market odds (se já estiverem no pred via blending anterior)
+            mkt = pred.get("market_implied", {})
+            mh = mkt.get("home_win_prob", 0.40)
+            md = mkt.get("draw_prob", 0.28)
+            ma = mkt.get("away_win_prob", 0.32)
+
+            # Rest days
+            commence = pred.get("commence_time", "")
+            hr = self.repo.get_rest_days(home, commence) if commence else 7
+            ar = self.repo.get_rest_days(away, commence) if commence else 7
+
+            features = build_match_features(
+                pi_ratings=self._pi_ratings,
+                home_team=home,
+                away_team=away,
+                home_form=team_results.get(home, []),
+                away_form=team_results.get(away, []),
+                home_gd=team_gd.get(home, []),
+                away_gd=team_gd.get(away, []),
+                home_xg_avg=home_xg_avg,
+                away_xg_avg=away_xg_avg,
+                home_xga_avg=1.1,  # proxy
+                away_xga_avg=1.3,
+                home_rest=hr,
+                away_rest=ar,
+                market_home=mh,
+                market_draw=md,
+                market_away=ma,
+            )
+
+            result = predict_1x2(self._catboost_1x2, features)
+            pred["home_win_prob"] = round(result["home_win_prob"], 4)
+            pred["draw_prob"] = round(result["draw_prob"], 4)
+            pred["away_win_prob"] = round(result["away_win_prob"], 4)
+            pred["model_version"] = "v1.14.0-catboost"
+            pred["calibrated"] = True  # CatBoost MultiClass já calibrado
+
+        except Exception as e:
+            logger.warning(f"CatBoost 1x2 failed for {home}-{away}: {e}")
+            # Fallback: Poisson probs (já no pred)
+            if self._calibration:
+                self._apply_calibration(pred)
+            self._apply_draw_floor(pred)
 
     def _apply_draw_floor(self, pred: dict, min_draw: float = 0.22) -> None:
         """v1.13.0: Garante draw probability mínima baseada em taxa empírica.

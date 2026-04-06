@@ -1278,6 +1278,55 @@ def train_models_cmd(
         repo.close()
 
 
+@app.command("train-catboost")
+def train_catboost_cmd(
+    models_dir: str = typer.Option("football_moneyball/models", "--models-dir"),
+    seasons: str = typer.Option("2022,2023,2024,2025,2026", "--seasons"),
+    draw_weight: float = typer.Option(1.3, "--draw-weight", help="Peso extra pra draws"),
+) -> None:
+    """Treina CatBoost 1x2 com Pi-Rating + form EMA + xG."""
+    from football_moneyball.use_cases.train_catboost import TrainCatBoost
+
+    repo = get_repository()
+    try:
+        seasons_list = [s.strip() for s in seasons.split(",")]
+        with console.status("[bold green]Treinando CatBoost 1x2..."):
+            result = TrainCatBoost(repo, models_dir).execute(
+                seasons=seasons_list, draw_weight=draw_weight,
+            )
+
+        if "error" in result:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(1)
+
+        fi = result.get("feature_importance", {})
+        fi_sorted = sorted(fi.items(), key=lambda x: -x[1])[:8]
+        fi_text = "\n".join(f"  {k:30s} {v:.1f}" for k, v in fi_sorted)
+
+        console.print(Panel(
+            f"[bold]CatBoost 1x2 treinado[/bold]\n\n"
+            f"Samples: {result['n_samples']} (de {result['total_matches']} matches)\n"
+            f"Seasons: {result['per_season']}\n"
+            f"Draw weight: {result['draw_weight']}\n"
+            f"Best iteration: {result.get('best_iteration', '?')}\n\n"
+            f"[bold]Validation metrics:[/bold]\n"
+            f"RPS:      {result['rps']:.4f}\n"
+            f"Accuracy: {result['accuracy']:.1f}%\n"
+            f"Brier:    {result['brier']:.4f}\n\n"
+            f"[bold]Pred distribution:[/bold] {result['pred_distribution']}\n\n"
+            f"[bold]Feature importance (top 8):[/bold]\n{fi_text}\n\n"
+            f"Salvo em: {result['saved_to']}",
+            title="CatBoost 1x2", border_style="green",
+        ))
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]Erro: {exc}[/red]")
+        raise typer.Exit(1)
+    finally:
+        repo.close()
+
+
 @app.command("fit-calibration")
 def fit_calibration_cmd(
     models_dir: str = typer.Option("football_moneyball/models", "--models-dir"),
