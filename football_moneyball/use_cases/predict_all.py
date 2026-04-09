@@ -320,13 +320,19 @@ class PredictAll:
         self, pred: dict, home: str, away: str,
         all_data, season: str,
     ) -> None:
-        """v1.14.0: Substitui probs 1x2 do Poisson pelo CatBoost."""
+        """v1.14.0/v1.15.0: Substitui probs 1x2 do Poisson pelo CatBoost."""
         try:
             from football_moneyball.domain.catboost_predictor import (
                 build_match_features, predict_1x2, compute_form_ema, compute_gd_ema,
+                _rolling_stats,
             )
             from football_moneyball.domain.pi_rating import (
                 compute_all_ratings, PiRating,
+            )
+            from football_moneyball.domain.features import (
+                compute_xg_form_ema, compute_xg_diff_ema,
+                compute_coach_features, compute_standings_features,
+                compute_points_last_n,
             )
 
             # Pi-Ratings (cached per season)
@@ -337,26 +343,32 @@ class PredictAll:
             team_results = {}
             team_gd = {}
             team_xg = {}
+            team_xga = {}
             for team in [home, away]:
                 tdata = all_data[all_data["team"] == team].sort_values("match_id")
                 results = []
                 gds = []
                 xgs = []
+                xgas = []
                 for _, r in tdata.iterrows():
                     g = r.get("goals", 0)
-                    # Approximate opponent goals from same match
                     mid = r["match_id"]
                     opp = all_data[(all_data["match_id"] == mid) & (all_data["team"] != team)]
                     og = int(opp.iloc[0]["goals"]) if not opp.empty else 0
+                    oxg = float(opp.iloc[0].get("xg", 1.2)) if not opp.empty else 1.2
                     results.append(1.0 if g > og else (0.5 if g == og else 0.0))
                     gds.append(float(g - og))
                     xgs.append(float(r.get("xg", 1.2)))
+                    xgas.append(oxg)
                 team_results[team] = results[-20:]
                 team_gd[team] = gds[-20:]
-                team_xg[team] = xgs[-5:]
+                team_xg[team] = xgs[-20:]
+                team_xga[team] = xgas[-20:]
 
-            home_xg_avg = float(np.mean(team_xg.get(home, [1.3])))
-            away_xg_avg = float(np.mean(team_xg.get(away, [1.1])))
+            home_xg_avg = float(np.mean(team_xg.get(home, [1.3])[-5:]))
+            away_xg_avg = float(np.mean(team_xg.get(away, [1.1])[-5:]))
+            home_xga_avg = float(np.mean(team_xga.get(home, [1.1])[-5:]))
+            away_xga_avg = float(np.mean(team_xga.get(away, [1.3])[-5:]))
 
             # Market odds (se já estiverem no pred via blending anterior)
             mkt = pred.get("market_implied", {})
@@ -369,6 +381,77 @@ class PredictAll:
             hr = self.repo.get_rest_days(home, commence) if commence else 7
             ar = self.repo.get_rest_days(away, commence) if commence else 7
 
+            # v1.15.0: Match stats rolling (FIX — was using hardcoded defaults)
+            home_ms = {}
+            away_ms = {}
+            try:
+                if not hasattr(self, "_match_stats_cache"):
+                    ms = self.repo.get_all_match_stats(
+                        "Brasileirão Série A", [season],
+                    )
+                    self._match_stats_cache = {}
+                    if ms is not None and not ms.empty:
+                        for _, row in ms.iterrows():
+                            self._match_stats_cache[int(row["match_id"])] = row.to_dict()
+
+                # Build per-team stats history from matches in all_data
+                for team, prefix in [(home, "home"), (away, "away")]:
+                    tdata = all_data[all_data["team"] == team].sort_values("match_id")
+                    stats_hist = []
+                    for _, r in tdata.iterrows():
+                        mid = int(r["match_id"])
+                        ms_row = self._match_stats_cache.get(mid, {})
+                        if not ms_row:
+                            continue
+                        is_h = bool(r.get("is_home", True))
+                        pfx = "home_" if is_h else "away_"
+                        stats_hist.append({
+                            "possession": ms_row.get(f"{pfx}possession", 50),
+                            "shots": ms_row.get(f"{pfx}shots", 10),
+                            "sot": ms_row.get(f"{pfx}sot", 4),
+                            "big_chances": ms_row.get(f"{pfx}big_chances", 2),
+                            "pass_accuracy": ms_row.get(f"{pfx}pass_accuracy", 78),
+                            "corners": ms_row.get(f"{pfx}corners", 5),
+                        })
+                    if stats_hist:
+                        rolled = _rolling_stats(stats_hist, n=5)
+                        if prefix == "home":
+                            home_ms = rolled
+                        else:
+                            away_ms = rolled
+            except Exception as e:
+                logger.debug(f"Match stats retrieval failed: {e}")
+
+            # v1.15.0: xG Form EMA
+            _hxf = compute_xg_form_ema(team_xg.get(home, []))
+            _axf = compute_xg_form_ema(team_xg.get(away, []), default=1.1)
+            _hxd = compute_xg_diff_ema(team_xg.get(home, []), team_xga.get(home, []))
+            _axd = compute_xg_diff_ema(team_xg.get(away, []), team_xga.get(away, []))
+
+            # v1.15.0: Coach features
+            hc_info = None
+            ac_info = None
+            try:
+                hc_info = self.repo.get_coach_change_info(home, commence)
+                ac_info = self.repo.get_coach_change_info(away, commence)
+            except Exception:
+                pass
+            hc = compute_coach_features(hc_info)
+            ac = compute_coach_features(ac_info)
+
+            # v1.15.0: Standings features
+            sf = {"home_position": 10.0, "away_position": 10.0, "position_gap": 0.0,
+                  "home_points_last_5": 7.0, "away_points_last_5": 7.0}
+            try:
+                stand = self.repo.get_standing_gap(home, away, commence)
+                sf_raw = compute_standings_features(stand)
+                # Override points_last_5 with computed values from form
+                sf_raw["home_points_last_5"] = compute_points_last_n(team_results.get(home, []))
+                sf_raw["away_points_last_5"] = compute_points_last_n(team_results.get(away, []))
+                sf = sf_raw
+            except Exception:
+                pass
+
             features = build_match_features(
                 pi_ratings=self._pi_ratings,
                 home_team=home,
@@ -379,20 +462,38 @@ class PredictAll:
                 away_gd=team_gd.get(away, []),
                 home_xg_avg=home_xg_avg,
                 away_xg_avg=away_xg_avg,
-                home_xga_avg=1.1,  # proxy
-                away_xga_avg=1.3,
+                home_xga_avg=home_xga_avg,
+                away_xga_avg=away_xga_avg,
                 home_rest=hr,
                 away_rest=ar,
                 market_home=mh,
                 market_draw=md,
                 market_away=ma,
+                home_stats=home_ms,
+                away_stats=away_ms,
+                # v1.15.0 context
+                home_xg_form_ema=_hxf,
+                away_xg_form_ema=_axf,
+                home_xg_diff_ema=_hxd,
+                away_xg_diff_ema=_axd,
+                home_coach_tenure=hc["tenure_days"],
+                away_coach_tenure=ac["tenure_days"],
+                home_coach_win_rate=hc["win_rate"],
+                away_coach_win_rate=ac["win_rate"],
+                home_coach_changed=hc["changed_30d"],
+                away_coach_changed=ac["changed_30d"],
+                home_position=sf["home_position"],
+                away_position=sf["away_position"],
+                position_gap=sf["position_gap"],
+                home_points_5=sf["home_points_last_5"],
+                away_points_5=sf["away_points_last_5"],
             )
 
             result = predict_1x2(self._catboost_1x2, features)
             pred["home_win_prob"] = round(result["home_win_prob"], 4)
             pred["draw_prob"] = round(result["draw_prob"], 4)
             pred["away_win_prob"] = round(result["away_win_prob"], 4)
-            pred["model_version"] = "v1.14.0-catboost"
+            pred["model_version"] = "v1.15.0-catboost"
             pred["calibrated"] = True  # CatBoost MultiClass já calibrado
 
         except Exception as e:

@@ -54,9 +54,27 @@ CATBOOST_FEATURE_NAMES = [
     "away_pass_accuracy_avg",
     "home_corners_avg",
     "away_corners_avg",
+    # v1.15.0: xG Form EMA (4)
+    "home_xg_form_ema",
+    "away_xg_form_ema",
+    "home_xg_diff_ema",
+    "away_xg_diff_ema",
+    # v1.15.0: Coach Profile (6)
+    "home_coach_tenure_days",
+    "away_coach_tenure_days",
+    "home_coach_win_rate",
+    "away_coach_win_rate",
+    "home_coach_changed_30d",
+    "away_coach_changed_30d",
+    # v1.15.0: Standings (5)
+    "home_league_position",
+    "away_league_position",
+    "position_gap",
+    "home_points_last_5",
+    "away_points_last_5",
 ]
 
-N_FEATURES = len(CATBOOST_FEATURE_NAMES)  # 28
+N_FEATURES = len(CATBOOST_FEATURE_NAMES)  # 43
 
 # Label mapping: CatBoost MultiClass usa inteiros
 LABEL_MAP = {"home": 0, "draw": 1, "away": 2}
@@ -108,8 +126,24 @@ def build_match_features(
     market_away: float = 0.32,
     home_stats: dict | None = None,
     away_stats: dict | None = None,
+    # v1.15.0: context features
+    home_xg_form_ema: float = 1.3,
+    away_xg_form_ema: float = 1.1,
+    home_xg_diff_ema: float = 0.2,
+    away_xg_diff_ema: float = -0.2,
+    home_coach_tenure: float = 180.0,
+    away_coach_tenure: float = 180.0,
+    home_coach_win_rate: float = 0.40,
+    away_coach_win_rate: float = 0.40,
+    home_coach_changed: float = 0.0,
+    away_coach_changed: float = 0.0,
+    home_position: float = 10.0,
+    away_position: float = 10.0,
+    position_gap: float = 0.0,
+    home_points_5: float = 7.0,
+    away_points_5: float = 7.0,
 ) -> np.ndarray:
-    """Constroi feature vector pra um match (28 features)."""
+    """Constroi feature vector pra um match (43 features)."""
     from football_moneyball.domain.pi_rating import PiRating, rating_diff
 
     rd = rating_diff(pi_ratings, home_team, away_team)
@@ -149,6 +183,22 @@ def build_match_features(
         float(as_.get("pass_accuracy_avg", 78.0)),
         float(hs.get("corners_avg", 5.0)),
         float(as_.get("corners_avg", 4.5)),
+        # v1.15.0: context features
+        float(home_xg_form_ema),
+        float(away_xg_form_ema),
+        float(home_xg_diff_ema),
+        float(away_xg_diff_ema),
+        float(home_coach_tenure),
+        float(away_coach_tenure),
+        float(home_coach_win_rate),
+        float(away_coach_win_rate),
+        float(home_coach_changed),
+        float(away_coach_changed),
+        float(home_position),
+        float(away_position),
+        float(position_gap),
+        float(home_points_5),
+        float(away_points_5),
     ], dtype=np.float64)
 
 
@@ -175,6 +225,8 @@ def build_training_dataset(
     match_stats: pd.DataFrame | None = None,
     pi_gamma: float = 0.04,
     min_history: int = 30,
+    coach_data: dict | None = None,
+    standings_data: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Constroi X, y a partir de matches históricos (leak-proof).
 
@@ -259,6 +311,36 @@ def build_training_dataset(
         home_ms = _rolling_stats(team_stats_hist.get(home_team, []), n=5)
         away_ms = _rolling_stats(team_stats_hist.get(away_team, []), n=5)
 
+        # v1.15.0: xG form EMA (from existing form history)
+        from football_moneyball.domain.features import (
+            compute_xg_form_ema, compute_xg_diff_ema,
+            compute_coach_features, compute_standings_features,
+            compute_points_last_n,
+        )
+        home_xg_list = [h[2] for h in home_hist[-20:]]
+        away_xg_list = [h[2] for h in away_hist[-20:]]
+        home_xga_list = [h[3] for h in home_hist[-20:]]
+        away_xga_list = [h[3] for h in away_hist[-20:]]
+
+        _hxf = compute_xg_form_ema(home_xg_list)
+        _axf = compute_xg_form_ema(away_xg_list, default=1.1)
+        _hxd = compute_xg_diff_ema(home_xg_list, home_xga_list)
+        _axd = compute_xg_diff_ema(away_xg_list, away_xga_list)
+
+        # v1.15.0: Coach features (from coach_data lookup)
+        _coach_data = coach_data or {}
+        hc = compute_coach_features(_coach_data.get((home_team, mid)))
+        ac = compute_coach_features(_coach_data.get((away_team, mid)))
+
+        # v1.15.0: Standings features (from standings_data lookup)
+        _stand_data = standings_data or {}
+        stand = _stand_data.get(mid)
+        sf = compute_standings_features(stand)
+
+        # v1.15.0: Points last 5 (from form history)
+        _hp5 = compute_points_last_n(home_results)
+        _ap5 = compute_points_last_n(away_results)
+
         features = build_match_features(
             pi_ratings=ratings,
             home_team=home_team,
@@ -278,6 +360,22 @@ def build_training_dataset(
             market_away=ma,
             home_stats=home_ms,
             away_stats=away_ms,
+            # v1.15.0 context
+            home_xg_form_ema=_hxf,
+            away_xg_form_ema=_axf,
+            home_xg_diff_ema=_hxd,
+            away_xg_diff_ema=_axd,
+            home_coach_tenure=hc["tenure_days"],
+            away_coach_tenure=ac["tenure_days"],
+            home_coach_win_rate=hc["win_rate"],
+            away_coach_win_rate=ac["win_rate"],
+            home_coach_changed=hc["changed_30d"],
+            away_coach_changed=ac["changed_30d"],
+            home_position=sf["home_position"],
+            away_position=sf["away_position"],
+            position_gap=sf["position_gap"],
+            home_points_5=_hp5,
+            away_points_5=_ap5,
         )
 
         if hg > ag:

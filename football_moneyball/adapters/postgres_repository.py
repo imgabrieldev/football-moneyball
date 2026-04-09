@@ -1256,6 +1256,146 @@ class PostgresRepository:
             return pd.DataFrame()
         return pd.DataFrame([dict(r._mapping) for r in rows])
 
+    def get_all_coach_data_for_training(self) -> dict:
+        """Retorna coach data indexado por (team, match_id) pra training leak-proof.
+
+        Returns dict: {(team, match_id) -> {tenure_days, win_rate, changed_30d}}
+        """
+        from sqlalchemy import text
+
+        # All coaches with start dates
+        coaches = self._session.execute(text(
+            "SELECT team, coach_name, start_match_date FROM team_coaches ORDER BY start_match_date"
+        )).fetchall()
+
+        if not coaches:
+            return {}
+
+        # All matches with dates
+        matches = self._session.execute(text("""
+            SELECT m.match_id, m.match_date, m.home_team, m.away_team,
+                   m.home_score, m.away_score
+            FROM matches m
+            WHERE m.home_score IS NOT NULL
+            ORDER BY m.match_date
+        """)).fetchall()
+
+        if not matches:
+            return {}
+
+        from datetime import datetime
+
+        # Build coach timeline per team
+        coach_timeline: dict[str, list] = {}
+        for c in coaches:
+            coach_timeline.setdefault(c.team, []).append({
+                "name": c.coach_name,
+                "start": str(c.start_match_date)[:10],
+            })
+
+        # For each match, find coach and compute features
+        result: dict = {}
+        team_wins: dict[str, dict] = {}  # team -> {coach_start -> {wins, total}}
+
+        for m in matches:
+            md = str(m.match_date or "")[:10]
+            for team, is_home in [(m.home_team, True), (m.away_team, False)]:
+                if not team:
+                    continue
+                # Find active coach for this team at this date
+                timeline = coach_timeline.get(team, [])
+                active_coach = None
+                for c in reversed(timeline):
+                    if c["start"] <= md:
+                        active_coach = c
+                        break
+                if not active_coach:
+                    continue
+
+                # Track wins under this coach
+                key = f"{team}:{active_coach['start']}"
+                if key not in team_wins:
+                    team_wins[key] = {"wins": 0, "total": 0, "start": active_coach["start"]}
+                tw = team_wins[key]
+
+                # Compute features BEFORE updating (leak-proof)
+                try:
+                    start_d = datetime.fromisoformat(active_coach["start"]).date()
+                    match_d = datetime.fromisoformat(md).date()
+                    tenure = (match_d - start_d).days
+                except Exception:
+                    tenure = 100
+
+                wr = tw["wins"] / tw["total"] if tw["total"] > 0 else 0.5
+
+                result[(team, m.match_id)] = {
+                    "tenure_days": float(min(tenure, 365)),
+                    "win_rate": float(wr),
+                    "changed_30d": 1.0 if tenure < 30 else 0.0,
+                }
+
+                # NOW update stats (after feature extraction)
+                tw["total"] += 1
+                won = (is_home and (m.home_score or 0) > (m.away_score or 0)) or \
+                      (not is_home and (m.away_score or 0) > (m.home_score or 0))
+                if won:
+                    tw["wins"] += 1
+
+        return result
+
+    def get_all_standings_for_training(self) -> dict:
+        """Retorna standings indexado por match_id pra training.
+
+        Returns dict: {match_id -> {home_position, away_position, position_gap}}
+        """
+        from sqlalchemy import text
+
+        # Get matches with their teams
+        matches = self._session.execute(text("""
+            SELECT m.match_id, m.match_date, m.home_team, m.away_team
+            FROM matches m
+            WHERE m.home_score IS NOT NULL
+            ORDER BY m.match_date
+        """)).fetchall()
+
+        if not matches:
+            return {}
+
+        # Get all standings snapshots
+        standings = self._session.execute(text(
+            "SELECT team, position, points, snapshot_date FROM league_standings ORDER BY snapshot_date"
+        )).fetchall()
+
+        if not standings:
+            return {}
+
+        # Build latest standing per team at each point
+        # Simple approach: for each match, find latest standing <= match_date
+        team_latest: dict[str, dict] = {}
+        stand_list = [{"team": s.team, "position": s.position, "points": s.points,
+                       "date": str(s.snapshot_date or "")[:10]} for s in standings]
+
+        result: dict = {}
+        si = 0  # standings index
+
+        for m in matches:
+            md = str(m.match_date or "")[:10]
+            # Advance standings pointer
+            while si < len(stand_list) and stand_list[si]["date"] <= md:
+                s = stand_list[si]
+                team_latest[s["team"]] = {"position": s["position"], "points": s["points"]}
+                si += 1
+
+            hp = team_latest.get(m.home_team, {}).get("position", 10)
+            ap = team_latest.get(m.away_team, {}).get("position", 10)
+            result[m.match_id] = {
+                "home_position": float(hp),
+                "away_position": float(ap),
+                "position_gap": float(abs(hp - ap)),
+            }
+
+        return result
+
     def save_referee_stats(self, referee: dict) -> None:
         """Upsert de estatisticas de arbitro."""
         from datetime import datetime

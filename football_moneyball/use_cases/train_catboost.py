@@ -61,10 +61,26 @@ class TrainCatBoost:
         except Exception as e:
             logger.warning(f"Match stats não disponíveis: {e}")
 
+        # v1.15.0: Carregar coach data e standings pra context features
+        coach_data = None
+        standings_data = None
+        try:
+            coach_data = self.repo.get_all_coach_data_for_training()
+            logger.info(f"Coach data carregados: {len(coach_data)} entries")
+        except Exception as e:
+            logger.warning(f"Coach data não disponíveis: {e}")
+        try:
+            standings_data = self.repo.get_all_standings_for_training()
+            logger.info(f"Standings data carregados: {len(standings_data)} entries")
+        except Exception as e:
+            logger.warning(f"Standings data não disponíveis: {e}")
+
         # Build training dataset (leak-proof)
         X, y = build_training_dataset(
             all_data, match_stats=match_stats,
             pi_gamma=0.04, min_history=30,
+            coach_data=coach_data,
+            standings_data=standings_data,
         )
         logger.info(f"Dataset: {len(X)} samples, {X.shape[1]} features")
 
