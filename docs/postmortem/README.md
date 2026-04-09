@@ -28,3 +28,8 @@ aliases:
 - [[context-aware-predictor]] — v1.6.0: Features contextuais (técnico, desfalques, standings, fadiga) — 16 features, FEATURE_DIM 24→40
 - [[calibration-dixon-coles-platt]] — v1.9.0: Dixon-Coles ρ correction + Platt scaling 1x2
 - [[v1.10-h2h-referee-market]] — v1.10.0: H2H + Referee features + market blending (65/35)
+- **v1.11.0** — Isotonic/Temperature calibration + auto method selection
+- **v1.12.0** — Bivariate Poisson + diagonal inflation + backfill 2022-2025 (1610 matches)
+- **v1.13.0** — Market blend inversion + draw floor + odds features
+- **v1.14.0** — CatBoost 1x2 + Pi-Rating (end-to-end predictor)
+- **v1.14.1** — Expanded features infra + edge 5% + Pi-Rating probs

@@ -31,28 +31,16 @@ tags:
 - **v1.9.0** — Dixon-Coles ρ correction + Platt scaling 1x2
 - **v1.10.0** — H2H + Referee features + market blending (65/35)
 - **v1.11.0** — Isotonic/Temperature calibration + auto method selection (2026-04-05)
+- **v1.12.0** — Bivariate Poisson + diagonal inflation + backfill 2022-2025 (1610 matches)
+- **v1.13.0** — Market blend inversion + draw floor + odds features como input
+- **v1.14.0** — CatBoost 1x2 + Pi-Rating (end-to-end predictor, substituiu Poisson para 1x2)
+- **v1.14.1** — Expanded features infra + edge 5% + Pi-Rating probs (2026-04-06)
 
 ## Active
 
-- [[pitches/isotonic-calibration-v1.11]] — shipped, aguardando mais dados pra isotonic dominar
+Nenhum pitch ativo — wrap-up de sessão.
 
 ## Backlog priorizado
-
-### v1.12.0 — Backfill histórico 2022/2023
-**Motivação**: n=409 ainda insuficiente pra isotonic (precisa n≥1000). +760 matches destravam.
-- Ingestão Sofascore das temporadas 2022+2023 do Brasileirão
-- Re-fit calibração com n~1170 — esperado isotonic vencer CV
-- Re-train modelos ML goals/corners/cards com dataset maior
-
-### v1.13.0 — Calibração monitorada
-- Cron job diário: computar ECE em últimas N predições resolvidas
-- Re-fit automático quando ECE > 0.015
-- Alerta/log quando método vencedor mudar
-
-### v1.14.0 — Beta calibration / Hybrid
-- Beta calibration (3-param, tail skew)
-- Hybrid: temperature scaling + isotonic nos resíduos
-- Só implementar se v1.12/v1.13 não atingirem meta Brier 0.20
 
 ### v1.15.0 — UX polish (v0.8.0 backlog)
 - Deduplicar value bets (1 linha = melhor odd por aposta)
@@ -60,20 +48,33 @@ tags:
 - Filtro de bookmaker (só Betfair)
 - Responsivo mobile básico
 
+### v1.16.0 — Calibração monitorada
+- Cron job diário: computar ECE em últimas N predições resolvidas
+- Re-fit automático quando ECE > threshold
+- Alerta/log quando método vencedor mudar
+
+### v1.17.0 — CatBoost hyperopt + feature selection
+- Optuna/hyperopt para CatBoost params
+- SHAP-based feature pruning
+- Temporal walk-forward validation expandido
+
 ## Metas
 
-| Métrica | Atual (v1.10) | Pitch original | Research-based |
+| Métrica | v1.10 | v1.14.1 | Meta |
 |---|---|---|---|
-| Brier 1x2 (full pipeline) | 0.244 | <0.19 | **0.20** |
-| ECE | ~0.08 | — | <0.03 |
-| Accuracy 1x2 | 42% | >54% | 50-54% |
-| Feature importance top-10 | 0 context features | ≥2 | — |
+| Brier 1x2 (full pipeline) | 0.244 | TBD (CatBoost) | **0.20** |
+| ECE | ~0.08 | TBD | <0.03 |
+| Accuracy 1x2 | 42% | TBD | 50-54% |
+| Dataset size | 409 | 1610 | — |
+| Motor 1x2 | Poisson MC | CatBoost MultiClass | — |
+| Rating system | Elo | Pi-Rating | — |
 
-**Descobertas empíricas (2026-04-05):**
-- v1.6.0 context features estão no modelo mas **não aparecem no top-15 de importance** → signal já absorvido por Elo/xG
-- v1.8.0 playing style features também ausentes do top-15
-- Market blending (v1.10.0) reduz Brier ~30% em matches individuais overconfident
-- Calibração atual (Platt) cai 81%→67% — ainda insuficiente, mas auto-select valida que Platt é ótimo pra n<1000
+**Mudanças arquiteturais v1.12→v1.14:**
+- Bivariate Poisson (v1.12) substituiu Poisson independente para score sampling (corners, cards, CS, HT/FT)
+- CatBoost (v1.14) substituiu Poisson MC para 1x2 — aprende P(H,D,A) end-to-end
+- Pi-Rating (v1.14) substituiu Elo — ratings home/away independentes, convergência mais rápida
+- Market blend inversion (v1.13) — odds como features do modelo, não só pós-blend
+- Dataset 4x maior (409→1610) viabilizou ML
 
 ## Princípios
 
