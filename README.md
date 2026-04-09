@@ -17,7 +17,7 @@
 
 <br>
 
-**CLI + REST API** that combines StatsBomb Open Data, Sofascore, and market odds (The Odds API / Betfair Exchange) to extract ~45 player metrics, predict Brasileirão match outcomes via **CatBoost + Pi-Rating + Dixon-Coles**, and identify bets with positive edge using **Kelly sizing**.
+**CLI + REST API + React dashboard** that combines StatsBomb Open Data, Sofascore, and market odds (The Odds API / Betfair Exchange) to extract ~45 player metrics, predict Brasileirão match outcomes via **CatBoost + Pi-Rating + Dixon-Coles**, and identify bets with positive edge using **Kelly sizing**.
 
 [Architecture](#architecture) · [Stack](#stack) · [Quickstart](#quickstart) · [CLI](#cli) · [Status](#status)
 
