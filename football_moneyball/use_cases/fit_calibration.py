@@ -1,7 +1,7 @@
-"""Fitta calibração (Dixon-Coles ρ + Platt scaling) em dados históricos.
+"""Fitta calibration (Dixon-Coles ρ + Platt scaling) in data historical.
 
-Gera predicoes leak-proof em todas as temporadas disponiveis e usa outcomes reais
-pra fittar parametros de calibracao. Salva em {models_dir}/calibration.pkl.
+Generate predicoes leak-proof in todas as temporadas disponiveis and usa outcomes reais
+for fittar parameters of calibracao. Save em {models_dir}/calibration.pkl.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class FitCalibration:
-    """Fitta calibração do pipeline de previsão em dados leak-proof."""
+    """Fit calibration of the prediction pipeline in a leak-proof way."""
 
     def __init__(self, repo, models_dir: str = "football_moneyball/models") -> None:
         self.repo = repo
@@ -94,7 +94,7 @@ class FitCalibration:
         method: str = "auto",
     ) -> dict[str, Any]:
         if method not in _VALID_METHODS:
-            return {"error": f"method inválido: {method}. Use um de {_VALID_METHODS}"}
+            return {"error": f"method invalid: {method}. Use a de {_VALID_METHODS}"}
 
         if seasons is None:
             seasons = ["2024", "2026"]
@@ -105,16 +105,16 @@ class FitCalibration:
             recs = self._collect_leak_proof(competition, season)
             per_season[season] = len(recs)
             all_recs.extend(recs)
-            logger.info(f"Temporada {season}: {len(recs)} predições leak-proof")
+            logger.info(f"Season {season}: {len(recs)} predictions leak-proof")
 
         if not all_recs:
-            return {"error": "Sem dados para calibração."}
+            return {"error": "Without data for calibration."}
 
-        # Dixon-Coles ρ + Bivariate λ₃ (MLE, independe do método de calibração)
+        # Dixon-Coles ρ + Bivariate λ₃ (MLE, independent of the calibration method)
         matches = [(r["home_xg"], r["away_xg"], r["hg"], r["ag"]) for r in all_recs]
         rho = fit_dixon_coles_rho(matches)
         lambda3 = fit_lambda3(matches)
-        # Auto-select score method: bivariate se lambda3 significativo, senão DC
+        # Auto-select score method: bivariate if lambda3 significant, otherwise DC
         score_method = "bivariate" if lambda3 > 0.02 else "dixon-coles"
         logger.info(
             f"Score params: rho={rho:.4f}, lambda3={lambda3:.4f}, "
@@ -130,13 +130,13 @@ class FitCalibration:
             for r in all_recs
         ])
 
-        # Time-ordered split 80/20 (leak-proof: últimos 20% são mais recentes)
+        # Time-ordered split 80/20 (leak-proof: lasts 20% are mais recentes)
         n = len(all_recs)
         cut = int(n * 0.8)
         raw_train, raw_val = raw[:cut], raw[cut:]
         y_train, y_val = y[:cut], y[cut:]
 
-        # Fit + eval dos 3 métodos no val
+        # Fit + eval of the 3 methods in the val
         cv_results: dict[str, dict[str, float]] = {}
         fitted: dict[str, Any] = {}
 
@@ -171,7 +171,7 @@ class FitCalibration:
         }
         fitted["temperature"] = temp
 
-        # Método escolhido
+        # Method chosen
         if method == "auto":
             chosen = min(
                 cv_results.keys(),
@@ -179,9 +179,9 @@ class FitCalibration:
             )
         else:
             chosen = method
-        logger.info(f"Método escolhido: {chosen}")
+        logger.info(f"Method chosen: {chosen}")
 
-        # Re-fit no dataset completo com método vencedor (+ sempre fitta Platt como fallback)
+        # Re-fit in the dataset complete with method winner (+ sempre fitta Platt as fallback)
         p_home_full = fit_platt_binary(raw[:, 0], y[:, 0])
         p_draw_full = fit_platt_binary(raw[:, 1], y[:, 1])
         p_away_full = fit_platt_binary(raw[:, 2], y[:, 2])
@@ -200,7 +200,7 @@ class FitCalibration:
             "cv_results": cv_results,
         }
 
-        # Computa cal final no dataset completo pro método vencedor + metrics
+        # Compute final cal in the dataset complete pro method winner + metrics
         if chosen == "platt":
             cal_full = calibrate_1x2(raw, p_home_full, p_draw_full, p_away_full)
         elif chosen == "isotonic":

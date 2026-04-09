@@ -1,6 +1,6 @@
-"""Adapters para o Football Moneyball (arquitetura hexagonal).
+"""Adapters for Football Moneyball (hexagonal architecture).
 
-Expoe os provedores de dados e o repositorio PostgreSQL.
+Exposes the data providers and the PostgreSQL repository.
 """
 
 from football_moneyball.adapters.orm import (

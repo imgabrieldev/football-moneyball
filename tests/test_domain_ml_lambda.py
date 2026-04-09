@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.ml_lambda."""
+"""Tests for football_moneyball.domain.ml_lambda."""
 
 import os
 import tempfile
@@ -10,12 +10,12 @@ from football_moneyball.domain.ml_lambda import LambdaPredictor
 
 
 def _synthetic_dataset(n: int = 100):
-    """Dataset sintético: y ~ f(X) + noise."""
+    """Synthetic dataset: y ~ f(X) + noise."""
     rng = np.random.default_rng(42)
     X = rng.normal(size=(n, 12))
     # Target is a nonlinear combination of features
     y = 1.5 + 0.3 * X[:, 0] + 0.2 * X[:, 6] - 0.1 * X[:, 1] + rng.normal(0, 0.3, n)
-    # clamp positive (λ is always > 0)
+    # clamp positive (lambda is always > 0)
     y = np.clip(y, 0.1, 5.0)
     return X, y
 
@@ -40,7 +40,7 @@ class TestLambdaPredictor:
         X, y = _synthetic_dataset(100)
         predictor = LambdaPredictor()
         predictor.train(X, y)
-        # Predict com input "qualquer" — deve retornar algo clamped
+        # Predict with any input — must return something clamped
         lam = predictor.predict(np.zeros(12))
         assert 0.1 <= lam <= 15.0
 
@@ -48,12 +48,12 @@ class TestLambdaPredictor:
         X, y = _synthetic_dataset(200)
         predictor = LambdaPredictor()
         predictor.train(X, y)
-        # Predict feature com valor altos dos "positivos"
+        # Predict with high values on "positive" features
         high_features = np.array([5.0, 0, 0, 0, 0, 0, 5.0, 0, 0, 0, 0, 1.0])
         lam_high = predictor.predict(high_features)
         low_features = np.array([-5.0, 0, 0, 0, 0, 0, -5.0, 0, 0, 0, 0, 0.0])
         lam_low = predictor.predict(low_features)
-        # Features positivas produzem lambda maior
+        # Positive features produce a larger lambda
         assert lam_high > lam_low
 
     def test_save_load_roundtrip(self):

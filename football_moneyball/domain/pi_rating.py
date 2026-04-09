@@ -1,9 +1,9 @@
 """Pi-Rating system (Constantinou & Fenton, 2013).
 
-Ratings separados HOME/AWAY por time. Resolve home bias ao capturar
-que times performam diferente em casa vs fora.
+Separate HOME/AWAY ratings per team. Fixes home bias by capturing
+the fact that teams perform differently home vs away.
 
-Lógica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import pandas as pd
 
 @dataclass
 class PiRating:
-    """Rating home/away de um time."""
+    """Home/away rating of a team."""
     home: float = 0.0
     away: float = 0.0
 
@@ -30,20 +30,20 @@ def update_ratings(
     gamma: float = 0.04,
     goal_cap: int = 3,
 ) -> None:
-    """Atualiza Pi-Ratings após uma partida.
+    """Update Pi-Ratings after a match.
 
     Parameters
     ----------
     ratings : dict[str, PiRating]
-        Ratings atuais (modificado in-place).
+        Current ratings (modified in place).
     home_team, away_team : str
-        Nomes dos times.
+        Team names.
     home_goals, away_goals : int
-        Gols marcados.
+        Goals scored.
     gamma : float
-        Learning rate (0.035 original EPL, 0.04 pra Brasileirão).
+        Learning rate (0.035 original EPL, 0.04 for Brasileirao).
     goal_cap : int
-        Cap no goal difference pra reduzir outliers (±3).
+        Cap on the goal difference to reduce outliers (+/-3).
     """
     if home_team not in ratings:
         ratings[home_team] = PiRating()
@@ -65,27 +65,27 @@ def compute_all_ratings(
     gamma: float = 0.04,
     goal_cap: int = 3,
 ) -> dict[str, PiRating]:
-    """Computa Pi-Ratings pra todos os times a partir de histórico.
+    """Compute Pi-Ratings for all teams from history.
 
     Parameters
     ----------
     matches : pd.DataFrame
-        Colunas: match_id, home_team, away_team, home_score, away_score.
-        Deve estar ordenado cronologicamente (por match_id ou match_date).
+        Columns: match_id, home_team, away_team, home_score, away_score.
+        Must be sorted chronologically (by match_id or match_date).
 
     Returns
     -------
     dict[str, PiRating]
-        Ratings finais por time.
+        Final ratings per team.
     """
     ratings: dict[str, PiRating] = {}
 
-    # Deduplica matches (cada match_id aparece 1x)
+    # Deduplicate matches (each match_id appears once)
     if "home_team" in matches.columns:
         df = matches.drop_duplicates(subset=["match_id"]).sort_values("match_id")
     else:
-        # Formato alternativo: team, is_home, goals
-        # Pivot pra home_team/away_team
+        # Alternative format: team, is_home, goals
+        # Pivot to home_team/away_team
         df = _pivot_match_data(matches)
 
     for _, row in df.iterrows():
@@ -108,7 +108,7 @@ def compute_ratings_at_match(
     gamma: float = 0.04,
     goal_cap: int = 3,
 ) -> dict[str, PiRating]:
-    """Computa ratings usando apenas matches com match_id < target (leak-proof)."""
+    """Compute ratings using only matches with match_id < target (leak-proof)."""
     prior = matches[matches["match_id"] < target_match_id]
     return compute_all_ratings(prior, gamma, goal_cap)
 
@@ -118,7 +118,7 @@ def rating_diff(
     home_team: str,
     away_team: str,
 ) -> float:
-    """Diferencial de Pi-Rating: R_home[home] - R_away[away]."""
+    """Pi-Rating differential: R_home[home] - R_away[away]."""
     rh = ratings.get(home_team, PiRating())
     ra = ratings.get(away_team, PiRating())
     return rh.home - ra.away
@@ -129,7 +129,7 @@ def init_promoted_teams(
     promoted: list[str],
     relegated: list[str],
 ) -> None:
-    """Inicializa times promovidos com média dos rebaixados."""
+    """Initialize promoted teams with the average of the relegated ones."""
     if not relegated:
         return
     avg_home = np.mean([ratings[t].home for t in relegated if t in ratings]) if relegated else 0.0
@@ -139,7 +139,7 @@ def init_promoted_teams(
 
 
 def _pivot_match_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Converte formato (team, is_home, goals) pra (home_team, away_team, scores)."""
+    """Convert (team, is_home, goals) format to (home_team, away_team, scores)."""
     home = df[df["is_home"] == True].copy()  # noqa: E712
     away = df[df["is_home"] == False].copy()  # noqa: E712
 

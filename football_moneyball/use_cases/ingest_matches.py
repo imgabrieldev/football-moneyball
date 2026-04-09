@@ -1,4 +1,4 @@
-"""Use case: ingestao delta de partidas do Sofascore."""
+"""Use case: ingestao delta of matches of the Sofascore."""
 
 from __future__ import annotations
 from typing import Any
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class IngestMatches:
-    """Ingere partidas novas do Sofascore (delta — so jogos que faltam).
+    """Ingere matches novas of the Sofascore (delta — so jogos that faltam).
 
     Parameters
     ----------
@@ -27,17 +27,17 @@ class IngestMatches:
         competition_id: int = 325,
         season_id: int = 87678,
     ) -> dict[str, Any]:
-        """Executa ingestao delta.
+        """Runs ingestao delta.
 
-        Busca partidas finalizadas do Sofascore, compara com o banco,
-        e ingere apenas as novas.
+        Busca matches finalizadas of the Sofascore, comfor with the banco,
+        and ingere only as novas.
         """
         from football_moneyball.domain import metrics
 
-        # Buscar partidas do provider
+        # Buscar matches of the provider
         all_matches = self.provider.get_matches(competition_id, season_id)
         if all_matches.empty:
-            return {"error": "Nenhuma partida encontrada no provider.", "ingested": 0}
+            return {"error": "Nenhuma match encontrada in the provider.", "ingested": 0}
 
         ingested = 0
         skipped = 0

@@ -1,9 +1,9 @@
-"""Modulo de dominio para embeddings de jogadores com consciencia posicional.
+"""Modulo of dominio for embeddings of players with consciencia posicional.
 
-Gera representacoes vetoriais (embeddings) do estilo de jogo de cada jogador
-usando PCA por grupo posicional sobre metricas agregadas, realiza clusterizacao
-para identificar arquetipos taticos.
-Logica pura sobre DataFrames e arrays — sem dependencias de I/O externo
+Generate representations vetoriais (embeddings) of the style of jogo of each player
+usando PCA by grupo posicional sobre metrics agregadas, realiza clusterizacao
+for identificar arquetipos taticos.
+Logica pura sobre DataFrames and arrays — without dependencias of I/O externo
 (sqlalchemy, pgvector).
 """
 
@@ -27,53 +27,53 @@ logger = logging.getLogger(__name__)
 
 
 # =========================================================================
-# 1. Construcao de perfis agregados
+# 1. Construcao of perfis agregados
 # =========================================================================
 
 def build_player_profiles(
     metrics_df: pd.DataFrame,
     position_map: dict[int, str] | None = None,
 ) -> pd.DataFrame:
-    """Constroi perfis agregados de jogadores a partir de metricas por partida.
+    """Builds perfis agregados of players from metrics by match.
 
-    Recebe um DataFrame de metricas (tipicamente lido do banco ou agregado
-    de multiplas partidas), agrega por jogador (media entre partidas) e
-    normaliza as metricas aplicaveis por 90 minutos.
+    Receives a DataFrame of metrics (typically read of the banco or aggregated
+    of multiplas matches), aggregates by player (mean between matches) e
+    normaliza as metrics aplicaveis by 90 minutos.
 
     Parameters
     ----------
     metrics_df : pd.DataFrame
-        DataFrame com metricas por jogador por partida. Deve conter colunas
-        ``player_id``, ``player_name``, ``team`` e colunas de metricas
+        DataFrame with metrics by player by match. Deve conter colunas
+        ``player_id``, ``player_name``, ``team`` and colunas of metrics
         numericas.
     position_map : dict[int, str] | None
         Dicionario ``player_id -> position_group`` (``'GK'``, ``'DEF'``,
-        ``'MID'``, ``'FWD'``).  Se fornecido, adiciona coluna
-        ``position_group`` ao resultado.  Se ``None``, assume ``'MID'`` para
-        todos os jogadores.
+        ``'MID'``, ``'FWD'``).  If fornecido, adiciona column
+        ``position_group`` ao resultado.  Se ``None``, assume ``'MID'`` for
+        todos os players.
 
     Returns
     -------
     pd.DataFrame
         DataFrame com ``player_id``, ``player_name``, ``team``,
-        ``position_group`` e colunas de metricas agregadas.
+        ``position_group`` and colunas of metrics agregadas.
     """
     if metrics_df.empty:
         return metrics_df
 
-    # Colunas de identificacao
+    # Colunas of identificacao
     id_cols = ["player_id", "player_name", "team"]
     metric_cols = [c for c in metrics_df.columns if c not in id_cols + ["match_id"]]
 
-    # Agregar por jogador (media entre partidas)
+    # Agregar by player (mean between matches)
     agg_df = metrics_df.groupby(id_cols, as_index=False)[metric_cols].mean()
 
-    # Normalizacao por 90 minutos
+    # Normalizacao by 90 minutos
     if "minutes_played" in agg_df.columns:
         per90_cols_present = [c for c in PER90_COLUMNS if c in agg_df.columns]
         for col in per90_cols_present:
             agg_df[col] = agg_df[col] / (agg_df["minutes_played"] / 90.0)
-        # Substituir inf/NaN resultantes de divisao por zero
+        # Substituir inf/NaN resultantes of divisao by zero
         agg_df.replace([np.inf, -np.inf], 0.0, inplace=True)
         agg_df.fillna(0.0, inplace=True)
 
@@ -87,38 +87,38 @@ def build_player_profiles(
 
 
 # =========================================================================
-# 2. Geracao de embeddings via PCA (por grupo posicional)
+# 2. Geracao of embeddings via PCA (by grupo posicional)
 # =========================================================================
 
 def generate_embeddings(
     profiles_df: pd.DataFrame,
     n_components: int = 16,
 ) -> tuple[pd.DataFrame, dict[str, PCA]]:
-    """Gera embeddings de estilo de jogo via StandardScaler + PCA por grupo.
+    """Generate embeddings of style of jogo via StandardScaler + PCA by grupo.
 
-    Agrupa os jogadores por ``position_group`` e executa PCA independente
-    para cada grupo, produzindo embeddings posicionalmente contextualizados.
+    Agrupa os players por ``position_group`` and executa PCA independente
+    for each grupo, produzindo embeddings posicionalmente contextualizados.
 
     Parameters
     ----------
     profiles_df : pd.DataFrame
         DataFrame retornado por :func:`build_player_profiles`.  Deve conter
-        a coluna ``position_group``.
+        a column ``position_group``.
     n_components : int
-        Numero de componentes principais a manter (por grupo).
+        Numero of componentes principais a manter (by grupo).
 
     Returns
     -------
     tuple[pd.DataFrame, dict[str, PCA]]
         - DataFrame com ``player_id``, ``player_name``, ``team``,
-          ``position_group`` e coluna ``embedding`` (lista de floats).
-        - Dicionario de objetos PCA ajustados, indexados por
-          ``position_group``.  Cada PCA contem atributos extras
+          ``position_group`` and column ``embedding`` (lista of floats).
+        - Dicionario of objetos PCA ajustados, indexados por
+          ``position_group``.  Each PCA contem atributos extras
           ``feature_names_``, ``scaler_`` e ``explained_variance_sum_``.
     """
     id_cols = ["player_id", "player_name", "team", "position_group"]
 
-    # Se nao houver coluna position_group, criar com default
+    # If nao houver column position_group, criar with default
     if "position_group" not in profiles_df.columns:
         profiles_df = profiles_df.copy()
         profiles_df["position_group"] = "MID"
@@ -142,7 +142,7 @@ def generate_embeddings(
         pca = PCA(n_components=nc)
         X_pca = pca.fit_transform(X_scaled)
 
-        # Guardar referencias auxiliares no objeto PCA
+        # Guardar referencias auxiliares in the objeto PCA
         pca.feature_names_ = numeric_cols  # type: ignore[attr-defined]
         pca.scaler_ = scaler  # type: ignore[attr-defined]
         pca.explained_variance_sum_ = float(  # type: ignore[attr-defined]
@@ -164,11 +164,11 @@ def generate_embeddings(
 
 
 # =========================================================================
-# 3. Clusterizacao e deteccao de arquetipos
+# 3. Clusterizacao and deteccao of arquetipos
 # =========================================================================
 
 def _find_optimal_k(X: np.ndarray, k_range: range = range(3, 10)) -> int:
-    """Encontra o numero otimo de clusters via silhouette analysis."""
+    """Encontra o numero otimo of clusters via silhouette analysis."""
     if len(X) < max(k_range):
         k_range = range(2, max(3, len(X)))
     best_k = k_range.start
@@ -192,11 +192,11 @@ def _infer_archetype(
     pca: PCA,
     position_group: str = "MID",
 ) -> str:
-    """Infere o nome do arquetipo a partir do centroide do cluster.
+    """Infere o nome of the arquetipo from the centroide of the cluster.
 
-    Reconstroi o centroide no espaco original das features via transformada
-    inversa do PCA, identifica as 3 features com maior peso absoluto e mapeia
-    para um arquetipo tatico baseado no grupo posicional.
+    Reconstroi o centroide in the espaco original of the features via transformada
+    inversa of the PCA, identifies as 3 features with maior weight absoluto and mapeia
+    for a arquetipo tatico baseado in the grupo posicional.
     """
     reconstructed = pca.inverse_transform(centroid.reshape(1, -1))[0]
     feature_names: list[str] = pca.feature_names_  # type: ignore[attr-defined]
@@ -206,7 +206,7 @@ def _infer_archetype(
 
     archetype_map = GROUP_ARCHETYPES.get(position_group, GROUP_ARCHETYPES["MID"])
 
-    # Contagem de votos por arquetipo
+    # Contagem of votos by arquetipo
     votes: dict[str, int] = {}
     for feat in top_features:
         archetype = archetype_map.get(feat)
@@ -216,7 +216,7 @@ def _infer_archetype(
     if votes:
         return max(votes, key=lambda k: votes[k])
 
-    # Fallback: primeiro arquetipo do grupo
+    # Fallback: first arquetipo of the grupo
     fallback_values = list(archetype_map.values())
     return fallback_values[0] if fallback_values else "MID"
 
@@ -226,23 +226,23 @@ def cluster_players(
     n_clusters: int = 6,
     pca: PCA | dict[str, PCA] | None = None,
 ) -> pd.DataFrame:
-    """Agrupa jogadores em clusters taticos via KMeans.
+    """Agrupa players in clusters taticos via KMeans.
 
-    Para cada cluster, atribui um nome de arquetipo baseado na analise dos
+    For each cluster, atribui a nome of arquetipo baseado in the analise dos
     centroides (quais features originais mais contribuem).  Se ``pca`` for
-    um dicionario de PCA por grupo posicional, clusteriza separadamente por
-    grupo e usa arquetipos posicionais.
+    a dicionario of PCA by grupo posicional, clusteriza separadamente por
+    grupo and usa arquetipos posicionais.
 
     Parameters
     ----------
     embeddings_df : pd.DataFrame
-        DataFrame com coluna ``embedding`` (lista de floats).
+        DataFrame with column ``embedding`` (lista of floats).
     n_clusters : int
-        Numero maximo de clusters (pode ser reduzido pelo silhouette
+        Numero maximo of clusters (can ser reduzido by the silhouette
         analysis).
     pca : PCA | dict[str, PCA] | None
-        Objeto PCA ajustado ou dicionario ``{position_group: PCA}``
-        (necessario para inferir nomes de arquetipo).  Se ``None``, usa
+        Objeto PCA ajustado or dicionario ``{position_group: PCA}``
+        (necessario for inferir nomes of arquetipo).  Se ``None``, usa
         nomes genericos.
 
     Returns
@@ -290,7 +290,7 @@ def _cluster_by_group(
     n_clusters: int,
     pca_dict: dict[str, PCA],
 ) -> pd.DataFrame:
-    """Clusteriza jogadores separadamente por grupo posicional."""
+    """Clusteriza players separadamente by grupo posicional."""
     result_parts: list[pd.DataFrame] = []
     global_label_offset = 0
 
@@ -348,7 +348,7 @@ def _cluster_by_group(
 
 
 def _disambiguate_archetypes(archetype_map: dict[int, str]) -> dict[int, str]:
-    """Desambigua nomes de arquetipos repetidos adicionando sufixo numerico."""
+    """Desambigua nomes of arquetipos repetidos adicionando sufixo numerico."""
     seen: dict[str, int] = {}
     for k, v in archetype_map.items():
         if v in seen:

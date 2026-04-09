@@ -1,18 +1,18 @@
-"""Testes para football_moneyball.domain.cards_predictor."""
+"""Tests for football_moneyball.domain.cards_predictor."""
 
 from football_moneyball.domain.cards_predictor import predict_cards
 
 
 class TestPredictCards:
     def test_baseline(self):
-        # 2 cards/jogo, 12 faltas média, juiz médio
+        # 2 cards/game, 12 fouls average, average referee
         lh, la = predict_cards(2.0, 2.0, 12.0, 12.0, 1.0, 1.0)
         # base = 2 + 12*0.15*0.3 = 2 + 0.54 = 2.54
         assert abs(lh - 2.54) < 0.01
         assert abs(la - 2.54) < 0.01
 
     def test_strict_referee(self):
-        # referee_factor=1.5 → multiplica lambda por 1.5
+        # referee_factor=1.5 -> multiplies lambda by 1.5
         lh_avg, _ = predict_cards(2.0, 2.0, 12.0, 12.0, 1.0, 1.0)
         lh_strict, _ = predict_cards(2.0, 2.0, 12.0, 12.0, 1.5, 1.0)
         assert abs(lh_strict - lh_avg * 1.5) < 0.01

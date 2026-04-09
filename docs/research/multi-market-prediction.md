@@ -9,148 +9,164 @@ tags:
   - betfair
 ---
 
-# Research — Previsão Multi-Mercado (Todos os Mercados Betfair)
+# Research — Multi-Market Prediction (All Betfair Markets)
 
 > Research date: 2026-04-04
-> Sources: [listadas ao final]
+> Sources: [listed at the end]
 
 ## Context
 
-A Betfair Exchange oferece ~8 categorias de mercados pra cada jogo do Brasileirão. Nosso modelo só prevê 2 (1X2 e Over/Under gols). Precisamos expandir pra cobrir todos.
+Betfair Exchange offers ~8 market categories for each Brasileirão match. Our model only predicts 2 (1X2 and Over/Under goals). We need to expand to cover all of them.
 
-## Mercados da Betfair e Como Prever Cada Um
+## Betfair Markets and How to Predict Each
 
-### 1. Match Odds (1X2) — JÁ TEMOS ✅
-- **Modelo:** Poisson bivariado (Dixon-Coles)
-- **Input:** xG histórico, attack/defense strength
-- **Já implementado no v0.5.0**
+### 1. Match Odds (1X2) — ALREADY HAVE
 
-### 2. Over/Under Gols (0.5, 1.5, 2.5, 3.5) — JÁ TEMOS ✅
-- **Modelo:** Derivado do Monte Carlo (já calculamos over_05, over_15, over_25, over_35)
-- **Só precisa expor no frontend**
+- **Model:** Bivariate Poisson (Dixon-Coles)
+- **Input:** historical xG, attack/defense strength
+- **Already implemented in v0.5.0**
 
-### 3. BTTS (Both Teams To Score) — JÁ TEMOS ✅
-- **Modelo:** Derivado do Monte Carlo (btts_prob)
-- **Só precisa expor**
+### 2. Over/Under Goals (0.5, 1.5, 2.5, 3.5) — ALREADY HAVE
 
-### 4. Placar Exato (Correct Score) — JÁ TEMOS ✅
-- **Modelo:** score_matrix do Monte Carlo (top 10 placares com probabilidade)
-- **Só precisa expor**
+- **Model:** Derived from Monte Carlo (we already compute over_05, over_15, over_25, over_35)
+- **Just needs to be exposed in the frontend**
 
-### 5. Escanteios (Over/Under) — PRECISA IMPLEMENTAR 🔨
-- **Modelo:** Compound Poisson Regression (paper: Arxiv 2112.13001, publicado 2024)
-- **Input necessário:** média de escanteios por time (home/away), escanteios do adversário
-- **λ médio:** ~10 escanteios por jogo no futebol (5 + 5)
-- **Não segue Poisson simples** — tem clustering (serial correlation entre escanteios consecutivos)
-- **Melhor modelo:** Geometric-Poisson (compound) com Bayesian implementation
-- **Dados:** Sofascore TEM dados de escanteios por jogo
-- **Approach pragmático:** Poisson simples com λ = média de corners do time × fator adversário. Não é perfeito mas funciona pra Over/Under 8.5, 9.5, 10.5
+### 3. BTTS (Both Teams To Score) — ALREADY HAVE
 
-### 6. Cartões (Over/Under) — PRECISA IMPLEMENTAR 🔨
-- **Modelo:** Zero-Inflated Poisson (ZIP) — muitos jogos com 0-1 cartões, distribuição não é Poisson puro
-- **Input necessário:**
-  - **Team Aggression Score:** faltas por jogo, cartões históricos do time
-  - **Referee Strictness Score:** cartões médios por jogo do árbitro específico
-  - **Match Context:** derby/rivalidade, importância do jogo
-- **λ médio:** ~4 cartões por jogo
-- **Formula conceitual:** `Expected Cards = (team_A_fouls_avg + team_B_fouls_avg) × referee_card_rate`
-- **Dados:** Sofascore TEM dados de cartões e faltas por jogo. **Árbitro** é o diferencial — o Sofascore mostra o árbitro designado
+- **Model:** Derived from Monte Carlo (btts_prob)
+- **Just needs to be exposed**
 
-### 7. Asian Handicap — DERIVÁVEL DO QUE TEMOS 🔧
-- **Não precisa de modelo novo** — é derivado das probabilidades 1X2
-- **Asian -0.5:** = probabilidade de vitória (sem empate)
-- **Asian -1.0:** = probabilidade de vitória por 2+ gols
-- **Asian -1.5:** = probabilidade de vitória por 2+ gols (já temos no score_matrix)
-- **Calcular:** somar probabilidades dos placares relevantes da score_matrix
+### 4. Correct Score — ALREADY HAVE
 
-### 8. Half Time Result — PRECISA IMPLEMENTAR 🔨
-- **Modelo:** Poisson separado com λ_HT ≈ 0.45 × λ_FT (first half tem ~45% dos gols)
-- **Simular:** Monte Carlo separado com xG ajustado pro 1T
-- **Dados:** Sofascore TEM placar do intervalo em cada jogo
+- **Model:** score_matrix from Monte Carlo (top 10 scores with probability)
+- **Just needs to be exposed**
 
-### 9. Gol do Jogador — PARCIALMENTE POSSÍVEL ⚠️
-- **Precisa:** xG individual do jogador + minutos esperados
-- **Temos:** xG por jogador por partida no player_match_metrics
-- **Approach:** P(jogador marca) = 1 - e^(-xG_individual_per90 × minutos/90)
-- **Limitação:** precisa saber quem vai jogar (lineup confirmada ~1h antes)
+### 5. Corners (Over/Under) — NEEDS IMPLEMENTATION
 
-## Como os Profissionais Fazem
+- **Model:** Compound Poisson Regression (paper: Arxiv 2112.13001, published 2024)
+- **Required input:** average corners per team (home/away), opponent corners
+- **Average λ:** ~10 corners per match in football (5 + 5)
+- **Does not follow simple Poisson** — has clustering (serial correlation between consecutive corners)
+- **Best model:** Geometric-Poisson (compound) with Bayesian implementation
+- **Data:** Sofascore HAS per-match corner data
+- **Pragmatic approach:** simple Poisson with λ = team corners average × opponent factor. Not perfect but works for Over/Under 8.5, 9.5, 10.5
 
-### Starlizard (Tony Bloom — £600M/ano)
-- "Trata gambling como hedge fund trata ações"
-- Times de analistas, programadores e matemáticos
-- Modelos estatísticos pra calcular odds mais sharp que os bookmakers
-- Foco em **Asian Handicap** (mercado mais líquido, menos margem)
-- Aposta perto do match day (pra incluir info de escalação)
-- Milhares de eventos globais processados por segundo
-- **Segredo:** modelos proprietários nunca divulgados
+### 6. Cards (Over/Under) — NEEDS IMPLEMENTATION
 
-### Pinnacle (bookmaker sharp)
-- Margem de ~3% (vs 8-12% dos bookmakers normais)
-- "Closing line" da Pinnacle = benchmark de probabilidade real
-- Usa wisdom of the crowd: odds se ajustam com volume de apostas
-- Sharp bettors são BEM-VINDOS (ao contrário da Bet365 que bane)
+- **Model:** Zero-Inflated Poisson (ZIP) — many matches with 0-1 cards, distribution is not pure Poisson
+- **Required input:**
+  - **Team Aggression Score:** fouls per match, team's historical cards
+  - **Referee Strictness Score:** average cards per match for the specific referee
+  - **Match Context:** derby/rivalry, match importance
+- **Average λ:** ~4 cards per match
+- **Conceptual formula:** `Expected Cards = (team_A_fouls_avg + team_B_fouls_avg) × referee_card_rate`
+- **Data:** Sofascore HAS per-match data for cards and fouls. **Referee** is the differentiator — Sofascore shows the assigned referee
 
-### Modelo Acadêmico (Corner Kicks — Arxiv 2112.13001)
-- Compound Poisson com Geometric-Poisson distribution
-- Bayesian implementation com varying shape parameter
-- Usa odds de outros mercados pra informar (cross-market information)
-- Handles serial correlation entre corners consecutivos
+### 7. Asian Handicap — DERIVABLE FROM WHAT WE HAVE
 
-### Modelo Acadêmico (Cards — Bivariate ZIP)
+- **No new model needed** — it is derived from 1X2 probabilities
+- **Asian -0.5:** = win probability (without draw)
+- **Asian -1.0:** = probability of winning by 2+ goals
+- **Asian -1.5:** = probability of winning by 2+ goals (already in score_matrix)
+- **Calculation:** sum probabilities of the relevant scores from the score_matrix
+
+### 8. Half Time Result — NEEDS IMPLEMENTATION
+
+- **Model:** separate Poisson with λ_HT ≈ 0.45 × λ_FT (first half has ~45% of goals)
+- **Simulate:** separate Monte Carlo with xG adjusted for the 1st half
+- **Data:** Sofascore HAS half-time score for every match
+
+### 9. Player to Score — PARTIALLY POSSIBLE
+
+- **Requires:** individual player xG + expected minutes
+- **We have:** xG per player per match in player_match_metrics
+- **Approach:** P(player scores) = 1 - e^(-xG_individual_per90 × minutes/90)
+- **Limitation:** need to know who will play (confirmed lineup ~1h before)
+
+## How Professionals Do It
+
+### Starlizard (Tony Bloom — £600M/year)
+
+- "Treats gambling like a hedge fund treats stocks"
+- Teams of analysts, programmers, and mathematicians
+- Statistical models to compute sharper odds than the bookmakers
+- Focus on **Asian Handicap** (most liquid market, smallest margin)
+- Bets close to match day (to include lineup info)
+- Thousands of global events processed per second
+- **Secret:** proprietary models that are never disclosed
+
+### Pinnacle (sharp bookmaker)
+
+- ~3% margin (vs 8-12% of regular bookmakers)
+- Pinnacle's "closing line" = benchmark of true probability
+- Uses wisdom of the crowd: odds adjust with betting volume
+- Sharp bettors are WELCOME (unlike Bet365, which bans them)
+
+### Academic Model (Corner Kicks — Arxiv 2112.13001)
+
+- Compound Poisson with Geometric-Poisson distribution
+- Bayesian implementation with varying shape parameter
+- Uses odds from other markets to inform (cross-market information)
+- Handles serial correlation between consecutive corners
+
+### Academic Model (Cards — Bivariate ZIP)
+
 - Zero-Inflated Poisson (ZIP) via Frank copula
-- Encapsula: faltas, cartões históricos, chutes no alvo, escanteios
-- Variáveis-chave: FoulF, FoulA, RedCA, YelCA, CornP, ShotT
+- Encapsulates: fouls, historical cards, shots on target, corners
+- Key variables: FoulF, FoulA, RedCA, YelCA, CornP, ShotT
 
-## Dados Necessários do Sofascore
+## Required Data from Sofascore
 
-| Dado | Disponível no Sofascore? | Campo |
+| Data | Available on Sofascore? | Field |
 |------|:---:|---|
-| Escanteios por time por jogo | ✅ | Stats da partida |
-| Cartões amarelos por time | ✅ | Stats da partida |
-| Cartões vermelhos | ✅ | Stats da partida |
-| Faltas por time | ✅ | `fouls` no player stats |
-| Árbitro do jogo | ✅ | Metadata da partida |
-| Placar do intervalo | ✅ | Score 1T |
-| xG por jogador | ✅ | `expectedGoals` |
-| Escalação confirmada | ✅ | ~1h antes |
+| Corners per team per match | Yes | Match stats |
+| Yellow cards per team | Yes | Match stats |
+| Red cards | Yes | Match stats |
+| Fouls per team | Yes | `fouls` in player stats |
+| Match referee | Yes | Match metadata |
+| Half-time score | Yes | 1st half score |
+| Player xG | Yes | `expectedGoals` |
+| Confirmed lineup | Yes | ~1h before |
 
-## Priorização (impacto × esforço)
+## Prioritization (impact × effort)
 
-| # | Mercado | Impacto | Esforço | Dados? | Prioridade |
-|---|---------|---------|---------|--------|------------|
-| 1 | Asian Handicap | Alto | Baixo | ✅ Já temos | P0 |
-| 2 | Correct Score | Alto | Zero | ✅ Já temos | P0 |
-| 3 | Over/Under 0.5-3.5 | Alto | Zero | ✅ Já temos | P0 |
-| 4 | BTTS | Médio | Zero | ✅ Já temos | P0 |
-| 5 | Escanteios O/U | Alto | Médio | ✅ Precisa ingerir | P1 |
-| 6 | Cartões O/U | Alto | Médio | ✅ Precisa ingerir | P1 |
-| 7 | Half Time | Médio | Médio | ✅ Precisa ingerir | P1 |
-| 8 | Gol do Jogador | Alto | Alto | ⚠️ Precisa lineup | P2 |
+| # | Market | Impact | Effort | Data? | Priority |
+|---|--------|--------|--------|-------|----------|
+| 1 | Asian Handicap | High | Low | Already have | P0 |
+| 2 | Correct Score | High | Zero | Already have | P0 |
+| 3 | Over/Under 0.5-3.5 | High | Zero | Already have | P0 |
+| 4 | BTTS | Medium | Zero | Already have | P0 |
+| 5 | Corners O/U | High | Medium | Needs ingestion | P1 |
+| 6 | Cards O/U | High | Medium | Needs ingestion | P1 |
+| 7 | Half Time | Medium | Medium | Needs ingestion | P1 |
+| 8 | Player to Score | High | High | Needs lineup | P2 |
 
 ## Implications for Football Moneyball
 
-### P0 — Expor o que já temos (zero código de modelo novo)
-- Correct Score: já temos `score_matrix` → mostrar top 10 placares com probabilidade
-- Over/Under 0.5-3.5: já calculamos → expor todos no frontend
-- BTTS: já calculamos → expor
-- Asian Handicap: calcular somando placares da score_matrix:
+### P0 — Expose what we already have (zero new model code)
+
+- Correct Score: we already have `score_matrix` → show top 10 scores with probabilities
+- Over/Under 0.5-3.5: already computed → expose all in the frontend
+- BTTS: already computed → expose
+- Asian Handicap: compute by summing scores from the score_matrix:
   ```
   AH -0.5 = P(home win) = sum(score_matrix where home > away)
   AH -1.5 = sum(score_matrix where home > away + 1)
   AH +0.5 = P(away win or draw) = 1 - P(home win)
   ```
 
-### P1 — Novos modelos (Poisson pra escanteios/cartões)
-- Ingerir dados extras do Sofascore (escanteios, cartões, faltas, árbitro)
-- Modelo Poisson pra escanteios: λ_corners = team_corners_avg × opponent_factor
-- Modelo ZIP pra cartões: λ_cards = (team_fouls_rate + opp_fouls_rate) × referee_rate
-- Monte Carlo pra simular Over/Under 8.5, 9.5, 10.5 corners
-- Monte Carlo pra Over/Under 2.5, 3.5, 4.5 cards
+### P1 — New models (Poisson for corners/cards)
+
+- Ingest extra data from Sofascore (corners, cards, fouls, referee)
+- Poisson model for corners: λ_corners = team_corners_avg × opponent_factor
+- ZIP model for cards: λ_cards = (team_fouls_rate + opp_fouls_rate) × referee_rate
+- Monte Carlo to simulate Over/Under 8.5, 9.5, 10.5 corners
+- Monte Carlo for Over/Under 2.5, 3.5, 4.5 cards
 
 ### P2 — Player props
-- Precisa lineup confirmada (Sofascore ~1h antes)
-- xG individual → P(gol) = 1 - e^(-xG/90 × minutos)
+
+- Needs confirmed lineup (Sofascore ~1h before)
+- Individual xG → P(goal) = 1 - e^(-xG/90 × minutes)
 
 ## Sources
 

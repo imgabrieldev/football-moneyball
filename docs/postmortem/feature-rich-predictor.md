@@ -10,134 +10,134 @@ tags:
 
 # Pitch — Feature-Rich Predictor (v1.5.0)
 
-## Problema
+## Problem
 
-v1.3.0 ML treina XGBoost/GBR com apenas **12 features** (xG/xA for/against, corners, cards, league avg, is_home). Research empírico em múltiplos papers SHAP (2024-2025) mostra que **Elo rating e form EMA estão entre as top-3 features** em importance ranking. Nosso modelo ignora isso completamente.
+v1.3.0 ML trains XGBoost/GBR with only **12 features** (xG/xA for/against, corners, cards, league avg, is_home). Empirical research across multiple SHAP papers (2024-2025) shows that **Elo rating and form EMA are among the top-3 features** in importance ranking. Our model ignores this completely.
 
-**Baseline atual:**
-- Brier score 1X2: **0.2158**
-- Accuracy 1X2: **51.1%**
-- MAE goals (GBR): **0.902** (próximo do baseline — 87 samples é pouco)
+**Current baseline:**
+- Brier 1X2 score: **0.2158**
+- 1X2 accuracy: **51.1%**
+- Goals MAE (GBR): **0.902** (close to baseline — 87 samples is little)
 
-**Gap:** Starlizard/syndicates profissionais ficam em Brier ~0.20, accuracy 55-60%. Para chegar lá, precisamos de features mais ricas. Como a camada ML já existe (v1.3.0), adicionar features é puramente **feature engineering** — sem nova infraestrutura.
+**Gap:** Starlizard/professional syndicates sit at Brier ~0.20, 55-60% accuracy. To reach them, we need richer features. Since the ML layer already exists (v1.3.0), adding features is pure **feature engineering** — no new infrastructure.
 
 Research: [[implementation-details]], [[comprehensive-prediction-models]]
 
-## Solução
+## Solution
 
-Adicionar **~10 novas features** alimentadas pelo mesmo pipeline (Sofascore stats + histórico de resultados). Três categorias:
+Add **~10 new features** fed by the same pipeline (Sofascore stats + match history). Three categories:
 
-### 1. Rating System (top-3 em SHAP)
-- **Elo rating dinâmico** (FiveThirtyEight-style): cada time começa em 1500, atualizado após cada jogo via K-factor
-- **Goal difference EMA** (últimos N jogos, decaimento exponencial)
+### 1. Rating System (top-3 in SHAP)
+- **Dynamic Elo rating** (FiveThirtyEight-style): each team starts at 1500, updated after each match via K-factor
+- **Goal difference EMA** (last N matches, exponential decay)
 
-### 2. xG Overperformance (corrige sorte)
-- **xG overperformance per game** = `(goals - xG) / matches` — quanto time tá "acima do xG" (geralmente regride)
-- **xG allowed overperformance** = mesmo pra defesa
+### 2. xG Overperformance (corrects luck)
+- **xG overperformance per game** = `(goals - xG) / matches` — how much the team is "above xG" (usually regresses)
+- **xG allowed overperformance** = same for defense
 
-### 3. Features Sintéticas do Sofascore (já temos dados)
+### 3. Synthetic Sofascore features (we already have the data)
 - **creation_index** = `xA/90 + keyPass/90 × 0.05`
-- **defensive_intensity** = `(tackles + interceptions + ballRecovery) / 90` por time
-- **possession_quality** = `accuratePass_rate × touches_final_third` (proxy de controle)
-- **rest_days** = dias desde último jogo (fadiga)
+- **defensive_intensity** = `(tackles + interceptions + ballRecovery) / 90` per team
+- **possession_quality** = `accuratePass_rate × touches_final_third` (control proxy)
+- **rest_days** = days since last match (fatigue)
 
-Total: **12 features antigas + 10 novas = 22 features por time**.
+Total: **12 old features + 10 new = 22 features per team**.
 
-Feed tudo no XGBoost/GBR existente. Não cria modelos novos — só alimenta os 3 existentes (goals, corners, cards) com mais sinal.
+Feed everything into the existing XGBoost/GBR. Creates no new models — just feeds the 3 existing ones (goals, corners, cards) with more signal.
 
-## Arquitetura
+## Architecture
 
-### Módulos afetados
+### Affected modules
 
-| Módulo | Ação | Descrição |
+| Module | Action | Description |
 |--------|------|-----------|
-| `domain/elo.py` | NOVO | Cálculo de Elo rating (update após cada resultado) |
-| `domain/feature_engineering.py` | MODIFICAR | Estender de 12 → 22 features |
-| `domain/ml_lambda.py` | SEM MUDANÇA | Recebe X maior, mesmo código |
-| `adapters/postgres_repository.py` | MODIFICAR | Queries pra creation_index, defensive_intensity, rest_days |
-| `use_cases/train_ml_models.py` | SEM MUDANÇA | Treina com features novas automaticamente |
-| `use_cases/predict_all.py` | MODIFICAR | Passar novas features no `_ml_predict_pair` |
+| `domain/elo.py` | NEW | Elo rating computation (update after each result) |
+| `domain/feature_engineering.py` | MODIFY | Extend from 12 → 22 features |
+| `domain/ml_lambda.py` | NO CHANGE | Receives larger X, same code |
+| `adapters/postgres_repository.py` | MODIFY | Queries for creation_index, defensive_intensity, rest_days |
+| `use_cases/train_ml_models.py` | NO CHANGE | Trains with new features automatically |
+| `use_cases/predict_all.py` | MODIFY | Pass new features in `_ml_predict_pair` |
 
 ### Schema
 
-**Nenhuma mudança de tabela.** Features são calculadas on-the-fly via queries JOIN em `matches`, `player_match_metrics`, `match_stats`.
+**No table changes.** Features are computed on-the-fly via JOIN queries on `matches`, `player_match_metrics`, `match_stats`.
 
-**Opcional (otimização futura):** materialized view `team_form` atualizada a cada ingest — evita recalcular features toda vez.
+**Optional (future optimization):** `team_form` materialized view refreshed on each ingest — avoids recomputing features every time.
 
 ### Infra (K8s)
 
-Sem mudanças. Modelos ML retreinados via `moneyball train-models` (já existe).
+No changes. ML models retrained via `moneyball train-models` (already exists).
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] `domain/elo.py`: classe EloRating com `update(home, away, home_goals, away_goals)` + `get_rating(team)`
-- [ ] `feature_engineering.py`: função `build_rich_features()` com 22 features
-- [ ] Repository: `get_team_advanced_stats(team, last_n)` retornando creation_index, defensive_intensity, etc
-- [ ] Repository: `get_rest_days(team, match_date)` dias desde último jogo
-- [ ] Repository: `get_elo_ratings(season)` — computa Elo de todos os times até data X (histórico)
-- [ ] `predict_all.py`: usar build_rich_features no path ML
-- [ ] Tests: `test_domain_elo.py` com cenários conhecidos
-- [ ] Tests: atualizar `test_domain_feature_engineering.py` com 22 features
-- [ ] Retreinar modelos e comparar Brier antes/depois
-- [ ] Frontend: expor Elo rating no card de prediction (opcional)
+- [ ] `domain/elo.py`: EloRating class with `update(home, away, home_goals, away_goals)` + `get_rating(team)`
+- [ ] `feature_engineering.py`: `build_rich_features()` function with 22 features
+- [ ] Repository: `get_team_advanced_stats(team, last_n)` returning creation_index, defensive_intensity, etc
+- [ ] Repository: `get_rest_days(team, match_date)` days since last match
+- [ ] Repository: `get_elo_ratings(season)` — computes Elo of all teams up to date X (history)
+- [ ] `predict_all.py`: use build_rich_features on ML path
+- [ ] Tests: `test_domain_elo.py` with known scenarios
+- [ ] Tests: update `test_domain_feature_engineering.py` with 22 features
+- [ ] Retrain models and compare Brier before/after
+- [ ] Frontend: expose Elo rating on the prediction card (optional)
 
-### Fora do Escopo
+### Out of Scope
 
 - Event-level data scraping (WhoScored) — [[event-data-integration]] (v1.6.0)
-- PPDA real via SPADL (research mostra variância alta em match-level)
-- Player-level Elo (só time)
-- xT real via events — fica pra v1.6.0
-- Calibração Platt/isotonic — reservado pra v1.7.0
+- Real PPDA via SPADL (research shows high variance at match level)
+- Player-level Elo (team only)
+- Real xT via events — deferred to v1.6.0
+- Platt/isotonic calibration — reserved for v1.7.0
 
-## Research Necessária
+## Research Needed
 
-- [x] Elo rating pra futebol — FiveThirtyEight method
-- [x] Feature importance SHAP em football models — [[implementation-details]]
-- [x] xG overperformance regression — research 2024
-- [ ] K-factor ideal para Brasileirão 2026 (testar 20, 30, 40)
-- [ ] Janela ideal de EMA (5, 7, 10 jogos)
+- [x] Elo rating for football — FiveThirtyEight method
+- [x] Feature importance SHAP in football models — [[implementation-details]]
+- [x] xG overperformance regression — 2024 research
+- [ ] Optimal K-factor for Brasileirão 2026 (test 20, 30, 40)
+- [ ] Optimal EMA window (5, 7, 10 matches)
 
-## Estratégia de Testes
+## Testing Strategy
 
-### Unitários (domain — zero mocks)
+### Unit (domain — zero mocks)
 
 - `test_domain_elo.py`:
-  - 2 times começam em 1500, empate → ambos continuam em 1500
-  - Time forte bate fraco → forte sobe pouco, fraco cai pouco
-  - Time fraco bate forte → fraco sobe muito, forte cai muito
-  - K-factor=20 vs 40 produz magnitudes diferentes
+  - 2 teams start at 1500, draw → both stay at 1500
+  - Strong team beats weak → strong goes up a little, weak drops a little
+  - Weak team beats strong → weak goes up a lot, strong drops a lot
+  - K-factor=20 vs 40 produce different magnitudes
 - `test_domain_feature_engineering.py`:
-  - build_rich_features retorna 22 features
-  - Ordem das features é consistente
-  - Fallback defaults quando dados missing
+  - build_rich_features returns 22 features
+  - Feature order is consistent
+  - Fallback defaults when data is missing
 
-### Integração (com PG)
+### Integration (with PG)
 
-- Feature engineering com dados reais: 87 matches populam todas as 22 dimensões
-- Training pipeline completo: 22 features → GBR → MAE estável
-- Elo ratings calculados retroativamente batem com esperado
+- Feature engineering with real data: 87 matches populate all 22 dimensions
+- Full training pipeline: 22 features → GBR → stable MAE
+- Retroactively computed Elo ratings match expectations
 
 ### Manual
 
-- Comparar Elo ratings com https://eloratings.net (se cobre Brasileirão)
-- Inspecionar feature importance do GBR treinado — Elo deveria estar top-3
-- Verificar que Brier cai após retreinar
+- Compare Elo ratings with https://eloratings.net (if it covers Brasileirão)
+- Inspect feature importance of trained GBR — Elo should be top-3
+- Verify that Brier drops after retraining
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] 22 features implementadas e testadas
-- [ ] Elo rating com validação manual (Flamengo ~1700, Remo ~1350, etc)
-- [ ] XGBoost retreinado com MAE_goals < 0.85 (era 0.902)
-- [ ] **Brier < 0.200 em backtest** (target principal — era 0.2158)
-- [ ] **Accuracy 1X2 > 54%** em backtest (era 51.1%)
-- [ ] Feature importance mostra Elo/goal_diff_ema no top-5
-- [ ] Testes passando (210+ total, ~15 novos)
-- [ ] Domain layer puro (sem deps de infra)
-- [ ] Backward compatible: modelos antigos continuam funcionando
+- [ ] 22 features implemented and tested
+- [ ] Elo rating with manual validation (Flamengo ~1700, Remo ~1350, etc)
+- [ ] XGBoost retrained with MAE_goals < 0.85 (was 0.902)
+- [ ] **Brier < 0.200 in backtest** (main target — was 0.2158)
+- [ ] **1X2 accuracy > 54%** in backtest (was 51.1%)
+- [ ] Feature importance shows Elo/goal_diff_ema in top-5
+- [ ] Tests passing (210+ total, ~15 new)
+- [ ] Pure domain layer (no infra deps)
+- [ ] Backward compatible: old models keep working
 
-## Próximos passos após v1.5.0
+## Next steps after v1.5.0
 
-Se Brier < 0.200 ✓ → v1.6.0: Event data via WhoScored (PPDA, xT, pass networks)
-Se Brier ≥ 0.200 ✗ → debug feature importance, ajustar hyperparams, ou reconsiderar approach
+If Brier < 0.200 ✓ → v1.6.0: Event data via WhoScored (PPDA, xT, pass networks)
+If Brier ≥ 0.200 ✗ → debug feature importance, tune hyperparams, or reconsider approach

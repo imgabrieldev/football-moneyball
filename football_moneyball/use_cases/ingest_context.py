@@ -1,4 +1,4 @@
-"""Use case: ingestao de contexto (coaches, injuries, standings)."""
+"""Use case: ingestao of contexto (coaches, injuries, standings)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class IngestContext:
-    """Ingere dados contextuais pra v1.6.0 features.
+    """Ingere dados contextuais for v1.6.0 features.
 
     Parameters
     ----------
@@ -33,19 +33,19 @@ class IngestContext:
         Parameters
         ----------
         backfill : bool
-            Se True, processa TODOS os matches historicos.
-            Se False, so matches recentes (ultimas 30 dias).
+            If True, processa TODOS os matches historicos.
+            If False, so matches recentes (ultimas 30 dias).
 
         Returns
         -------
-        dict com contadores.
+        dict with contadores.
         """
         from sqlalchemy import text
 
         now_iso = datetime.now().isoformat()
         today = now_iso[:10]
 
-        # 1. Buscar matches pra processar
+        # 1. Buscar matches for processar
         if backfill:
             sql = text("""
                 SELECT match_id, match_date, home_team, away_team

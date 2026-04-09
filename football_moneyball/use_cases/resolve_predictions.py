@@ -9,16 +9,16 @@ logger = logging.getLogger(__name__)
 
 
 class ResolvePredictions:
-    """Resolve previsoes pendentes comparando com resultados no banco.
+    """Resolve previsoes pendentes comparando with resultados in the banco.
 
-    Busca previsoes com status='pending', tenta encontrar o resultado
-    real na tabela matches (via fuzzy match de nomes), e atualiza
-    o historico com metricas de acuracia.
+    Busca previsoes with status='pending', tenta encontrar o resultado
+    real in the table matches (via fuzzy match of nomes), and updates
+    o history with metrics of acuracia.
 
     Parameters
     ----------
     repo : PostgresRepository
-        Repositorio com acesso ao banco.
+        Repositorio with acesso ao banco.
     """
 
     def __init__(self, repo) -> None:
@@ -84,7 +84,7 @@ class ResolvePredictions:
                 matched_home = _fuzzy_match_team(home, known_teams)
                 matched_away = _fuzzy_match_team(away, known_teams)
 
-                # Find the match result (tentando direto e invertido — old preds tinham bug)
+                # Find the match result (tentando direto and invertido — old preds tinham bug)
                 match_result = None
                 inverted = False
                 for m in matches_with_results:
@@ -99,7 +99,7 @@ class ResolvePredictions:
                 if match_result is None:
                     continue
 
-                # Se prediction tá invertida vs match, swap scores pra resolver direito
+                # If prediction is inverted vs match, swap scores to resolve correctly
                 if inverted:
                     home_goals = int(match_result["away_score"])
                     away_goals = int(match_result["home_score"])
@@ -142,7 +142,7 @@ class ResolvePredictions:
         actual_outcome: str,
         total_goals: int,
     ) -> None:
-        """Resolve value bets associadas a uma partida."""
+        """Resolve value bets associadas a a match."""
         from football_moneyball.domain.track_record import resolve_value_bet
         from football_moneyball.adapters.orm import ValueBetHistory
 

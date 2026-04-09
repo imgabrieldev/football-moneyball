@@ -3,12 +3,12 @@ import { BarChart3, TrendingUp, Users, Target, CheckCircle, Home, History } from
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Home },
-  { path: '/predictions', label: 'Previsões', icon: BarChart3 },
+  { path: '/predictions', label: 'Predictions', icon: BarChart3 },
   { path: '/value-bets', label: 'Value Bets', icon: TrendingUp },
   { path: '/track-record', label: 'Track Record', icon: History },
-  { path: '/players', label: 'Jogadores', icon: Users },
+  { path: '/players', label: 'Players', icon: Users },
   { path: '/backtest', label: 'Backtest', icon: Target },
-  { path: '/verify', label: 'Verificação', icon: CheckCircle },
+  { path: '/verify', label: 'Verification', icon: CheckCircle },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

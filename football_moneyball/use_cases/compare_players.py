@@ -1,4 +1,4 @@
-"""Use case: comparacao de dois jogadores."""
+"""Use case: comparacao of dois players."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import pandas as pd
 
 
 class ComparePlayers:
-    """Compara metricas agregadas de dois jogadores.
+    """Comfor metrics agregadas of dois players.
 
     Parameters
     ----------
     repo : MatchRepository
-        Repositorio para buscar metricas.
+        Repositorio for buscar metrics.
     """
 
     def __init__(self, repo) -> None:
@@ -26,7 +26,7 @@ class ComparePlayers:
         player_b: str,
         season: str | None = None,
     ) -> dict[str, Any]:
-        """Busca e agrega metricas de dois jogadores.
+        """Busca and aggregates metrics of dois players.
 
         Returns
         -------
@@ -38,17 +38,17 @@ class ComparePlayers:
         metrics_b = self.repo.get_player_metrics(player_b, season)
 
         if metrics_a.empty:
-            return {"error": f"Jogador '{player_a}' nao encontrado."}
+            return {"error": f"Player '{player_a}' nao encontrado."}
         if metrics_b.empty:
-            return {"error": f"Jogador '{player_b}' nao encontrado."}
+            return {"error": f"Player '{player_b}' nao encontrado."}
 
         numeric_cols = metrics_a.select_dtypes(include="number").columns.tolist()
         numeric_cols = [c for c in numeric_cols if c not in ("player_id", "match_id")]
 
         agg_a = metrics_a[numeric_cols].sum()
-        agg_a["partidas"] = len(metrics_a)
+        agg_a["matches"] = len(metrics_a)
         agg_b = metrics_b[numeric_cols].sum()
-        agg_b["partidas"] = len(metrics_b)
+        agg_b["matches"] = len(metrics_b)
 
         # Cosine similarity from embeddings
         similarity = None

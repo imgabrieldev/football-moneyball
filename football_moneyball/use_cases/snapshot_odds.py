@@ -1,4 +1,4 @@
-"""Use case: snapshot de odds no PostgreSQL."""
+"""Use case: snapshot of odds in the PostgreSQL."""
 
 from __future__ import annotations
 from typing import Any
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class SnapshotOdds:
-    """Busca odds atuais e persiste no PostgreSQL.
+    """Busca odds atuais and persiste in the PostgreSQL.
 
     Parameters
     ----------
@@ -21,15 +21,15 @@ class SnapshotOdds:
         self.repo = repo
 
     def execute(self) -> dict[str, Any]:
-        """Busca odds da API e salva no banco.
+        """Busca odds of the API and salva in the banco.
 
-        Forca refresh (ignora cache) pra garantir dados frescos.
+        Forca refresh (ignora cache) for garantir data frescos.
         """
         # Force fetch from API (bypass cache)
         odds = self.odds_provider.get_upcoming_odds()
 
         if not odds:
-            return {"error": "Nenhuma odd retornada pela API.", "matches": 0}
+            return {"error": "Nenhuma odd retornada by the API.", "matches": 0}
 
         # Persist
         self.repo.save_odds(odds)

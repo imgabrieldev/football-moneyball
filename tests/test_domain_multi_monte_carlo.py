@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.multi_monte_carlo."""
+"""Tests for football_moneyball.domain.multi_monte_carlo."""
 
 from football_moneyball.domain.multi_monte_carlo import (
     derive_markets_from_sims,
@@ -87,7 +87,7 @@ class TestDeriveMarketsFromSims:
     def test_probabilities_reasonable(self):
         sims = self._make_sims()
         markets = derive_markets_from_sims(sims)
-        # Home favored (1.5 vs 1.0) → HT home_prob should be > away_prob
+        # Home favored (1.5 vs 1.0) -> HT home_prob should be > away_prob
         assert markets["ht_result"]["home_prob"] > markets["ht_result"]["away_prob"]
 
     def test_empty_df(self):

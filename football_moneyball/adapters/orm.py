@@ -1,7 +1,7 @@
-"""Modelos ORM e gerenciamento de sessao do Football Moneyball.
+"""ORM models and session management for Football Moneyball.
 
-Define todos os modelos SQLAlchemy mapeados para o schema PostgreSQL + pgvector,
-alem de funcoes para criacao de engine, sessao e inicializacao do banco.
+Defines all SQLAlchemy models mapped to the PostgreSQL + pgvector schema,
+plus functions for creating the engine, session and initializing the database.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ DATABASE_URL = os.getenv(
 
 
 # ---------------------------------------------------------------------------
-# Base declarativa
+# Declarative base
 # ---------------------------------------------------------------------------
 
 class Base(DeclarativeBase):
@@ -43,11 +43,11 @@ class Base(DeclarativeBase):
 
 
 # ---------------------------------------------------------------------------
-# Modelos ORM
+# ORM models
 # ---------------------------------------------------------------------------
 
 class Match(Base):
-    """Partidas de futebol."""
+    """Football matches."""
 
     __tablename__ = "matches"
 
@@ -63,7 +63,7 @@ class Match(Base):
 
 
 class PlayerMatchMetrics(Base):
-    """Metricas individuais de cada jogador por partida."""
+    """Individual metrics for each player per match."""
 
     __tablename__ = "player_match_metrics"
 
@@ -72,7 +72,7 @@ class PlayerMatchMetrics(Base):
     player_name: Mapped[Optional[str]] = mapped_column(String)
     team: Mapped[Optional[str]] = mapped_column(String)
 
-    # Metricas numericas
+    # Numeric metrics
     minutes_played: Mapped[Optional[float]] = mapped_column(Float)
     goals: Mapped[Optional[float]] = mapped_column(Float)
     assists: Mapped[Optional[float]] = mapped_column(Float)
@@ -126,7 +126,7 @@ class PlayerMatchMetrics(Base):
 
 
 class PassNetwork(Base):
-    """Arestas da rede de passes entre jogadores em uma partida."""
+    """Edges of the pass network between players in a match."""
 
     __tablename__ = "pass_networks"
 
@@ -140,7 +140,7 @@ class PassNetwork(Base):
 
 
 class PlayerEmbedding(Base):
-    """Embeddings vetoriais de jogadores por temporada, gerados via clustering."""
+    """Vector embeddings of players per season, generated via clustering."""
 
     __tablename__ = "player_embeddings"
 
@@ -156,7 +156,7 @@ class PlayerEmbedding(Base):
 
 
 class Stint(Base):
-    """Periodos continuos de jogo com a mesma formacao de jogadores em campo."""
+    """Continuous game periods with the same set of players on the pitch."""
 
     __tablename__ = "stints"
 
@@ -172,7 +172,7 @@ class Stint(Base):
 
 
 class ActionValue(Base):
-    """Valores de acao (xT e VAEP) por evento de uma partida."""
+    """Action values (xT and VAEP) per event of a match."""
 
     __tablename__ = "action_values"
 
@@ -193,7 +193,7 @@ class ActionValue(Base):
 
 
 class PressingMetrics(Base):
-    """Metricas de pressing por time por partida."""
+    """Pressing metrics per team per match."""
 
     __tablename__ = "pressing_metrics"
 
@@ -213,7 +213,7 @@ class PressingMetrics(Base):
 
 
 class MatchOdds(Base):
-    """Odds de casas de apostas por partida."""
+    """Bookmaker odds per match."""
 
     __tablename__ = "match_odds"
 
@@ -225,14 +225,14 @@ class MatchOdds(Base):
     odds: Mapped[Optional[float]] = mapped_column(Float)
     implied_prob: Mapped[Optional[float]] = mapped_column(Float)
     fetched_at: Mapped[Optional[str]] = mapped_column(String)
-    # v1.5.3 — armazenar home/away pra nao depender de fallback alfabetico
+    # v1.5.3 — store home/away to avoid relying on alphabetical fallback
     home_team: Mapped[Optional[str]] = mapped_column(String)
     away_team: Mapped[Optional[str]] = mapped_column(String)
     commence_time: Mapped[Optional[str]] = mapped_column(String)
 
 
 class MatchPrediction(Base):
-    """Previsoes do modelo por partida."""
+    """Model predictions per match."""
 
     __tablename__ = "match_predictions"
 
@@ -256,14 +256,14 @@ class MatchPrediction(Base):
     model_version: Mapped[Optional[str]] = mapped_column(String)
     # v1.2.0 — multi-output markets (corners, cards, shots, HT)
     multi_markets = mapped_column(JSONB)
-    # v1.4.0 — player props (marcador, assistencia, chutes individuais)
+    # v1.4.0 — player props (scorer, assister, individual shots)
     player_props = mapped_column(JSONB)
     # v1.3.0 — ML flag
     ml_used: Mapped[Optional[bool]] = mapped_column(Integer)  # 0/1 as int
 
 
 class ValueBet(Base):
-    """Value bets identificadas pelo modelo."""
+    """Value bets identified by the model."""
 
     __tablename__ = "value_bets"
 
@@ -284,7 +284,7 @@ class ValueBet(Base):
 
 
 class BacktestResult(Base):
-    """Resultados de backtesting."""
+    """Backtesting results."""
 
     __tablename__ = "backtest_results"
 
@@ -302,7 +302,7 @@ class BacktestResult(Base):
 
 
 class PredictionHistory(Base):
-    """Historico imutavel de previsoes."""
+    """Immutable prediction history."""
 
     __tablename__ = "prediction_history"
 
@@ -335,7 +335,7 @@ class PredictionHistory(Base):
 
 
 class MatchStats(Base):
-    """Estatisticas match-level: corners, cards, fouls, shots, HT score + playing style (v1.7.0)."""
+    """Match-level stats: corners, cards, fouls, shots, HT score + playing style (v1.7.0)."""
 
     __tablename__ = "match_stats"
 
@@ -386,7 +386,7 @@ class MatchStats(Base):
 
 
 class RefereeStats(Base):
-    """Estatisticas de arbitros (totais de carreira via Sofascore)."""
+    """Referee stats (career totals via Sofascore)."""
 
     __tablename__ = "referee_stats"
 
@@ -401,7 +401,7 @@ class RefereeStats(Base):
 
 
 class TeamCoach(Base):
-    """Historico de tecnicos por time (quem treinou quando)."""
+    """Coach history per team (who coached when)."""
 
     __tablename__ = "team_coaches"
 
@@ -409,7 +409,7 @@ class TeamCoach(Base):
     coach_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     start_match_date: Mapped[str] = mapped_column(String, primary_key=True)
     coach_name: Mapped[Optional[str]] = mapped_column(String)
-    end_match_date: Mapped[Optional[str]] = mapped_column(String)  # NULL = atual
+    end_match_date: Mapped[Optional[str]] = mapped_column(String)  # NULL = current
     games_coached: Mapped[Optional[int]] = mapped_column(Integer)
     wins: Mapped[Optional[int]] = mapped_column(Integer)
     draws: Mapped[Optional[int]] = mapped_column(Integer)
@@ -418,7 +418,7 @@ class TeamCoach(Base):
 
 
 class PlayerInjury(Base):
-    """Jogadores ausentes por partida (lesoes, suspensoes, etc)."""
+    """Absent players per match (injuries, suspensions, etc)."""
 
     __tablename__ = "player_injuries"
 
@@ -432,7 +432,7 @@ class PlayerInjury(Base):
 
 
 class LeagueStanding(Base):
-    """Snapshot de classificacao por data (pra position_gap, pressure)."""
+    """Standings snapshot per date (for position_gap, pressure)."""
 
     __tablename__ = "league_standings"
 
@@ -451,7 +451,7 @@ class LeagueStanding(Base):
 
 
 class MatchLineup(Base):
-    """Escalacao (provavel ou confirmada) de uma partida."""
+    """Lineup (probable or confirmed) of a match."""
 
     __tablename__ = "match_lineups"
 
@@ -468,7 +468,7 @@ class MatchLineup(Base):
 
 
 class ValueBetHistory(Base):
-    """Historico imutavel de value bets."""
+    """Immutable value bet history."""
 
     __tablename__ = "value_bet_history"
 
@@ -494,31 +494,31 @@ class ValueBetHistory(Base):
 # ---------------------------------------------------------------------------
 
 def get_engine():
-    """Cria e retorna o engine SQLAlchemy a partir da DATABASE_URL."""
+    """Creates and returns the SQLAlchemy engine from DATABASE_URL."""
     return create_engine(DATABASE_URL)
 
 
 def get_session() -> Session:
-    """Retorna uma nova sessao vinculada ao engine padrao."""
+    """Returns a new session bound to the default engine."""
     engine = get_engine()
     return sessionmaker(bind=engine)()
 
 
 def init_db(engine) -> None:
-    """Cria todas as tabelas definidas nos modelos ORM e aplica migracoes."""
+    """Creates all tables defined in the ORM models and applies migrations."""
     Base.metadata.create_all(engine)
     apply_migrations(engine)
 
 
 # ---------------------------------------------------------------------------
-# Migracoes idempotentes (ALTER TABLE em tabelas existentes)
+# Idempotent migrations (ALTER TABLE on existing tables)
 # ---------------------------------------------------------------------------
 
 def apply_migrations(engine) -> None:
-    """Aplica ALTER TABLEs idempotentes em tabelas existentes.
+    """Applies idempotent ALTER TABLEs on existing tables.
 
-    Use quando adicionar colunas novas em tabelas ja criadas. PostgreSQL
-    16 suporta ``ADD COLUMN IF NOT EXISTS`` nativamente.
+    Use this when adding new columns to already-created tables. PostgreSQL
+    16 natively supports ``ADD COLUMN IF NOT EXISTS``.
     """
     migrations = [
         # v1.1.0 — player-aware predictions
@@ -531,7 +531,7 @@ def apply_migrations(engine) -> None:
         # v1.4.0
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS player_props JSONB",
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS ml_used INTEGER",
-        # v1.7.0 — expandir match_stats com playing style fields
+        # v1.7.0 — expand match_stats with playing style fields
         "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_xg REAL",
         "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS away_xg REAL",
         "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS home_big_chances INTEGER",
@@ -557,7 +557,7 @@ def apply_migrations(engine) -> None:
         # v1.4.2 — round (from Sofascore roundInfo)
         "ALTER TABLE matches ADD COLUMN IF NOT EXISTS round INTEGER",
         "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS round INTEGER",
-        # v1.5.3 — home/away em match_odds
+        # v1.5.3 — home/away in match_odds
         "ALTER TABLE match_odds ADD COLUMN IF NOT EXISTS home_team VARCHAR",
         "ALTER TABLE match_odds ADD COLUMN IF NOT EXISTS away_team VARCHAR",
     ]
@@ -569,5 +569,5 @@ def apply_migrations(engine) -> None:
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
-                # Ignora erros (tabela ainda nao existe, etc)
+                # Ignore errors (table does not exist yet, etc)
                 conn.rollback()

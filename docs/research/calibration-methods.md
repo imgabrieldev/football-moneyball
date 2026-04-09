@@ -7,127 +7,134 @@ tags:
   - brier
 ---
 
-# Research — Probability Calibration em Modelos de Futebol
+# Research — Probability Calibration in Football Models
 
 > Research date: 2026-04-05
-> Sources: listadas ao final
+> Sources: listed at the end
 
 ## Context
 
-Modelo atual do Football Moneyball apresenta Brier score 0.2437 em 78 predições resolvidas (meta pitch v1.6.0: <0.19). Análise de reliability diagram mostra overconfidence sistemática: no bin 70%+ o modelo prevê média 81.1% mas a taxa real de acerto é apenas 38.9% (gap de +42 pontos).
+The current Football Moneyball model has a Brier score of 0.2437 across 78 resolved predictions (v1.6.0 pitch target: <0.19). Reliability diagram analysis shows systematic overconfidence: in the 70%+ bin the model predicts an average of 81.1% but the empirical hit rate is only 38.9% (gap of +42 points).
 
-Platt scaling já está implementado (v1.9.0) mas os parâmetros atuais (a=0.46, b=0.04) comprimem de forma insuficiente — 81% vira apenas 67%. Pesquisa busca validar quais métodos de calibração são usados por bookmakers profissionais e clubes, e qual é a meta realista de Brier score.
+Platt scaling is already implemented (v1.9.0) but the current parameters (a=0.46, b=0.04) compress insufficiently — 81% becomes only 67%. The research aims to validate which calibration methods are used by professional bookmakers and clubs, and what a realistic Brier score target should be.
 
 ## Findings
 
-### 1. Benchmarks acadêmicos — o que é bom?
+### 1. Academic benchmarks — what is good?
 
-RPS (Ranked Probability Score) de bookmakers em 250M de linhas de odds:
+Bookmaker RPS (Ranked Probability Score) over 250M odds rows:
 
-| Liga | RPS típico |
+| League | Typical RPS |
 |---|---|
 | Eredivisie / Liga Portugal | 0.175–0.185 |
 | Premier League | ~0.19 |
-| Faixa geral europa | 0.175–0.224 |
+| General European range | 0.175–0.224 |
 
-**Bookmakers estão bem calibrados** — curvas H/D/A seguem a diagonal, sem viés sistemático. Pinnacle mantém overround de 2.39–3.00% (menor do mercado).
+**Bookmakers are well calibrated** — H/D/A curves follow the diagonal, with no systematic bias. Pinnacle keeps an overround of 2.39–3.00% (the lowest in the market).
 
-Meta realista: **Brier 0.20** (linha de bookmakers). Superar 0.19 exigiria bater Pinnacle consistentemente.
+Realistic target: **Brier 0.20** (bookmaker line). Beating 0.19 would require consistently beating Pinnacle.
 
-### 2. Calibração > Acurácia (para betting)
+### 2. Calibration > Accuracy (for betting)
 
-Paper ScienceDirect (Wilkens, 2024) comparou critérios de seleção de modelos:
-- Modelo selecionado por **calibração**: +34.69% ROI
-- Modelo selecionado por **acurácia**: −35.17% ROI
+ScienceDirect paper (Wilkens, 2024) compared model selection criteria:
 
-Conclusão: para betting, calibração é estritamente mais importante que % de acertos. Modelo que diz "55%" e acerta 55% das vezes é mais útil que modelo com maior accuracy mas probabilidades distorcidas.
+- Model selected by **calibration**: +34.69% ROI
+- Model selected by **accuracy**: −35.17% ROI
 
-### 3. Comparação dos métodos de calibração
+Conclusion: for betting, calibration is strictly more important than hit rate. A model that says "55%" and is right 55% of the time is more useful than a model with higher accuracy but distorted probabilities.
 
-| Método | Parâmetros | Ideal para | Risco overfit |
+### 3. Comparison of calibration methods
+
+| Method | Parameters | Ideal for | Overfit risk |
 |---|---|---|---|
-| **Platt scaling** | 2 (a, b) | n < 1000, distorção sigmoid | Baixo |
-| **Isotonic regression** | non-parametric | n ≥ 1000, qualquer distorção monotônica | Médio |
-| **Temperature scaling** | 1 (T) | NN logits, quick fix | Muito baixo |
-| **Beta calibration** | 3 | tail skew assimétrico | Baixo-médio |
+| **Platt scaling** | 2 (a, b) | n < 1000, sigmoid distortion | Low |
+| **Isotonic regression** | non-parametric | n ≥ 1000, any monotonic distortion | Medium |
+| **Temperature scaling** | 1 (T) | NN logits, quick fix | Very low |
+| **Beta calibration** | 3 | asymmetric tail skew | Low-medium |
 
-**Recomendação profissional (Sports AI)**: abordagem hybrid — temperature scaling primeiro, depois isotonic regression nos resíduos. Re-fit quando ECE (Expected Calibration Error) > 0.015.
+**Professional recommendation (Sports AI)**: hybrid approach — temperature scaling first, then isotonic regression on the residuals. Re-fit when ECE (Expected Calibration Error) > 0.015.
 
-Isotonic é superior a Platt quando há dados suficientes (~1000+ samples). Pode corrigir QUALQUER distorção monotônica, enquanto Platt assume distorção sigmoid.
+Isotonic is superior to Platt when there is enough data (~1000+ samples). It can correct ANY monotonic distortion, whereas Platt assumes a sigmoid distortion.
 
-### 4. xG model miscalibration — padrão conhecido
+### 4. xG model miscalibration — a known pattern
 
-Análise de modelos Opta e StatsBomb (Tony ElHabr, 2024):
-- **Bem calibrado** para xG < 0.25 (~90% dos chutes)
-- **Sobrestima** para xG > 0.25
+Analysis of Opta and StatsBomb models (Tony ElHabr, 2024):
 
-Este é exatamente o padrão do nosso modelo 1x2: calibrado em probabilidades moderadas, overconfident em probabilidades altas. Não é um bug único nosso — é viés característico de modelos stat-based de futebol.
+- **Well calibrated** for xG < 0.25 (~90% of shots)
+- **Overestimates** for xG > 0.25
 
-StatsBomb XGBoost benchmark: AUC 0.878, Brier 0.069 em held-out shots.
+This is exactly the pattern of our 1x2 model: calibrated at moderate probabilities, overconfident at high probabilities. It is not a bug unique to us — it is a characteristic bias of stat-based football models.
 
-### 5. Market blending — validado academicamente
+StatsBomb XGBoost benchmark: AUC 0.878, Brier 0.069 on held-out shots.
 
-Paper PLOS ONE (Betting Odds Rating System): consensus de bookmakers prevê MELHOR que Elo e FIFA ranking. Blend model+market é técnica padrão:
+### 5. Market blending — academically validated
 
-- Mercado fornece calibração forte (diagonal)
-- Modelo captura ineficiências que o mercado missa
-- Ensemble pondera ambas fontes
+PLOS ONE paper (Betting Odds Rating System): bookmaker consensus predicts BETTER than Elo and FIFA ranking. Model+market blending is standard technique:
 
-Nossa arquitetura v1.10.0 (market blending pós-calibração) está alinhada com state-of-the-art.
+- Market provides strong calibration (diagonal)
+- Model captures inefficiencies the market misses
+- Ensemble weights both sources
+
+Our v1.10.0 architecture (market blending post-calibration) aligns with state-of-the-art.
 
 ### 6. Dixon-Coles benchmark
 
-Paper original 1997, >500 citações. EPL 2018-19 (272 matches): DC + player ratings melhora probabilidades em 53%+ dos casos vs. DC base. DC outperforma Poisson base em 15% de accuracy. Nosso pipeline já implementa (v1.9.0).
+Original 1997 paper, >500 citations. EPL 2018-19 (272 matches): DC + player ratings improves probabilities in 53%+ of cases vs. base DC. DC outperforms base Poisson by 15% in accuracy. Our pipeline already implements this (v1.9.0).
 
-### 7. Profissionais (Brentford, Liverpool, Pinnacle)
+### 7. Professionals (Brentford, Liverpool, Pinnacle)
 
-- **Brentford**: Medallion architecture (Bronze→Silver→Gold), Airflow pipelines, foco em xG como predictor de recruitment, ML para injury risk
-- **Liverpool**: departamento dedicado de PhDs, spatio-temporal models com tracking data, foco tático + recrutamento
-- **Pinnacle**: frameworks especializados por esporte, erros logged + back-tested + re-treino contínuo, sharp bettors como input de pricing (feedback loop)
+- **Brentford**: Medallion architecture (Bronze→Silver→Gold), Airflow pipelines, focus on xG as a recruitment predictor, ML for injury risk
+- **Liverpool**: dedicated department of PhDs, spatio-temporal models with tracking data, tactical + recruitment focus
+- **Pinnacle**: sport-specific frameworks, logged errors + back-tested + continuous retraining, sharp bettors as pricing input (feedback loop)
 
-Profissionais usam calibração como pré-requisito básico — foco deles é modelagem avançada (tracking, GNN, Bayesian state-space).
+Professionals use calibration as a basic prerequisite — their focus is advanced modeling (tracking, GNN, Bayesian state-space).
 
 ## Implications for Football Moneyball
 
-### Metas revisadas
+### Revised targets
 
-| Métrica | Atual | Pitch v1.6.0 | Research-based |
+| Metric | Current | v1.6.0 pitch | Research-based |
 |---|---|---|---|
-| Brier 1x2 | 0.2437 | <0.19 | **0.20–0.21** (linha bookmaker) |
-| Acc 1x2 | 42.3% | >54% | **50–54%** (limite prático) |
+| 1x2 Brier | 0.2437 | <0.19 | **0.20–0.21** (bookmaker line) |
+| 1x2 Acc | 42.3% | >54% | **50–54%** (practical limit) |
 
-Meta <0.19 do pitch original é mais ambiciosa que bookmakers reais. Alvo realista: **Brier 0.20**.
+The original pitch target of <0.19 is more ambitious than real bookmakers. Realistic target: **Brier 0.20**.
 
-### Ações priorizadas (research-backed)
+### Prioritized actions (research-backed)
 
-**1. Trocar Platt → Isotonic regression (prioridade alta)**
+**1. Swap Platt → Isotonic regression (high priority)**
+
 - `sklearn.isotonic.IsotonicRegression`
-- Validar com Brier CV (k=5)
-- n=409 é limítrofe — fazer CV rigoroso
-- Se overfit: cair pra temperature scaling
+- Validate with Brier CV (k=5)
+- n=409 is borderline — do rigorous CV
+- If overfit: fall back to temperature scaling
 
-**2. Re-fit calibração com mais dados (prioridade alta)**
-- Adicionar 2022 + 2023 ao training (+~760 matches)
-- Com n>1000, isotonic fica seguro
+**2. Re-fit calibration with more data (high priority)**
 
-**3. Hybrid temperature + isotonic (prioridade média)**
-- Temperature scaling primeiro (1 param, safe)
-- Isotonic nos resíduos
-- Padrão recomendado por Sports AI blog
+- Add 2022 + 2023 to training (+~760 matches)
+- With n>1000, isotonic becomes safe
 
-**4. Aceitar market blending como primary path (validado)**
-- Não investir mais em fazer modelo base "perfeito" em isolamento
-- Mercado é baseline forte; nosso valor é identificar edges
+**3. Hybrid temperature + isotonic (medium priority)**
 
-**5. Monitorar ECE além de Brier**
-- Fit novo quando ECE > 0.015
-- Implementar métrica no backtest
+- Temperature scaling first (1 param, safe)
+- Isotonic on the residuals
+- Pattern recommended by Sports AI blog
 
-### O que NÃO fazer
+**4. Accept market blending as primary path (validated)**
 
-- ❌ Shrinkage cego (puxar extremos pra média) — perde sinal
-- ❌ Tentar superar <0.19 sem validar — pode ser overfitting do pitch target
-- ❌ Investir em features contextuais novas antes de fixar calibração (v1.6.0 features já provaram inertes no feature importance)
+- Do not invest further in making the base model "perfect" in isolation
+- Market is a strong baseline; our value is in identifying edges
+
+**5. Monitor ECE in addition to Brier**
+
+- New fit when ECE > 0.015
+- Implement the metric in the backtest
+
+### What NOT to do
+
+- Blind shrinkage (pulling extremes to the mean) — loses signal
+- Try to beat <0.19 without validating — may be overfitting the pitch target
+- Invest in new contextual features before fixing calibration (v1.6.0 features already proved inert in feature importance)
 
 ## Sources
 

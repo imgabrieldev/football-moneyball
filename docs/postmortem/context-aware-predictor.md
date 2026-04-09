@@ -11,101 +11,101 @@ tags:
 
 # Pitch — Context-Aware Predictor (v1.6.0)
 
-## Problema
+## Problem
 
-Nosso modelo stats-only (v1.5.x) olha só números agregados dos últimos 5 jogos. **Ignora contexto que apostadores profissionais usam intensamente.**
+Our stats-only model (v1.5.x) looks only at aggregated numbers from the last 5 matches. **It ignores context that professional bettors use heavily.**
 
-**Caso real descoberto (Vasco × Botafogo, 04/04/2026):**
-- Modelo previu Vasco 77% vencendo
-- Mas contexto real é ainda mais favorável ao Vasco:
-  - **Vasco sob técnico novo (Renato Gaúcho)** — 5 jogos invicto, 73% aproveitamento
-  - **Botafogo com técnico INTERINO** (historicamente -20% performance)
-  - **4 titulares do Botafogo desfalcados** (Joaquín Correa, Chris Ramos, Marçal, Kaio Pantaleão)
-  - **Pior defesa da Série A** (Botafogo)
-  - **São Januário lotado** (clássico carioca, 97-42 vitórias históricas)
-- Contexto sugere **Vasco 80-85%** real. Modelo subestima.
+**Real case found (Vasco × Botafogo, 04/04/2026):**
+- Model predicted Vasco 77% winning
+- But the real context is even more favorable to Vasco:
+  - **Vasco under a new coach (Renato Gaúcho)** — 5 matches unbeaten, 73% win ratio
+  - **Botafogo with an INTERIM coach** (historically -20% performance)
+  - **4 Botafogo starters out** (Joaquín Correa, Chris Ramos, Marçal, Kaio Pantaleão)
+  - **Worst Série A defense** (Botafogo)
+  - **São Januário packed** (Rio derby, 97-42 historical wins)
+- Context suggests real **Vasco 80-85%**. Model underestimates.
 
-**Caso inverso também acontece:**
-- Time com "boa forma estatística" mas técnico demitido essa semana → modelo otimista demais
-- Time com estrela lesionada (nossos player-aware λ ainda incluem ela) → superestima
+**The inverse case also happens:**
+- Team with "good statistical form" but coach fired this week → model too optimistic
+- Team with injured star (our player-aware λ still includes her) → overestimates
 
-**Gap:** modelo não sabe de:
-1. Mudança de técnico recente
-2. Técnico interino
-3. Desfalques específicos no XI titular
-4. Fadiga (fixture congestion)
-5. Contexto de tabela (posição relativa)
+**Gap:** the model doesn't know about:
+1. Recent coach change
+2. Interim coach
+3. Specific injuries in the starting XI
+4. Fatigue (fixture congestion)
+5. Table context (relative position)
 
 Research: [[feature-rich-predictor]], [[comprehensive-prediction-models]]
 
-## Solução
+## Solution
 
-Adicionar **5 features contextuais** capturando info não-estatística. Tudo disponível via Sofascore API + scraping leve. Alimenta o mesmo XGBoost/GBR do v1.3.0/v1.5.0.
+Add **5 contextual features** capturing non-statistical info. All available via Sofascore API + light scraping. Feeds the same XGBoost/GBR from v1.3.0/v1.5.0.
 
-### Features novas (v1.6.0)
+### New features (v1.6.0)
 
 **1. Coach context**
 ```python
-coach_change_recent: bool       # técnico mudou nos últimos 30 dias?
-games_since_coach_change: int   # número de jogos sob técnico atual
-coach_win_rate: float           # taxa de vitórias do técnico atual
-is_interim_coach: bool          # técnico interino?
+coach_change_recent: bool       # coach changed in the last 30 days?
+games_since_coach_change: int   # number of matches under current coach
+coach_win_rate: float           # current coach win rate
+is_interim_coach: bool          # interim coach?
 ```
 
 **2. Injuries/Availability**
 ```python
-key_players_out: int            # desfalques entre top 3 por xG/90
-starter_xi_available: bool      # XI titular provável disponível?
-xg_contribution_missing: float  # xG/90 dos ausentes (sum)
+key_players_out: int            # absences among top 3 by xG/90
+starter_xi_available: bool      # likely starting XI available?
+xg_contribution_missing: float  # xG/90 of absentees (sum)
 ```
 
-**3. Fixture congestion (fadiga)**
+**3. Fixture congestion (fatigue)**
 ```python
-games_last_7d: int              # jogos nos últimos 7 dias
-games_next_7d: int              # jogos nos próximos 7 dias
-rest_days: int                  # já temos em v1.5.0 ✓
-competition_count: int          # em quantas competições simultâneas
+games_last_7d: int              # matches in the last 7 days
+games_next_7d: int              # matches in the next 7 days
+rest_days: int                  # already have in v1.5.0 ✓
+competition_count: int          # how many simultaneous competitions
 ```
 
 **4. League context**
 ```python
-position_gap: int               # diferença de posição (home - away)
-points_gap: int                 # diferença de pontos
-home_relegation_pressure: bool  # zona Z4 ou próximo
+position_gap: int               # position difference (home - away)
+points_gap: int                 # points difference
+home_relegation_pressure: bool  # Z4 zone or nearby
 away_relegation_pressure: bool
 ```
 
 **5. Derby/rivalry**
 ```python
-is_derby: bool                  # clássico estadual
-h2h_home_advantage: float       # % vitórias casa histórico
+is_derby: bool                  # state derby
+h2h_home_advantage: float       # historical home win %
 ```
 
-Total: 15+ novas features → **FEATURE_DIM 24 → 40**.
+Total: 15+ new features → **FEATURE_DIM 24 → 40**.
 
-## Arquitetura
+## Architecture
 
-### Módulos afetados
+### Affected modules
 
-| Módulo | Ação | Descrição |
+| Module | Action | Description |
 |--------|------|-----------|
-| `domain/context_features.py` | NOVO | Lógica pura de feature engineering contextual |
-| `domain/feature_engineering.py` | MODIFICAR | Expandir FEATURE_DIM 24→40 |
-| `adapters/sofascore_provider.py` | MODIFICAR | `get_coach_info(team_id)`, `get_injuries(team_id)` |
-| `adapters/postgres_repository.py` | MODIFICAR | `get_games_in_window(team, start, end)`, queries contextuais |
-| `adapters/orm.py` | MODIFICAR | Nova tabela `team_coaches` (histórico), coluna `injured` em lineups |
-| `use_cases/ingest_context.py` | NOVO | Ingere dados contextuais (técnicos + lesões) |
-| `use_cases/predict_all.py` | MODIFICAR | Alimentar features contextuais no ML |
+| `domain/context_features.py` | NEW | Pure logic for contextual feature engineering |
+| `domain/feature_engineering.py` | MODIFY | Expand FEATURE_DIM 24→40 |
+| `adapters/sofascore_provider.py` | MODIFY | `get_coach_info(team_id)`, `get_injuries(team_id)` |
+| `adapters/postgres_repository.py` | MODIFY | `get_games_in_window(team, start, end)`, contextual queries |
+| `adapters/orm.py` | MODIFY | New `team_coaches` table (history), `injured` column in lineups |
+| `use_cases/ingest_context.py` | NEW | Ingests contextual data (coaches + injuries) |
+| `use_cases/predict_all.py` | MODIFY | Feed contextual features into ML |
 
 ### Schema
 
 ```sql
--- Histórico de técnicos por time (quem treinou quando)
+-- Coach history per team (who coached when)
 CREATE TABLE team_coaches (
     team VARCHAR(100),
     coach_name VARCHAR(100),
     start_date DATE,
-    end_date DATE,              -- NULL = atual
+    end_date DATE,              -- NULL = current
     is_interim BOOLEAN DEFAULT false,
     games_coached INTEGER,
     wins INTEGER,
@@ -114,19 +114,19 @@ CREATE TABLE team_coaches (
     PRIMARY KEY (team, start_date)
 );
 
--- Lesões ativas (status por jogador por data)
+-- Active injuries (per-player per-date status)
 CREATE TABLE player_injuries (
     player_id INTEGER,
     player_name VARCHAR(100),
     team VARCHAR(100),
     injury_type VARCHAR(50),
     reported_date DATE,
-    expected_return DATE,        -- NULL se indefinido
+    expected_return DATE,        -- NULL if undefined
     status VARCHAR(20),          -- 'out', 'doubt', 'returned'
     PRIMARY KEY (player_id, reported_date)
 );
 
--- Classificação por rodada (pra position_gap, pressure zones)
+-- Standings per matchday (for position_gap, pressure zones)
 CREATE TABLE league_standings (
     competition VARCHAR(100),
     season VARCHAR(20),
@@ -143,92 +143,92 @@ CREATE TABLE league_standings (
 
 ### Infra (K8s)
 
-**Novo CronJob:** `ingest-context` (diário, 6am)
-- Busca coaches + injuries do Sofascore
-- Atualiza standings da rodada atual
+**New CronJob:** `ingest-context` (daily, 6am)
+- Fetches coaches + injuries from Sofascore
+- Updates standings for the current matchday
 
-Sem mudanças no deployment API (só usa dados do PG).
+No changes to API deployment (only uses PG data).
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] Tabelas `team_coaches`, `player_injuries`, `league_standings`
+- [ ] `team_coaches`, `player_injuries`, `league_standings` tables
 - [ ] Sofascore adapter: `get_team_managers()`, `get_team_injuries()`, `get_standings()`
-- [ ] `ingest_context.py` — puxa dados diariamente
-- [ ] `context_features.py` — computa as 15 features
-- [ ] Estender `feature_engineering.py` FEATURE_DIM 24→40
-- [ ] Backfill histórico de técnicos + standings por rodada
-- [ ] `predict_all.py` — alimenta features contextuais
-- [ ] Frontend: badges "Técnico novo", "Interino", "X desfalques"
-- [ ] CronJob `ingest-context` no K8s
+- [ ] `ingest_context.py` — pulls data daily
+- [ ] `context_features.py` — computes the 15 features
+- [ ] Extend `feature_engineering.py` FEATURE_DIM 24→40
+- [ ] Historical backfill of coaches + standings per matchday
+- [ ] `predict_all.py` — feeds contextual features
+- [ ] Frontend: "New coach", "Interim", "X absences" badges
+- [ ] CronJob `ingest-context` on K8s
 - [ ] Tests: `test_domain_context_features.py`
-- [ ] Retreinar modelos com 40 features
+- [ ] Retrain models with 40 features
 
-### Fora do Escopo
+### Out of Scope
 
-- Event-level data (WhoScored SPADL) — fica pra v1.7.0
-- Weather data (chuva, calor) — marginal, ignorar por ora
-- Player form (individual streaks) — reservado pra v1.8.0
-- Manager tactical style (3-5-2 vs 4-3-3) — complexo, depois
-- Sentiment analysis de mídia/torcida — low ROI
+- Event-level data (WhoScored SPADL) — deferred to v1.7.0
+- Weather data (rain, heat) — marginal, ignore for now
+- Player form (individual streaks) — reserved for v1.8.0
+- Manager tactical style (3-5-2 vs 4-3-3) — complex, later
+- Media/fan sentiment analysis — low ROI
 
-## Research Necessária
+## Research Needed
 
-- [x] Context matters: Vasco × Botafogo caso real validado
-- [x] Sofascore API validada:
-  - `event/{id}/managers` → home/away manager por partida
-  - `event/{id}/lineups.missingPlayers` → lesões/suspensões com reason code
-  - `unique-tournament/.../standings/total` → classificação
-- [x] Literatura "new manager bounce":
-  - **Efeito modesto** (~10 jogos de boost) — *principalmente regressão à média*
-  - Estudos: Bryson 2024 (Scottish J of Pol Econ), PMC 2021
-- [x] Literatura "interim coaches":
-  - **Não são necessariamente piores** — 2010 study mostra que podem performar MELHOR (motivação dos jogadores)
-  - Implicação: usar `coach_win_rate` real, não flag negativa hardcoded
-- [x] Literatura "fixture congestion":
-  - Afeta **injury risk** mais que performance direta (squad rotation mitiga)
-  - Meta-analysis: PMC 2021 confirma
-- [x] Literatura "player impact":
-  - Player Impact Metric (PIM) 2025 confirma: top-N players ausentes reduzem expected outcome
-  - Transfermarkt value forte preditor (usaremos xG/90 como proxy)
+- [x] Context matters: Vasco × Botafogo real case validated
+- [x] Sofascore API validated:
+  - `event/{id}/managers` → home/away manager per match
+  - `event/{id}/lineups.missingPlayers` → injuries/suspensions with reason code
+  - `unique-tournament/.../standings/total` → standings
+- [x] "New manager bounce" literature:
+  - **Modest effect** (~10 matches of boost) — *mostly regression to the mean*
+  - Studies: Bryson 2024 (Scottish J of Pol Econ), PMC 2021
+- [x] "Interim coaches" literature:
+  - **Not necessarily worse** — 2010 study shows they can perform BETTER (player motivation)
+  - Implication: use real `coach_win_rate`, not a hardcoded negative flag
+- [x] "Fixture congestion" literature:
+  - Affects **injury risk** more than direct performance (squad rotation mitigates)
+  - Meta-analysis: PMC 2021 confirms
+- [x] "Player impact" literature:
+  - Player Impact Metric (PIM) 2025 confirms: absent top-N players reduce expected outcome
+  - Transfermarkt value is a strong predictor (we'll use xG/90 as proxy)
 
-## Estratégia de Testes
+## Testing Strategy
 
-### Unitários (domain puro)
+### Unit (pure domain)
 
 - `test_domain_context_features.py`:
-  - `coach_change_recent`: True se < 30 dias
-  - `key_players_out`: count correto do top 3 por xG/90
-  - `fixture_congestion`: games em janela
-  - `position_gap`: diferença numérica de rank
-  - Fallback quando sem dados
+  - `coach_change_recent`: True if < 30 days
+  - `key_players_out`: correct count from top 3 by xG/90
+  - `fixture_congestion`: matches in window
+  - `position_gap`: numeric rank difference
+  - Fallback when data is missing
 
-### Integração (com PG)
+### Integration (with PG)
 
-- Ingest real coaches de Sofascore → tabela populada
-- Query contextual retorna valores esperados pra Vasco × Botafogo
-- Features rich (40-dim) × old (24-dim) reproduzem v1.5.0 quando context=neutral
+- Ingest real coaches from Sofascore → table populated
+- Contextual query returns expected values for Vasco × Botafogo
+- Rich (40-dim) vs old (24-dim) features reproduce v1.5.0 when context=neutral
 
 ### Manual
 
-- Prever Vasco × Botafogo v1.5.0 vs v1.6.0 — comparar probabilidades
-- Verificar que v1.6.0 dá Vasco 80%+ (contexto favorável)
-- Comparar com odds Betfair (edge deveria aumentar se modelo acertar)
+- Predict Vasco × Botafogo v1.5.0 vs v1.6.0 — compare probabilities
+- Verify v1.6.0 gives Vasco 80%+ (favorable context)
+- Compare with Betfair odds (edge should increase if model is right)
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] 15+ features contextuais implementadas
-- [ ] Coach history backfilled pros 20 times Brasileirão 2026
+- [ ] 15+ contextual features implemented
+- [ ] Coach history backfilled for the 20 Brasileirão 2026 teams
 - [ ] Injuries backfilled via Sofascore
-- [ ] Standings por rodada ingeridos
-- [ ] Modelos retreinados com 40 features, MAE stable ou melhor
-- [ ] **Brier < 0.19** em backtest time-split (era 0.21-0.22)
-- [ ] Feature importance mostra ≥2 features contextuais no top-10
-- [ ] Frontend mostra badges contextuais (técnico interino, desfalques, etc)
-- [ ] Vasco × Botafogo previsto corretamente: Vasco 80%+
+- [ ] Standings per matchday ingested
+- [ ] Retrained models with 40 features, stable or better MAE
+- [ ] **Brier < 0.19** on time-split backtest (was 0.21-0.22)
+- [ ] Feature importance shows ≥2 contextual features in top-10
+- [ ] Frontend shows contextual badges (interim coach, absences, etc)
+- [ ] Vasco × Botafogo correctly predicted: Vasco 80%+
 
-## Próximos Passos após v1.6.0
+## Next Steps after v1.6.0
 
-Se Brier < 0.19 ✓ → v1.7.0: Event data via WhoScored (xT, PPDA reais)
-Se Brier ≥ 0.19 ✗ → investigar overfit, ajustar hyperparams, weighted feature groups
+If Brier < 0.19 ✓ → v1.7.0: Event data via WhoScored (real xT, PPDA)
+If Brier ≥ 0.19 ✗ → investigate overfit, tune hyperparams, weighted feature groups

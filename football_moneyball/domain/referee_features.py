@@ -1,12 +1,12 @@
-"""Referee features — tendências do árbitro.
+"""Referee features — referee tendencies.
 
-Lógica pura: recebe dict com stats do árbitro e retorna features numéricas.
+Pure logic: receives a dict with referee stats and returns numeric features.
 """
 from __future__ import annotations
 
 from typing import Any
 
-# Média histórica Brasileirão — usada como fallback quando ref é desconhecido
+# Historical Brasileirao average — used as fallback when the ref is unknown
 LEAGUE_AVG_CARDS_PER_GAME = 4.2
 
 
@@ -15,24 +15,24 @@ def compute_referee_features(
     league_avg_cards: float = LEAGUE_AVG_CARDS_PER_GAME,
     min_matches: int = 5,
 ) -> dict[str, float]:
-    """Calcula features de árbitro.
+    """Compute referee features.
 
     Parameters
     ----------
     referee_stats : dict | None
         {referee_id, name, matches, yellow_total, red_total, cards_per_game}.
-        None = árbitro desconhecido/não designado → usa médias da liga.
+        None = unknown/unassigned referee -> uses league averages.
     league_avg_cards : float
-        Média de cartões/jogo da liga (default 4.2 pro Brasileirão).
+        League average cards/match (default 4.2 for Brasileirao).
     min_matches : int
-        Mínimo de jogos pra usar stats do ref (evita outliers).
+        Minimum matches to use the ref's stats (avoids outliers).
 
     Returns
     -------
-    dict com 3 features:
-        ref_cards_per_game — média histórica
-        ref_strictness — desvio normalizado vs liga [-1, 1]
-        ref_experience — proxy baseado em #jogos (clip a [0, 1])
+    dict with 3 features:
+        ref_cards_per_game — historical average
+        ref_strictness — normalized deviation vs league [-1, 1]
+        ref_experience — proxy based on #matches (clipped to [0, 1])
     """
     if not referee_stats or referee_stats.get("matches", 0) < min_matches:
         return {
@@ -44,11 +44,11 @@ def compute_referee_features(
     cpg = float(referee_stats.get("cards_per_game") or league_avg_cards)
     matches = int(referee_stats.get("matches") or 0)
 
-    # Strictness: desvio normalizado [-1, 1]. ~2 stdev da média (clip).
+    # Strictness: normalized deviation [-1, 1]. ~2 stdev from mean (clip).
     strictness = (cpg - league_avg_cards) / max(league_avg_cards, 0.1)
     strictness = max(-1.0, min(1.0, strictness))
 
-    # Experience: sigmoid-like, 30 jogos = saturação
+    # Experience: sigmoid-like, 30 matches = saturation
     experience = min(1.0, matches / 30.0)
 
     return {

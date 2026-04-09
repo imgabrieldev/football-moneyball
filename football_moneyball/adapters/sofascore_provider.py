@@ -1,8 +1,8 @@
-"""Adapter Sofascore — provedor de dados via Sofascore API.
+"""Sofascore adapter - data provider via the Sofascore API.
 
-Encapsula todas as chamadas a API do Sofascore, convertendo os dados
-para o formato padrao do Football Moneyball (compativel com StatsBomb-like
-schema).
+Encapsulates all calls to the Sofascore API, converting the data
+to the Football Moneyball standard format (compatible with a
+StatsBomb-like schema).
 """
 
 from __future__ import annotations
@@ -18,40 +18,40 @@ import requests
 
 
 # ---------------------------------------------------------------------------
-# Constantes da API
+# API constants
 # ---------------------------------------------------------------------------
 
 SOFASCORE_BASE = "https://www.sofascore.com/api/v1"
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
 
-# Mapeamento de posicoes Sofascore → grupos posicionais
+# Map Sofascore positions -> positional groups
 POSITION_MAP = {"G": "GK", "D": "DEF", "M": "MID", "F": "FWD"}
 
-# Rate limit: 1 requisicao por segundo
+# Rate limit: 1 request per second
 REQUEST_DELAY = 1.0
 
 
 class SofascoreProvider:
-    """Provedor de dados usando Sofascore API.
+    """Data provider using the Sofascore API.
 
-    Converte dados do Sofascore para o formato padronizado do Football
-    Moneyball, mantendo compatibilidade com o schema StatsBomb-like.
+    Converts Sofascore data to the Football Moneyball standard format,
+    keeping compatibility with a StatsBomb-like schema.
 
     Parameters
     ----------
     tournament_id : int
-        ID do torneio no Sofascore (ex.: 325 para Brasileirao Serie A).
+        Tournament ID on Sofascore (e.g. 325 for Brasileirao Serie A).
     season_id : int
-        ID da temporada no Sofascore (ex.: 87678 para 2026).
+        Season ID on Sofascore (e.g. 87678 for 2026).
     competition_name : str
-        Nome da competicao para usar nos registros persistidos.
+        Competition name to use in persisted records.
     season_name : str
-        Nome da temporada para usar nos registros persistidos.
+        Season name to use in persisted records.
     request_delay : float
-        Intervalo entre requisicoes em segundos (rate limiting).
+        Interval between requests in seconds (rate limiting).
     """
 
-    # Valores padrao para Brasileirao 2026
+    # Default values for Brasileirao 2026
     TOURNAMENT_ID = 325
     SEASON_ID = 87678
 
@@ -70,11 +70,11 @@ class SofascoreProvider:
         self.request_delay = request_delay
 
     # -----------------------------------------------------------------
-    # Metodo HTTP privado
+    # Private HTTP method
     # -----------------------------------------------------------------
 
     def _api_get(self, path: str) -> dict | None:
-        """Faz GET na API do Sofascore com rate limiting."""
+        """Performs a GET on the Sofascore API with rate limiting."""
         time.sleep(self.request_delay)
         r = requests.get(f"{SOFASCORE_BASE}/{path}", headers=HEADERS)
         if r.status_code == 200:
@@ -82,30 +82,30 @@ class SofascoreProvider:
         return None
 
     # -----------------------------------------------------------------
-    # Interface publica (compativel com DataProvider)
+    # Public interface (compatible with DataProvider)
     # -----------------------------------------------------------------
 
     def get_match_events(self, match_id: int) -> pd.DataFrame:
-        """Busca lineups + shotmap e retorna DataFrame normalizado.
+        """Fetches lineups + shotmap and returns a normalized DataFrame.
 
-        Combina dados de lineups (estatisticas individuais) e shotmap
-        (finalizacoes) em um DataFrame com colunas compativeis com o
-        schema de PlayerMatchMetrics. Preenche 'team' com nome real
-        buscando via event info (fallback: home/away literal).
+        Combines lineups data (individual stats) and shotmap (shots)
+        into a DataFrame with columns compatible with the
+        PlayerMatchMetrics schema. Fills 'team' with the real team
+        name by fetching event info (fallback: literal home/away).
         """
         lineups_data = self._api_get(f"event/{match_id}/lineups")
         shotmap_data = self._api_get(f"event/{match_id}/shotmap")
 
         if not lineups_data:
             warnings.warn(
-                f"Sem lineups para match_id={match_id} no Sofascore."
+                f"No lineups for match_id={match_id} on Sofascore."
             )
             return pd.DataFrame()
 
         shotmap = (shotmap_data or {}).get("shotmap", [])
         df = self._convert_player_stats(lineups_data, shotmap, match_id)
 
-        # Substituir 'home'/'away' pelos nomes reais dos times
+        # Replace 'home'/'away' with the real team names
         if not df.empty and "team" in df.columns:
             try:
                 info = self.get_match_info(match_id)
@@ -118,10 +118,10 @@ class SofascoreProvider:
         return df
 
     def get_lineups(self, match_id: int) -> dict[str, pd.DataFrame]:
-        """Retorna os lineups de uma partida, indexados por lado (home/away).
+        """Returns the lineups of a match, indexed by side (home/away).
 
-        Converte o formato Sofascore para um dict de DataFrames com colunas
-        ``player_id``, ``player_name``, ``position``.
+        Converts the Sofascore format into a dict of DataFrames with
+        columns ``player_id``, ``player_name``, ``position``.
         """
         lineups_data = self._api_get(f"event/{match_id}/lineups")
         if not lineups_data:
@@ -144,11 +144,12 @@ class SofascoreProvider:
         return result
 
     def get_competitions(self) -> pd.DataFrame:
-        """Retorna a lista de torneios disponiveis (formato simplificado).
+        """Returns the list of available tournaments (simplified format).
 
-        Retorna um DataFrame com o torneio configurado nesta instancia.
-        A Sofascore API nao expoe uma lista publica de torneios da mesma
-        forma que o StatsBomb, entao retornamos o torneio configurado.
+        Returns a DataFrame containing the tournament configured in this
+        instance. The Sofascore API does not expose a public list of
+        tournaments the way StatsBomb does, so we return only the
+        configured tournament.
         """
         return pd.DataFrame([{
             "competition_id": self.tournament_id,
@@ -162,14 +163,14 @@ class SofascoreProvider:
         competition_id: int | None = None,
         season_id: int | None = None,
     ) -> pd.DataFrame:
-        """Busca todos os jogos finalizados do torneio/temporada.
+        """Fetches all finished games for the tournament/season.
 
         Parameters
         ----------
         competition_id : int | None
-            ID do torneio. Se None, usa o tournament_id da instancia.
+            Tournament ID. If None, uses the instance's tournament_id.
         season_id : int | None
-            ID da temporada. Se None, usa o season_id da instancia.
+            Season ID. If None, uses the instance's season_id.
         """
         tid = competition_id or self.tournament_id
         sid = season_id or self.season_id
@@ -185,7 +186,7 @@ class SofascoreProvider:
             events = data.get("events", [])
             if not events:
                 break
-            # Filtrar apenas jogos finalizados
+            # Keep only finished games
             finished = [
                 e for e in events
                 if e.get("status", {}).get("type") == "finished"
@@ -202,21 +203,21 @@ class SofascoreProvider:
         return pd.DataFrame(rows)
 
     def get_match_stats(self, match_id: int) -> dict[str, Any] | None:
-        """Busca estatisticas team-level da partida via event/{id}/statistics.
+        """Fetches team-level match statistics via event/{id}/statistics.
 
         Returns
         -------
         dict | None
-            Com chaves: home_corners, away_corners, home_yellow, away_yellow,
+            With keys: home_corners, away_corners, home_yellow, away_yellow,
             home_red, away_red, home_fouls, away_fouls, home_shots, away_shots,
             home_sot, away_sot, home_saves, away_saves, home_possession,
-            away_possession. None se nao disponivel.
+            away_possession. None if not available.
         """
         data = self._api_get(f"event/{match_id}/statistics")
         if not data or "statistics" not in data:
             return None
 
-        # Pegar periodo ALL
+        # Grab the ALL period
         all_period = None
         for period in data.get("statistics", []):
             if period.get("period") == "ALL":
@@ -297,13 +298,13 @@ class SofascoreProvider:
         }
 
     def get_referee_info(self, match_id: int) -> dict[str, Any] | None:
-        """Extrai informacao do arbitro do event/{id}.
+        """Extracts referee information from event/{id}.
 
         Returns
         -------
         dict | None
-            Com chaves: referee_id, name, matches, yellow_total, red_total,
-            yellowred_total, cards_per_game. None se nao disponivel.
+            With keys: referee_id, name, matches, yellow_total, red_total,
+            yellowred_total, cards_per_game. None if not available.
         """
         data = self._api_get(f"event/{match_id}")
         if not data or "event" not in data:
@@ -330,12 +331,12 @@ class SofascoreProvider:
         }
 
     def get_ht_scores(self, match_id: int) -> tuple[int, int]:
-        """Extrai HT scores (period1) do event/{id}.
+        """Extracts HT scores (period1) from event/{id}.
 
         Returns
         -------
         tuple[int, int]
-            (home_ht, away_ht). (0, 0) se nao disponivel.
+            (home_ht, away_ht). (0, 0) if not available.
         """
         data = self._api_get(f"event/{match_id}")
         if not data or "event" not in data:
@@ -346,7 +347,7 @@ class SofascoreProvider:
         return (home_ht, away_ht)
 
     def get_event_managers(self, match_id: int) -> dict[str, Any] | None:
-        """Retorna home/away managers de uma partida.
+        """Returns home/away managers of a match.
 
         Sofascore: /event/{id}/managers
 
@@ -376,7 +377,7 @@ class SofascoreProvider:
         }
 
     def get_missing_players(self, match_id: int) -> dict[str, list]:
-        """Retorna jogadores ausentes de uma partida.
+        """Returns absent players from a match.
 
         Sofascore: /event/{id}/lineups, fields home.missingPlayers/away.missingPlayers
 
@@ -417,7 +418,7 @@ class SofascoreProvider:
     def get_standings(
         self, tournament_id: int | None = None, season_id: int | None = None,
     ) -> list[dict]:
-        """Retorna classificacao atual da liga.
+        """Returns the current league standings.
 
         Sofascore: /unique-tournament/{tid}/season/{sid}/standings/total
 
@@ -453,15 +454,15 @@ class SofascoreProvider:
         return result
 
     def get_match_info(self, match_id: int) -> dict[str, Any]:
-        """Retorna metadados de uma partida especifica.
+        """Returns metadata for a specific match.
 
-        Busca os dados do evento no Sofascore e converte para o formato
-        padrao do Football Moneyball.
+        Fetches the event data from Sofascore and converts it to the
+        Football Moneyball standard format.
         """
         data = self._api_get(f"event/{match_id}")
         if not data or "event" not in data:
             warnings.warn(
-                f"Partida {match_id} nao encontrada no Sofascore."
+                f"Match {match_id} not found on Sofascore."
             )
             return {"match_id": match_id}
 
@@ -469,11 +470,11 @@ class SofascoreProvider:
         return self._convert_match_info(match)
 
     # -----------------------------------------------------------------
-    # Conversoes privadas
+    # Private conversions
     # -----------------------------------------------------------------
 
     def _convert_match_info(self, match: dict) -> dict[str, Any]:
-        """Converte info de partida Sofascore para o schema interno."""
+        """Converts Sofascore match info to the internal schema."""
         ts = match.get("startTimestamp", 0)
         match_date = (
             datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else None
@@ -498,14 +499,14 @@ class SofascoreProvider:
         shotmap: list[dict],
         match_id: int,
     ) -> pd.DataFrame:
-        """Converte lineups + shotmap do Sofascore para DataFrame de metricas.
+        """Converts Sofascore lineups + shotmap to a metrics DataFrame.
 
-        Produz um DataFrame com colunas compativeis com o schema de
-        PlayerMatchMetrics.
+        Produces a DataFrame with columns compatible with the
+        PlayerMatchMetrics schema.
         """
         rows: list[dict] = []
 
-        # Indexar shotmap por player_id para lookup de xG/gols
+        # Index shotmap by player_id for xG/goals lookup
         player_shots: dict[int, list[dict]] = {}
         for shot in shotmap:
             pid = shot.get("player", {}).get("id")
@@ -525,7 +526,7 @@ class SofascoreProvider:
                 if not stats.get("minutesPlayed"):
                     continue
 
-                # Shots do shotmap
+                # Shots from shotmap
                 p_shots = player_shots.get(pid, [])
                 goals = sum(
                     1 for s in p_shots if s.get("shotType") == "goal"
@@ -625,10 +626,10 @@ class SofascoreProvider:
         shotmap: list[dict],
         match_id: int,
     ) -> pd.DataFrame:
-        """Converte shotmap do Sofascore para DataFrame de ActionValue.
+        """Converts Sofascore shotmap to an ActionValue DataFrame.
 
-        Normaliza coordenadas e estrutura para o formato compativel com
-        a tabela action_values.
+        Normalizes coordinates and structure to the format compatible
+        with the action_values table.
         """
         rows: list[dict] = []
         for i, shot in enumerate(shotmap):

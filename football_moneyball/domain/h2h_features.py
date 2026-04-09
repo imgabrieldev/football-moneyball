@@ -1,6 +1,6 @@
-"""Head-to-head features — históricos entre os dois times.
+"""Head-to-head features — historical record between the two teams.
 
-Lógica pura: recebe lista de resultados H2H e retorna features numéricas.
+Pure logic: receives a list of H2H results and returns numeric features.
 """
 from __future__ import annotations
 
@@ -13,26 +13,26 @@ def compute_h2h_features(
     away_team: str,
     default_avg_goals: float = 1.3,
 ) -> dict[str, float]:
-    """Calcula features H2H a partir de lista de resultados.
+    """Compute H2H features from a list of results.
 
     Parameters
     ----------
     h2h_results : list[dict]
-        Lista de partidas passadas entre os dois times. Cada dict com:
+        List of past matches between the two teams. Each dict with:
         {home_team, away_team, home_goals, away_goals}.
     home_team, away_team : str
-        Time mandante e visitante atuais (pra orientar os resultados).
+        Current home and away team (to orient the results).
     default_avg_goals : float
-        Valor default quando não há histórico H2H.
+        Default value when there is no H2H history.
 
     Returns
     -------
-    dict com 5 features:
-        h2h_home_win_rate — % vitórias do home_team atual (em qualquer mando)
-        h2h_away_win_rate — % vitórias do away_team atual
-        h2h_draw_rate — % empates
-        h2h_home_goals_avg — média gols do home_team atual
-        h2h_away_goals_avg — média gols do away_team atual
+    dict with 5 features:
+        h2h_home_win_rate — % wins of the current home_team (in any venue)
+        h2h_away_win_rate — % wins of the current away_team
+        h2h_draw_rate — % draws
+        h2h_home_goals_avg — goal average of the current home_team
+        h2h_away_goals_avg — goal average of the current away_team
     """
     if not h2h_results:
         return {
@@ -57,17 +57,17 @@ def compute_h2h_features(
         hg = match.get("home_goals", 0) or 0
         ag = match.get("away_goals", 0) or 0
 
-        # Identificar quem é nosso home_team naquele jogo (ele pode ter sido visitante)
+        # Identify who our home_team is in that match (they may have been the away side)
         if mh == home_team and ma == away_team:
-            # Jogo no mesmo mando que o atual
+            # Match with the same venue as the current one
             home_team_goals = hg
             away_team_goals = ag
         elif mh == away_team and ma == home_team:
-            # Jogo invertido
+            # Reversed venue
             home_team_goals = ag
             away_team_goals = hg
         else:
-            # Partida não envolve exatos os dois times — pular
+            # Match does not involve exactly the two teams — skip
             continue
 
         n += 1

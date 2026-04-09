@@ -1,4 +1,4 @@
-"""Port para visualizacao de dados."""
+"""Port for data visualization."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ import pandas as pd
 
 
 class Visualizer(Protocol):
-    """Interface para geracao de visualizacoes.
+    """Interface for generating visualizations.
 
-    Define o contrato que qualquer implementacao de visualizacao deve seguir.
-    A implementacao padrao utiliza matplotlib + mplsoccer, mas o sistema pode
-    ser estendido para outros backends (plotly, bokeh, etc).
+    Defines the contract that any visualization implementation must follow.
+    The default implementation uses matplotlib + mplsoccer, but the system can
+    be extended to other backends (plotly, bokeh, etc).
 
-    Todas as funcoes retornam um objeto Figure (matplotlib ou equivalente).
-    O parametro save_path, quando fornecido, salva a figura no caminho
-    indicado.
+    All functions return a Figure object (matplotlib or equivalent).
+    The save_path parameter, when provided, saves the figure to the given
+    path.
     """
 
     def plot_pass_network(
@@ -28,25 +28,25 @@ class Visualizer(Protocol):
         match_info: dict | None = None,
         save_path: str | None = None,
     ) -> Any:
-        """Desenha a rede de passes sobre um campo de futebol.
+        """Draw the pass network over a football pitch.
 
         Parameters
         ----------
         G : nx.DiGraph
-            Grafo direcionado com atributos de no (avg_x, avg_y) e
-            arestas ponderadas (weight). Coordenadas StatsBomb: x 0-120,
+            Directed graph with node attributes (avg_x, avg_y) and
+            weighted edges (weight). StatsBomb coordinates: x 0-120,
             y 0-80.
         team : str
-            Nome do time para o titulo.
+            Team name for the title.
         match_info : dict, optional
-            Metadados da partida (opponent, date, score) para o titulo.
+            Match metadata (opponent, date, score) for the title.
         save_path : str, optional
-            Caminho para salvar a figura.
+            Path to save the figure.
 
         Returns
         -------
         Figure
-            Objeto Figure com a visualizacao da rede de passes.
+            Figure object with the pass network visualization.
         """
         ...
 
@@ -57,25 +57,25 @@ class Visualizer(Protocol):
         metrics: list[str] | None = None,
         save_path: str | None = None,
     ) -> Any:
-        """Radar chart comparando dois jogadores.
+        """Radar chart comparing two players.
 
         Parameters
         ----------
         player_a : dict
-            Dicionario com 'name' (str) e valores percentuais (0-100)
-            para cada metrica.
+            Dictionary with 'name' (str) and percentile values (0-100)
+            for each metric.
         player_b : dict
-            Dicionario com 'name' (str) e valores percentuais (0-100)
-            para cada metrica.
+            Dictionary with 'name' (str) and percentile values (0-100)
+            for each metric.
         metrics : list[str], optional
-            Lista de metricas a comparar. Se None, usa metricas padrao.
+            List of metrics to compare. If None, uses default metrics.
         save_path : str, optional
-            Caminho para salvar a figura.
+            Path to save the figure.
 
         Returns
         -------
         Figure
-            Objeto Figure com o radar de comparacao.
+            Figure object with the comparison radar.
         """
         ...
 
@@ -86,24 +86,24 @@ class Visualizer(Protocol):
         action_type: str | None = None,
         save_path: str | None = None,
     ) -> Any:
-        """Mapa de calor das acoes de um jogador no campo.
+        """Heatmap of a player's actions on the pitch.
 
         Parameters
         ----------
         events_df : pd.DataFrame
-            DataFrame de eventos com colunas 'player', 'type', 'location'
-            (ou 'x', 'y'). Coordenadas StatsBomb.
+            Events DataFrame with columns 'player', 'type', 'location'
+            (or 'x', 'y'). StatsBomb coordinates.
         player_name : str
-            Nome do jogador para filtrar.
+            Player name to filter.
         action_type : str, optional
-            Tipo de acao para filtrar (ex: 'Pass', 'Shot', 'Carry').
+            Action type to filter (e.g. 'Pass', 'Shot', 'Carry').
         save_path : str, optional
-            Caminho para salvar a figura.
+            Path to save the figure.
 
         Returns
         -------
         Figure
-            Objeto Figure com o mapa de calor.
+            Figure object with the heatmap.
         """
         ...
 
@@ -114,23 +114,23 @@ class Visualizer(Protocol):
         w: int = 12,
         save_path: str | None = None,
     ) -> Any:
-        """Desenha a superficie de Expected Threat (xT) sobre o campo.
+        """Draw the Expected Threat (xT) surface over the pitch.
 
         Parameters
         ----------
         xt_grid : np.ndarray
-            Matriz (l, w) com valores xT por zona.
+            Matrix (l, w) with xT values per zone.
         l : int
-            Celulas no eixo x.
+            Cells on the x axis.
         w : int
-            Celulas no eixo y.
+            Cells on the y axis.
         save_path : str, optional
-            Caminho para salvar a figura.
+            Path to save the figure.
 
         Returns
         -------
         Figure
-            Objeto Figure com o heatmap xT.
+            Figure object with the xT heatmap.
         """
         ...
 
@@ -140,22 +140,22 @@ class Visualizer(Protocol):
         team: str,
         save_path: str | None = None,
     ) -> Any:
-        """Visualiza a distribuicao de pressing por zona e metricas-chave.
+        """Visualize the pressing distribution by zone and key metrics.
 
         Parameters
         ----------
         pressing_data : dict
-            Dicionario com chaves: ppda, pressing_success_rate,
+            Dictionary with keys: ppda, pressing_success_rate,
             counter_pressing_fraction, pressing_zone_1..6.
         team : str
-            Nome do time.
+            Team name.
         save_path : str, optional
-            Caminho para salvar.
+            Path to save.
 
         Returns
         -------
         Figure
-            Objeto Figure com a visualizacao de zonas de pressing.
+            Figure object with the pressing zones visualization.
         """
         ...
 
@@ -165,22 +165,22 @@ class Visualizer(Protocol):
         player_name: str,
         save_path: str | None = None,
     ) -> Any:
-        """Mapa de chutes com tamanho proporcional ao xG e cor por resultado.
+        """Shot map with size proportional to xG and color by outcome.
 
         Parameters
         ----------
         shots_df : pd.DataFrame
-            DataFrame de eventos de chute com colunas: location,
+            Shot events DataFrame with columns: location,
             shot_outcome, shot_statsbomb_xg.
         player_name : str
-            Nome do jogador.
+            Player name.
         save_path : str, optional
-            Caminho para salvar.
+            Path to save.
 
         Returns
         -------
         Figure
-            Objeto Figure com o mapa de chutes.
+            Figure object with the shot map.
         """
         ...
 
@@ -190,21 +190,21 @@ class Visualizer(Protocol):
         top_n: int = 20,
         save_path: str | None = None,
     ) -> Any:
-        """Grafico de barras horizontais com os rankings RAPM.
+        """Horizontal bar chart with RAPM rankings.
 
         Parameters
         ----------
         rapm_df : pd.DataFrame
-            DataFrame com colunas 'player_name' e 'rapm_value'.
+            DataFrame with columns 'player_name' and 'rapm_value'.
         top_n : int
-            Numero de jogadores a exibir no topo e no fundo do ranking.
+            Number of players to display at the top and bottom of the ranking.
         save_path : str, optional
-            Caminho para salvar a figura.
+            Path to save the figure.
 
         Returns
         -------
         Figure
-            Objeto Figure com o ranking RAPM.
+            Figure object with the RAPM ranking.
         """
         ...
 
@@ -214,21 +214,21 @@ class Visualizer(Protocol):
         team: str | None = None,
         save_path: str | None = None,
     ) -> Any:
-        """Grafo de sinergia/compatibilidade entre jogadores.
+        """Synergy/compatibility graph between players.
 
         Parameters
         ----------
         compatibility_df : pd.DataFrame
-            DataFrame com colunas 'player_a', 'player_b' e 'score'
-            representando a compatibilidade entre pares.
+            DataFrame with columns 'player_a', 'player_b' and 'score'
+            representing the compatibility between pairs.
         team : str, optional
-            Nome do time para o titulo.
+            Team name for the title.
         save_path : str, optional
-            Caminho para salvar a figura.
+            Path to save the figure.
 
         Returns
         -------
         Figure
-            Objeto Figure com o grafo de sinergia.
+            Figure object with the synergy graph.
         """
         ...

@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.calibration."""
+"""Tests for football_moneyball.domain.calibration."""
 
 import numpy as np
 
@@ -30,16 +30,16 @@ class TestDixonColesTau:
         assert np.allclose(tau, np.ones((2, 2)))
 
     def test_negative_rho_inflates_draws(self):
-        # ρ < 0 deve aumentar τ(0,0) e τ(1,1) (mais empates)
+        # rho < 0 should increase tau(0,0) and tau(1,1) (more draws)
         tau = dixon_coles_tau(1.5, 1.2, rho=-0.1)
         assert tau[0, 0] > 1.0
         assert tau[1, 1] > 1.0
-        # E reduzir τ(0,1), τ(1,0) (menos 1-0 e 0-1)
+        # And decrease tau(0,1), tau(1,0) (fewer 1-0 and 0-1)
         assert tau[0, 1] < 1.0
         assert tau[1, 0] < 1.0
 
     def test_non_negative(self):
-        # τ nunca deve ficar negativo mesmo com ρ extremo
+        # tau should never go negative even with extreme rho
         tau = dixon_coles_tau(3.0, 3.0, rho=-0.5)
         assert (tau >= 0).all()
 
@@ -61,7 +61,7 @@ class TestDixonColesScoreMatrix:
         assert np.allclose(matrix, expected, atol=1e-9)
 
     def test_negative_rho_more_draws(self):
-        # Compara massa em placares empatados vs ρ=0
+        # Compare mass on drawn scores vs rho=0
         m_poisson = dixon_coles_score_matrix(1.5, 1.2, rho=0.0)
         m_dc = dixon_coles_score_matrix(1.5, 1.2, rho=-0.15)
         draws_poisson = sum(m_poisson[i, i] for i in range(11))
@@ -71,17 +71,17 @@ class TestDixonColesScoreMatrix:
 
 class TestFitDixonColesRho:
     def test_all_draws_gives_negative_rho(self):
-        # Se todas partidas foram 1-1, ρ deve ser bem negativo
+        # If all matches were 1-1, rho should be strongly negative
         matches = [(1.5, 1.5, 1, 1) for _ in range(30)]
         rho = fit_dixon_coles_rho(matches)
         assert rho < 0
         assert rho >= -0.25
 
     def test_no_draws_gives_positive_or_zero(self):
-        # Se nunca foram empates, ρ tende a 0 ou positivo
+        # If there were no draws, rho tends to 0 or positive
         matches = [(1.5, 1.0, 2, 0) for _ in range(30)]
         rho = fit_dixon_coles_rho(matches)
-        assert rho > -0.05  # próximo de 0 ou positivo
+        assert rho > -0.05  # close to 0 or positive
 
 
 class TestSampleScoresDixonColes:
@@ -92,7 +92,7 @@ class TestSampleScoresDixonColes:
 
     def test_mean_matches_lambda(self):
         h, a = sample_scores_dixon_coles(1.5, 1.2, rho=-0.1, n_simulations=50_000, seed=42)
-        # Marginal deve ser próxima (Dixon-Coles só mexe levemente)
+        # Marginal should be close (Dixon-Coles only nudges slightly)
         assert abs(h.mean() - 1.5) < 0.15
         assert abs(a.mean() - 1.2) < 0.15
 
@@ -105,27 +105,27 @@ class TestSampleScoresDixonColes:
 
 class TestFitPlattBinary:
     def test_well_calibrated_returns_identity_ish(self):
-        # Quando labels batem com probs, Platt não precisa ajustar muito
+        # When labels match probs, Platt does not need to adjust much
         rng = np.random.default_rng(42)
         probs = rng.uniform(0.1, 0.9, size=500)
         labels = (rng.uniform(0, 1, size=500) < probs).astype(int)
         params = fit_platt_binary(probs, labels)
-        # a deve ser próximo de 1, b próximo de 0
+        # a should be close to 1, b close to 0
         assert 0.3 < params.a < 3.0
         assert abs(params.b) < 2.0
 
     def test_overconfident_model_gets_reduced(self):
-        # Modelo que diz 80% mas acerta só 50% → deve reduzir probs altas
+        # Model that says 80% but hits only 50% -> should reduce high probs
         probs = np.concatenate([
-            np.full(100, 0.8),  # 100 prevendo 80%
-            np.full(100, 0.2),  # 100 prevendo 20%
+            np.full(100, 0.8),  # 100 predicting 80%
+            np.full(100, 0.2),  # 100 predicting 20%
         ])
         labels = np.concatenate([
-            np.concatenate([np.ones(50), np.zeros(50)]),  # acertou só 50%
-            np.concatenate([np.ones(50), np.zeros(50)]),  # acertou 50% (deveria ter sido 20%)
+            np.concatenate([np.ones(50), np.zeros(50)]),  # hit only 50%
+            np.concatenate([np.ones(50), np.zeros(50)]),  # hit 50% (should have been 20%)
         ])
         params = fit_platt_binary(probs, labels)
-        # Aplicado a 0.8 deve dar algo mais próximo de 0.5
+        # Applied to 0.8 should yield something closer to 0.5
         cal_08 = params.apply(0.8)
         assert cal_08 < 0.75
 
@@ -181,7 +181,7 @@ class TestTemperatureScaler:
         t = TemperatureScaler(T=3.0)
         probs = np.array([0.9, 0.07, 0.03])
         out = t.apply(probs)
-        # Máximo deve cair, mínimo deve subir
+        # Maximum should decrease, minimum should increase
         assert out[0] < 0.9
         assert out[2] > 0.03
 
@@ -189,7 +189,7 @@ class TestTemperatureScaler:
         t = TemperatureScaler(T=0.3)
         probs = np.array([0.5, 0.3, 0.2])
         out = t.apply(probs)
-        # Máximo deve subir
+        # Maximum should increase
         assert out[0] > 0.5
         assert out[2] < 0.2
 
@@ -202,12 +202,12 @@ class TestTemperatureScaler:
 
 class TestFitTemperature:
     def test_reduces_nll_on_overconfident_data(self):
-        # Overconfident: modelo prediz 81% mas real é 40%
+        # Overconfident: model predicts 81% but actual is 40%
         rng = np.random.default_rng(42)
         n = 400
-        # Todas predições confiantes em home
+        # All predictions confident on home
         raw = np.tile([0.81, 0.10, 0.09], (n, 1))
-        # Mas home só ganha 40% das vezes
+        # But home only wins 40% of the time
         y = np.zeros((n, 3), dtype=int)
         for i in range(n):
             u = rng.uniform(0, 1)
@@ -220,7 +220,7 @@ class TestFitTemperature:
 
         brier_raw = compute_brier_3class(raw, y)
         t = fit_temperature(raw, y)
-        # Temperature fittada deve ser > 1 (compressão pra reduzir overconfidence)
+        # Fitted temperature should be > 1 (compression to reduce overconfidence)
         assert t.T > 1.0
         cal = t.apply(raw)
         brier_cal = compute_brier_3class(cal, y)
@@ -253,13 +253,13 @@ class TestIsotonicCalibrator:
         assert abs(float(iso.apply(0.7)) - 0.7) < 1e-9
 
     def test_corrects_overconfidence_synthetic(self):
-        # Map: raw 0.8 → cal 0.5 (compressão)
+        # Map: raw 0.8 -> cal 0.5 (compression)
         iso = IsotonicCalibrator(
             x_thresholds=[0.0, 0.4, 0.8, 1.0],
             y_thresholds=[0.0, 0.3, 0.5, 0.6],
         )
         assert abs(float(iso.apply(0.8)) - 0.5) < 1e-9
-        # Interpolação linear entre 0.4 e 0.8: @ 0.6 → 0.4
+        # Linear interpolation between 0.4 and 0.8: @ 0.6 -> 0.4
         assert abs(float(iso.apply(0.6)) - 0.4) < 1e-9
 
     def test_monotonic(self):
@@ -287,7 +287,7 @@ class TestFitIsotonicBinary:
         assert np.all(np.diff(ys) >= -1e-9)
 
     def test_reduces_brier_on_miscalibrated(self):
-        # Raw overconfident: prediz p mas real é p^2
+        # Raw overconfident: predicts p but actual is p^2
         rng = np.random.default_rng(1)
         n = 500
         p = rng.uniform(0.05, 0.95, n)
@@ -310,13 +310,13 @@ class TestCalibrate1x2Isotonic:
         assert np.allclose(cal, raw, atol=1e-9)
 
     def test_renormalizes(self):
-        # Calibradores que reduzem cada prob pela metade
+        # Calibrators that halve each prob
         iso_half = IsotonicCalibrator(
             x_thresholds=[0.0, 1.0], y_thresholds=[0.0, 0.5],
         )
         raw = np.array([[0.5, 0.3, 0.2]])
         cal = calibrate_1x2_isotonic(raw, iso_half, iso_half, iso_half)
-        # Mesmo comprimindo igualmente, renormalização devolve as proporções
+        # Even compressing equally, renormalization restores the proportions
         assert np.allclose(cal.sum(axis=1), 1.0, atol=1e-9)
         assert np.allclose(cal, raw, atol=1e-9)
 
@@ -374,7 +374,7 @@ class TestComputeECE:
         assert ece < 0.1
 
     def test_overconfident_high_ece(self):
-        # Modelo sempre prevê 90% na classe 0, mas acerta só 40%
+        # Model always predicts 90% on class 0, but hits only 40%
         n = 500
         probs = np.tile([0.9, 0.05, 0.05], (n, 1))
         rng = np.random.default_rng(42)
@@ -383,7 +383,7 @@ class TestComputeECE:
         y[correct, 0] = 1
         y[~correct, 2] = 1
         ece = compute_ece(probs, y, n_bins=5)
-        # 90% conf vs 40% acc → ~0.5 ECE
+        # 90% conf vs 40% acc -> ~0.5 ECE
         assert ece > 0.4
 
     def test_empty_input_zero(self):
@@ -449,7 +449,7 @@ class TestSampleScoresBivariate:
 
 class TestFitLambda3:
     def test_recovers_lambda3_from_synthetic(self):
-        # Gerar dados com lambda3=0.12
+        # Generate data with lambda3=0.12
         rng = np.random.default_rng(42)
         matches = []
         for _ in range(300):
@@ -463,7 +463,7 @@ class TestFitLambda3:
         assert 0.05 < fitted < 0.25  # within reasonable range
 
     def test_zero_draws_gives_small_lambda3(self):
-        # Sem empates → lambda3 deve ser baixo
+        # No draws -> lambda3 should be low
         matches = [(1.5, 1.0, 3, 0)] * 50 + [(1.5, 1.0, 0, 2)] * 50
         fitted = fit_lambda3(matches)
         assert fitted < 0.10

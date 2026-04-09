@@ -1,8 +1,8 @@
-"""Modulo de dominio para metricas de pressing.
+"""Modulo of dominio for metrics of pressing.
 
-Calcula PPDA, pressing success rate, counter-pressing fraction,
-high turnovers e distribuicao de pressing por zonas do campo.
-Logica pura sobre DataFrames — sem dependencias de I/O externo.
+Compute PPDA, pressing success rate, counter-pressing fraction,
+high turnovers and distribuicao of pressing by zonas of the pitch.
+Logica pura sobre DataFrames — without dependencias of I/O externo.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from football_moneyball.domain.constants import (
 # ---------------------------------------------------------------------------
 
 def _get_timestamp_seconds(events: pd.DataFrame) -> pd.Series:
-    """Converte timestamp para segundos continuos considerando periodos."""
+    """Converte timestamp for segundos continuos considerando periodos."""
     period_offsets = {1: 0, 2: 45 * 60, 3: 90 * 60, 4: 105 * 60}
     result = pd.Series(0.0, index=events.index)
     for idx, row in events.iterrows():
@@ -38,11 +38,11 @@ def _get_timestamp_seconds(events: pd.DataFrame) -> pd.Series:
 
 
 def _compute_ppda(events: pd.DataFrame, team: str, opponent: str) -> float:
-    """Calcula PPDA (Passes Per Defensive Action).
+    """Compute PPDA (Passes Per Defensive Action).
 
-    PPDA = passes do adversario / acoes defensivas do time.
+    PPDA = passes of the adversario / actions defensivas of the time.
     Menor PPDA = pressing mais intenso.
-    Exclui passes no terco defensivo do adversario (x < 40).
+    Exclui passes in the terco defensive of the adversario (x < 40).
     """
     # Opponent passes (excluding their own defensive third)
     opp_passes = events[
@@ -75,10 +75,10 @@ def _compute_ppda(events: pd.DataFrame, team: str, opponent: str) -> float:
 
 
 def _compute_pressing_success(events: pd.DataFrame, team: str) -> float:
-    """Calcula taxa de sucesso do pressing.
+    """Compute taxa of sucesso of the pressing.
 
-    Porcentagem de pressoes que resultam em recuperacao de bola pelo
-    mesmo time dentro de 5 segundos.
+    Porcentagem of pressoes that resultam in recuperacao of bola pelo
+    same time within of 5 segundos.
     """
     pressures = events[
         (events["type"] == "Pressure") & (events["team"] == team)
@@ -107,10 +107,10 @@ def _compute_pressing_success(events: pd.DataFrame, team: str) -> float:
 
 
 def _compute_counter_pressing_fraction(events: pd.DataFrame, team: str) -> float:
-    """Calcula fracao de counter-pressing.
+    """Compute fracao of counter-pressing.
 
-    Porcentagem de perdas de bola seguidas de pressao com counterpress=True
-    dentro de 5 segundos.
+    Porcentagem of perdas of bola seguidas of pressao with counterpress=True
+    within of 5 segundos.
     """
     # Identify turnovers: possession changes where team lost the ball
     # A turnover is when the team had the ball and the next event is by the opponent
@@ -154,10 +154,10 @@ def _compute_counter_pressing_fraction(events: pd.DataFrame, team: str) -> float
 def _compute_high_turnovers(
     events: pd.DataFrame, team: str
 ) -> tuple[int, int]:
-    """Calcula high turnovers e shot-ending high turnovers.
+    """Compute high turnovers and shot-ending high turnovers.
 
-    High turnovers: recuperacoes de bola a <= 40m do gol adversario.
-    Shot-ending: high turnovers seguidos de finalizacao em <= 15 segundos.
+    High turnovers: recuperacoes of bola a <= 40m of the goal adversario.
+    Shot-ending: high turnovers seguidos of finalizacao em <= 15 segundos.
     """
     recoveries = events[
         (events["type"] == "Ball Recovery")
@@ -193,10 +193,10 @@ def _compute_high_turnovers(
 
 
 def _compute_pressing_zones(events: pd.DataFrame, team: str) -> list[float]:
-    """Calcula distribuicao de pressing por 6 zonas horizontais do campo.
+    """Compute distribuicao of pressing by 6 zonas horizontais of the pitch.
 
-    Retorna lista de 6 floats representando a porcentagem de pressoes
-    em cada zona (soma = 100).
+    Returns lista of 6 floats representando a porcentagem of pressoes
+    in each zona (sum = 100).
     """
     pressures = events[
         (events["type"] == "Pressure") & (events["team"] == team)
@@ -223,27 +223,27 @@ def _compute_pressing_zones(events: pd.DataFrame, team: str) -> list[float]:
 # ---------------------------------------------------------------------------
 
 def compute_match_pressing(events: pd.DataFrame) -> pd.DataFrame:
-    """Calcula metricas de pressing por time para uma partida.
+    """Compute metrics of pressing by time for aa match.
 
-    Recebe um DataFrame de eventos ja carregado e calcula PPDA,
+    Receives a DataFrame of eventos already loaded and calcula PPDA,
     pressing success rate, counter-pressing fraction, high turnovers
-    e distribuicao de pressing por zonas para cada time.
+    and distribuicao of pressing by zonas for each time.
 
     Parameters
     ----------
     events : pd.DataFrame
-        DataFrame de eventos StatsBomb (retornado por sb.events() ou
+        DataFrame of eventos StatsBomb (retornado by sb.events() ou
         equivalente).
 
     Returns
     -------
     pd.DataFrame
-        DataFrame com uma linha por time e colunas: team, ppda,
+        DataFrame with a row by time and colunas: team, ppda,
         pressing_success_rate, counter_pressing_fraction, high_turnovers,
         shot_ending_high_turnovers, pressing_zone_1..6.
     """
     if events.empty:
-        warnings.warn("DataFrame de eventos vazio recebido em compute_match_pressing")
+        warnings.warn("DataFrame of eventos vazio recebido in compute_match_pressing")
         return pd.DataFrame()
 
     teams = [t for t in events["team"].dropna().unique() if isinstance(t, str)]

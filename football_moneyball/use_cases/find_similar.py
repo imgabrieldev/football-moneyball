@@ -1,4 +1,4 @@
-"""Use case: busca de jogadores similares via pgvector."""
+"""Use case: busca of players similares via pgvector."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ import pandas as pd
 
 
 class FindSimilar:
-    """Busca jogadores com perfil similar via embeddings.
+    """Busca players with perfil similar via embeddings.
 
     Parameters
     ----------
     repo : MatchRepository
-        Repositorio com acesso a pgvector.
+        Repositorio with acesso a pgvector.
     """
 
     def __init__(self, repo) -> None:
@@ -25,7 +25,7 @@ class FindSimilar:
         season: str | None = None,
         limit: int = 10,
     ) -> dict[str, Any]:
-        """Busca jogadores similares.
+        """Busca players similares.
 
         Returns
         -------
@@ -36,7 +36,7 @@ class FindSimilar:
         if season is None:
             emb = self.repo.get_embedding(player_name)
             if emb is None:
-                return {"error": f"Jogador '{player_name}' nao encontrado nos embeddings."}
+                return {"error": f"Player '{player_name}' nao encontrado in the embeddings."}
             season = emb.season
 
         similar_df = self.repo.find_similar_players(player_name, season, limit)

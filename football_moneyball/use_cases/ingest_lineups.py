@@ -1,4 +1,4 @@
-"""Use case: ingestao de escalacoes (provaveis ou confirmadas)."""
+"""Use case: ingestao of escalacoes (provaveis or confirmadas)."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 class IngestLineups:
-    """Busca e persiste lineups de partidas do Sofascore.
+    """Busca and persiste lineups of matches of the Sofascore.
 
-    Usado pra ingerir escalacao confirmada (~1h antes do jogo) ou
-    probable XI inferida via historico. Pode ser chamado por cronjob
-    periodico ou manualmente.
+    Usado for ingerir lineup confirmada (~1h antes of the jogo) ou
+    probable XI inferida via history. Pode ser chamado by cronjob
+    periodico or manualmente.
 
     Parameters
     ----------
@@ -32,15 +32,15 @@ class IngestLineups:
         home_team: str | None = None,
         away_team: str | None = None,
     ) -> dict[str, Any]:
-        """Ingere lineups de partidas especificas.
+        """Ingere lineups of matches especificas.
 
         Parameters
         ----------
         match_ids : list[int], optional
-            Lista de match_ids do Sofascore pra ingerir. Se fornecido,
+            Lista of match_ids of the Sofascore for ingerir. If fornecido,
             tem precedencia.
         home_team, away_team : str, optional
-            Se match_ids nao fornecido, usa o hash(home-away) como chave.
+            If match_ids nao fornecido, usa o hash(home-away) as chave.
 
         Returns
         -------
@@ -55,7 +55,7 @@ class IngestLineups:
         errors = 0
         details: list[dict] = []
 
-        # Modo 1: match_ids do Sofascore
+        # Modo 1: match_ids of the Sofascore
         if match_ids:
             for mid in match_ids:
                 try:
@@ -99,7 +99,7 @@ class IngestLineups:
         fetched_at: str,
         source: str,
     ) -> list[dict]:
-        """Converte output do provider pro formato do repositorio."""
+        """Converte output of the provider pro formato of the repositorio."""
         rows: list[dict] = []
         for side in ("home", "away"):
             side_df = lineups.get(side)

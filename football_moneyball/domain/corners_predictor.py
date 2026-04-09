@@ -1,9 +1,9 @@
-"""Modulo de previsao de escanteios via Poisson.
+"""Corners prediction module via Poisson.
 
-λ_corners_home = avg_corners_home_feitos × (avg_corners_sofridos_away / league_avg)
-λ_corners_away = avg_corners_away_feitos × (avg_corners_sofridos_home / league_avg)
+lambda_corners_home = avg_corners_home_taken x (avg_corners_conceded_away / league_avg)
+lambda_corners_away = avg_corners_away_taken x (avg_corners_conceded_home / league_avg)
 
-Logica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -16,25 +16,25 @@ def predict_corners(
     away_corners_against: float,
     league_corners_per_team: float = 5.0,
 ) -> tuple[float, float]:
-    """Retorna (λ_home_corners, λ_away_corners).
+    """Return (lambda_home_corners, lambda_away_corners).
 
     Parameters
     ----------
     home_corners_avg : float
-        Media de corners que o home FEZ nos ultimos N jogos.
+        Average corners TAKEN by the home team in the last N matches.
     away_corners_avg : float
-        Media de corners que o away FEZ.
+        Average corners TAKEN by the away team.
     home_corners_against : float
-        Media de corners que o home SOFREU.
+        Average corners CONCEDED by the home team.
     away_corners_against : float
-        Media de corners que o away SOFREU.
+        Average corners CONCEDED by the away team.
     league_corners_per_team : float
-        Media de corners por time por jogo na liga (~5).
+        League average corners per team per match (~5).
 
     Returns
     -------
     tuple[float, float]
-        (λ_home, λ_away) com minimo de 1.0.
+        (lambda_home, lambda_away) with a minimum of 1.0.
     """
     if league_corners_per_team <= 0:
         league_corners_per_team = 5.0

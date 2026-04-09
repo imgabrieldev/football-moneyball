@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.player_props."""
+"""Tests for football_moneyball.domain.player_props."""
 
 from math import exp
 
@@ -16,7 +16,7 @@ from football_moneyball.domain.player_props import (
 
 class TestPredictPlayerGoal:
     def test_basic_formula(self):
-        # xg_per_90=0.5, min=90 → λ=0.5 → P=1-e^(-0.5)≈0.3935
+        # xg_per_90=0.5, min=90 -> lambda=0.5 -> P=1-e^(-0.5)~=0.3935
         p = predict_player_goal(0.5, 90)
         assert abs(p - (1 - exp(-0.5))) < 1e-4
 
@@ -27,26 +27,26 @@ class TestPredictPlayerGoal:
         assert predict_player_goal(0.5, 0) == 0.0
 
     def test_partial_minutes(self):
-        # 45 min com xg_per_90=1.0 → λ=0.5 → P=1-e^(-0.5)
+        # 45 min with xg_per_90=1.0 -> lambda=0.5 -> P=1-e^(-0.5)
         p = predict_player_goal(1.0, 45)
         assert abs(p - (1 - exp(-0.5))) < 1e-4
 
     def test_high_xg(self):
-        # Striker excepcional: xg_per_90=1.0, min=90 → P≈0.632
+        # Exceptional striker: xg_per_90=1.0, min=90 -> P~=0.632
         p = predict_player_goal(1.0, 90)
         assert abs(p - (1 - exp(-1.0))) < 1e-4
 
 
 class TestPredictMultipleGoals:
     def test_2_or_more(self):
-        # λ=1.0, P(X≥2) = 1 - P(X=0) - P(X=1) = 1 - e^-1 - e^-1
-        # = 1 - 2e^-1 ≈ 0.264
+        # lambda=1.0, P(X>=2) = 1 - P(X=0) - P(X=1) = 1 - e^-1 - e^-1
+        # = 1 - 2e^-1 ~= 0.264
         p = predict_player_multiple_goals(1.0, 90, n=2)
         expected = 1 - exp(-1.0) - exp(-1.0) * 1.0  # 1 - P(0) - P(1)
         assert abs(p - expected) < 1e-4
 
     def test_hat_trick(self):
-        # λ=1.0, P(X≥3) should be much smaller than P(X≥2)
+        # lambda=1.0, P(X>=3) should be much smaller than P(X>=2)
         p2 = predict_player_multiple_goals(1.0, 90, n=2)
         p3 = predict_player_multiple_goals(1.0, 90, n=3)
         assert p3 < p2
@@ -119,7 +119,7 @@ class TestComputeTeamPlayerProps:
     def test_ordered_by_minutes(self):
         aggs = self._make_aggregates(10)
         result = compute_team_player_props(aggs, top_n=5)
-        # Player 1 tem 450 min (mais) → primeiro
+        # Player 1 has 450 min (most) -> first
         assert result[0]["player_name"] == "Player 1"
 
     def test_fields_populated(self):
@@ -135,7 +135,7 @@ class TestComputeTeamPlayerProps:
 
     def test_filters_by_min_matches(self):
         aggs = self._make_aggregates(5)
-        aggs.loc[0, "matches_played"] = 1  # muito poucos
+        aggs.loc[0, "matches_played"] = 1  # too few
         result = compute_team_player_props(aggs, top_n=5, min_matches=3)
         assert all(r["player_name"] != "Player 1" for r in result)
 

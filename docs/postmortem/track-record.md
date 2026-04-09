@@ -9,70 +9,70 @@ tags:
 
 # Pitch — Track Record (v0.9.0)
 
-## Problema
+## Problem
 
-O sistema prevê jogos e identifica value bets, mas não rastreia se acertou ou errou. Hoje:
+The system predicts matches and identifies value bets, but doesn't track whether it got them right or wrong. Today:
 
-1. **Previsões são efêmeras** — `match_predictions` é sobrescrita a cada recompute. Não existe histórico de "o que previ na rodada 5".
+1. **Predictions are ephemeral** — `match_predictions` is overwritten on every recompute. There's no history of "what I predicted on matchday 5".
 
-2. **Verificação é manual** — precisa rodar `moneyball verify` e olhar no terminal. Não há comparação automática quando resultados chegam.
+2. **Verification is manual** — you have to run `moneyball verify` and look in the terminal. There's no automatic comparison when results arrive.
 
-3. **Sem track record** — não sabemos: accuracy por rodada, evolução do Brier score ao longo do campeonato, quais mercados o modelo acerta mais (1X2 vs Over/Under), quais times o modelo erra sistematicamente.
+3. **No track record** — we don't know: accuracy per matchday, Brier score evolution over the tournament, which markets the model hits more (1X2 vs Over/Under), which teams the model misses systematically.
 
-4. **Value bets sem acompanhamento** — identificamos 59 value bets na rodada, mas depois que os jogos acontecem não sabemos quantas ganharam e qual foi o ROI real (não simulado).
+4. **Value bets without follow-up** — we identified 59 value bets on the matchday, but after the matches are played we don't know how many won and what the real (non-simulated) ROI was.
 
-5. **Sem confiança no modelo** — sem track record histórico, não dá pra saber se o modelo está melhorando ou piorando ao longo da temporada.
+5. **No model confidence** — without a historical track record, you can't tell if the model is improving or getting worse over the season.
 
-O sistema precisa ser **future-proof**: cada previsão é registrada, cada resultado é comparado, e o histórico completo fica acessível.
+The system needs to be **future-proof**: every prediction is recorded, every result is compared, and the full history stays accessible.
 
-## Solução
+## Solution
 
-### Lifecycle de uma previsão:
+### Lifecycle of a prediction:
 
 ```
-1. PREDICT  → Previsão salva com status "pendente" e rodada/data
-2. MATCH    → Jogo acontece (resultado no Sofascore)
-3. RESOLVE  → CronJob compara previsão vs resultado automaticamente
-4. DISPLAY  → Frontend mostra histórico com acertos/erros
+1. PREDICT  → Prediction saved with "pending" status and matchday/date
+2. MATCH    → Match happens (result on Sofascore)
+3. RESOLVE  → CronJob automatically compares prediction vs result
+4. DISPLAY  → Frontend shows history with hits/misses
 ```
 
-### Componentes:
+### Components:
 
-#### A. Prediction History (tabela imutável)
+#### A. Prediction History (immutable table)
 
-Ao invés de sobrescrever `match_predictions`, cada previsão é um registro imutável:
+Instead of overwriting `match_predictions`, each prediction is an immutable record:
 
 ```
 prediction_history:
   id SERIAL
-  match_id (hash dos times)
+  match_id (hash of teams)
   home_team, away_team
   commence_time
-  round (rodada)
+  round (matchday)
   
-  # Previsão do modelo
+  # Model prediction
   home_win_prob, draw_prob, away_win_prob
   over_25_prob, btts_prob
   home_xg_expected, away_xg_expected
   most_likely_score
   predicted_at
   
-  # Resultado real (preenchido depois)
-  actual_home_goals (NULL até jogo acontecer)
+  # Actual result (filled in later)
+  actual_home_goals (NULL until match happens)
   actual_away_goals
   actual_outcome (Home/Draw/Away)
   resolved_at
   status (pending → resolved)
   
-  # Métricas de acerto
+  # Hit metrics
   correct_1x2 BOOLEAN
   correct_over_under BOOLEAN
   brier_score FLOAT
 ```
 
-#### B. Value Bet History (tabela imutável)
+#### B. Value Bet History (immutable table)
 
-Cada value bet identificada é registrada com resultado:
+Each identified value bet is recorded with its result:
 
 ```
 value_bet_history:
@@ -82,57 +82,57 @@ value_bet_history:
   model_prob, best_odds, bookmaker
   edge, kelly_stake
   
-  # Resultado
-  won BOOLEAN (NULL até resolver)
+  # Result
+  won BOOLEAN (NULL until resolved)
   profit FLOAT
   resolved_at
 ```
 
 #### C. Auto-Resolve (use case)
 
-Quando novos resultados são ingeridos do Sofascore, um use case `resolve_predictions` automaticamente:
-1. Busca predictions com `status = 'pending'`
-2. Para cada, verifica se o resultado existe no banco (`matches` table)
-3. Se sim: preenche resultado, calcula brier, marca acerto/erro, muda status → `resolved`
-4. Roda no CronJob de ingestão (após ingerir resultados)
+When new results are ingested from Sofascore, a `resolve_predictions` use case automatically:
+1. Fetches predictions with `status = 'pending'`
+2. For each, checks whether the result exists in the database (`matches` table)
+3. If yes: fills in result, computes brier, marks hit/miss, changes status → `resolved`
+4. Runs in the ingest CronJob (after ingesting results)
 
 #### D. Track Record API
 
 ```
-GET /api/track-record              — resumo geral (accuracy, brier, ROI)
-GET /api/track-record/predictions  — lista histórica de previsões
-GET /api/track-record/value-bets   — lista histórica de value bets com P/L
-GET /api/track-record/by-round     — accuracy por rodada
-GET /api/track-record/by-team      — accuracy por time
-GET /api/track-record/by-market    — accuracy por mercado (1X2, O/U, BTTS)
+GET /api/track-record              — general summary (accuracy, brier, ROI)
+GET /api/track-record/predictions  — historical list of predictions
+GET /api/track-record/value-bets   — historical list of value bets with P/L
+GET /api/track-record/by-round     — accuracy per matchday
+GET /api/track-record/by-team      — accuracy per team
+GET /api/track-record/by-market    — accuracy per market (1X2, O/U, BTTS)
 ```
 
-#### E. Frontend — Página Track Record
+#### E. Frontend — Track Record Page
 
-Nova página `/track-record` com:
-- **Resumo**: accuracy geral, Brier, ROI real, total previsto/acertado
-- **Evolução por rodada**: gráfico de linha (accuracy e Brier ao longo do tempo)
-- **Por mercado**: qual tipo de aposta acertamos mais (tabela)
-- **Por time**: quais times o modelo erra mais (tabela)
-- **Histórico completo**: lista de cada previsão com resultado (scrollable)
-- **Value bets P/L**: lista de cada aposta com ganho/perda
+New `/track-record` page with:
+- **Summary**: overall accuracy, Brier, real ROI, total predicted/hit
+- **Evolution per matchday**: line chart (accuracy and Brier over time)
+- **Per market**: which bet type we hit more (table)
+- **Per team**: which teams the model misses more (table)
+- **Full history**: list of each prediction with result (scrollable)
+- **Value bets P/L**: list of each bet with gain/loss
 
-## Arquitetura
+## Architecture
 
-### Módulos afetados
+### Affected modules
 
-| Módulo | Ação | Descrição |
+| Module | Action | Description |
 |--------|------|-----------|
-| `adapters/orm.py` | MODIFICAR | Novas tabelas PredictionHistory, ValueBetHistory |
-| `adapters/postgres_repository.py` | MODIFICAR | CRUD pra histórico + queries de track record |
-| `domain/track_record.py` | NOVO | Lógica de resolução (comparar pred vs resultado) |
-| `use_cases/resolve_predictions.py` | NOVO | Auto-resolve quando resultados chegam |
-| `use_cases/predict_all.py` | MODIFICAR | Salvar em prediction_history (imutável) |
-| `use_cases/find_value_bets.py` | MODIFICAR | Salvar em value_bet_history |
-| `api.py` | MODIFICAR | 6 novos endpoints de track record |
-| `cli.py` | MODIFICAR | Comando `moneyball track-record` |
-| `frontend/` | MODIFICAR | Nova página `/track-record` |
-| `k8s/cronjob-ingest.yaml` | MODIFICAR | Rodar resolve após ingest |
+| `adapters/orm.py` | MODIFY | New tables PredictionHistory, ValueBetHistory |
+| `adapters/postgres_repository.py` | MODIFY | CRUD for history + track record queries |
+| `domain/track_record.py` | NEW | Resolution logic (compare pred vs result) |
+| `use_cases/resolve_predictions.py` | NEW | Auto-resolve when results arrive |
+| `use_cases/predict_all.py` | MODIFY | Save to prediction_history (immutable) |
+| `use_cases/find_value_bets.py` | MODIFY | Save to value_bet_history |
+| `api.py` | MODIFY | 6 new track record endpoints |
+| `cli.py` | MODIFY | `moneyball track-record` command |
+| `frontend/` | MODIFY | New `/track-record` page |
+| `k8s/cronjob-ingest.yaml` | MODIFY | Run resolve after ingest |
 
 ### Schema
 
@@ -188,57 +188,57 @@ CREATE INDEX IF NOT EXISTS idx_pred_history_round ON prediction_history(round);
 
 ### Infra (K8s)
 
-Modificar CronJob `ingest-sofascore` pra rodar `moneyball resolve` após ingestão:
+Modify CronJob `ingest-sofascore` to run `moneyball resolve` after ingest:
 ```yaml
 command: ["sh", "-c", "moneyball ingest --provider sofascore && moneyball resolve"]
 ```
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] Tabela `prediction_history` (imutável, 1 registro por previsão)
-- [ ] Tabela `value_bet_history` (imutável, 1 registro por value bet)
-- [ ] `domain/track_record.py` — resolve predictions vs resultados
+- [ ] `prediction_history` table (immutable, 1 record per prediction)
+- [ ] `value_bet_history` table (immutable, 1 record per value bet)
+- [ ] `domain/track_record.py` — resolves predictions vs results
 - [ ] `use_cases/resolve_predictions.py` — auto-resolve
-- [ ] `predict_all` salva em `prediction_history` ao invés de sobrescrever `match_predictions`
-- [ ] `find_value_bets` salva em `value_bet_history`
-- [ ] 6 endpoints API de track record
-- [ ] CLI `moneyball resolve` e `moneyball track-record`
-- [ ] Frontend página `/track-record` com resumo, gráficos, tabelas
-- [ ] CronJob atualizado pra resolver após ingest
-- [ ] Testes unitários pra resolução
+- [ ] `predict_all` saves to `prediction_history` instead of overwriting `match_predictions`
+- [ ] `find_value_bets` saves to `value_bet_history`
+- [ ] 6 track record API endpoints
+- [ ] CLI `moneyball resolve` and `moneyball track-record`
+- [ ] Frontend `/track-record` page with summary, charts, tables
+- [ ] CronJob updated to resolve after ingest
+- [ ] Unit tests for resolution
 
-### Fora do Escopo
+### Out of Scope
 
-- Alertas/notificações quando resultados chegam
-- Comparação com outros modelos (benchmark)
-- Export de relatório PDF
-- Ajuste automático do modelo baseado em track record (meta-learning)
+- Alerts/notifications when results arrive
+- Comparison with other models (benchmark)
+- PDF report export
+- Automatic model adjustment based on track record (meta-learning)
 
-## Research Necessária
+## Research Needed
 
-- [ ] Definir o que conta como "rodada" (Sofascore tem round info? ou inferir por data?)
-- [ ] Definir matching entre prediction (nomes dos odds sem acento) e resultado (nomes Sofascore com acento) — já temos fuzzy match
+- [ ] Define what counts as "matchday" (does Sofascore have round info? or infer by date?)
+- [ ] Define matching between prediction (odds names without accents) and result (Sofascore names with accents) — we already have fuzzy match
 
-## Estratégia de Testes
+## Testing Strategy
 
-### Unitários
-- `domain/track_record.py`: resolver prediction com resultado conhecido, brier calculado corretamente
-- Prediction pending → resolved quando resultado chega
-- Value bet won/lost calculado corretamente
+### Unit
+- `domain/track_record.py`: resolve prediction with known result, brier computed correctly
+- Prediction pending → resolved when result arrives
+- Value bet won/lost computed correctly
 
-### Integração
-- Fluxo completo: predict → ingest resultado → resolve → check track record
+### Integration
+- Full flow: predict → ingest result → resolve → check track record
 
 ### Manual
-- Recomputar predictions, esperar rodada, ingerir, verificar track-record no frontend
+- Recompute predictions, wait for matchday, ingest, verify track-record on frontend
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] Predictions nunca são sobrescritas (histórico imutável)
-- [ ] Após ingestão de resultados, predictions são resolvidas automaticamente
-- [ ] `/track-record` mostra accuracy, Brier, ROI por rodada
-- [ ] Value bets mostram P/L real
-- [ ] Sem intervenção manual no fluxo predict → resolve
-- [ ] Frontend acessível e informativo
+- [ ] Predictions are never overwritten (immutable history)
+- [ ] After ingesting results, predictions are resolved automatically
+- [ ] `/track-record` shows accuracy, Brier, ROI per matchday
+- [ ] Value bets show real P/L
+- [ ] No manual intervention in the predict → resolve flow
+- [ ] Frontend accessible and informative

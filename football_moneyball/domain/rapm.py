@@ -1,15 +1,15 @@
-"""Modulo de dominio RAPM (Regularized Adjusted Plus-Minus).
+"""Modulo of dominio RAPM (Regularized Adjusted Plus-Minus).
 
-Implementa o modelo de Plus-Minus Ajustado Regularizado usando regressao Ridge
-para isolar o impacto individual de cada jogador.
+Implementa o model of Plus-Minus Ajustado Regularizado usando regression Ridge
+for isolate o impacto individual of each player.
 
 Funcionalidades avancadas:
-- Splints: stints delimitados tambem por gols (alem de substituicoes e periodos)
-- SPM Prior: prior informativo baseado em box-score metrics (Statistical Plus-Minus)
-- Offensive/Defensive Split: colunas separadas para impacto ofensivo e defensivo
-- Augmented Regression: incorporacao do SPM prior via regressao aumentada
+- Splints: stints delimitados tambem by goals (alem of substitutions and periodos)
+- SPM Prior: prior informative baseado in box-score metrics (Statistical Plus-Minus)
+- Offensive/Defensive Split: colunas separadas for impacto offensive and defensive
+- Augmented Regression: incorporacao of the SPM prior via regression aumentada
 
-Logica pura sobre DataFrames e arrays — sem dependencias de I/O externo
+Logica pura sobre DataFrames and arrays — without dependencias of I/O externo
 (statsbombpy, sqlalchemy).
 """
 
@@ -23,43 +23,43 @@ from sklearn.linear_model import Ridge, RidgeCV
 
 
 # ---------------------------------------------------------------------------
-# Reconstrucao de stints (splints) a partir de eventos
+# Reconstrucao of stints (splints) from eventos
 # ---------------------------------------------------------------------------
 
 def reconstruct_stints(
     events: pd.DataFrame, lineups: dict
 ) -> pd.DataFrame:
-    """Reconstroi os stints (periodos com mesmos 22 jogadores) de uma partida.
+    """Reconstroi os stints (periodos with same 22 players) of a match.
 
-    Recebe eventos e lineups ja carregados e identifica os momentos em que
-    a composicao dos jogadores em campo muda (substituicoes, inicio de tempo)
-    ou um gol e marcado. Para cada stint, calcula o diferencial de xG
-    (casa - fora) e a duracao em minutos.
+    Receives eventos and lineups ja carregados and identifies os momentos in que
+    a composicao of the players in pitch muda (substitutions, inicio of tempo)
+    or a goal is scored. For each stint, calcula o diferencial of xG
+    (home - outside) is the duration in minutos.
 
-    Gols criam novas fronteiras ('splints'), permitindo analise mais granular
-    do impacto dos jogadores em estados de jogo diferentes (empate, lideranca,
-    desvantagem). O campo ``boundary_type`` registra o que causou cada fronteira:
+    Gols criam novas boundaries ('splints'), permitindo analise mais granular
+    of the impacto of the players in states of jogo diferentes (empate, lideranca,
+    disadvantage). O pitch ``boundary_type`` records o that caused each boundary:
     'period_start', 'substitution' ou 'goal'.
 
-    Parametros
+    Parameters
     ----------
     events : pd.DataFrame
-        DataFrame de eventos StatsBomb (retornado por sb.events() ou
+        DataFrame of eventos StatsBomb (retornado by sb.events() ou
         equivalente).
     lineups : dict
-        Dicionario de lineups por time, no formato retornado por
-        sb.lineups() (chave = nome do time, valor = DataFrame com
+        Dicionario of lineups by time, in the formato retornado por
+        sb.lineups() (chave = nome of the time, value = DataFrame com
         colunas player_id, positions, etc.).
 
-    Retorna
+    Returns
     -------
     pd.DataFrame
-        DataFrame com colunas: stint_number, home_player_ids,
+        DataFrame with colunas: stint_number, home_player_ids,
         away_player_ids, duration_minutes, home_xg, away_xg, xg_diff,
         boundary_type.
     """
     # Identificar times (home / away)
-    # O primeiro evento de tipo "Starting XI" nos da a ordem home/away
+    # O first evento of tipo "Starting XI" in the of the a ordem home/away
     starting_xi_events = events[events["type"] == "Starting XI"].sort_values("index")
 
     if len(starting_xi_events) < 2:
@@ -68,11 +68,11 @@ def reconstruct_stints(
     home_team = starting_xi_events.iloc[0]["team"]
     away_team = starting_xi_events.iloc[1]["team"]
 
-    # Extrair escalacoes iniciais (titulares) a partir dos lineups
+    # Extrair escalacoes iniciais (titulares) from the lineups
     home_lineup = lineups[home_team]
     away_lineup = lineups[away_team]
 
-    # Jogadores titulares sao aqueles com posicao listada nas tactics do Starting XI
+    # Players titulares sao aqueles with posicao listada in the tactics of the Starting XI
     home_tactics = starting_xi_events.iloc[0].get("tactics", {})
     away_tactics = starting_xi_events.iloc[1].get("tactics", {})
 
@@ -81,7 +81,7 @@ def reconstruct_stints(
             p["player"]["id"] for p in home_tactics["lineup"]
         }
     else:
-        # Fallback: pegar os primeiros 11 do lineup
+        # Fallback: pegar os first 11 of the lineup
         home_players = set(home_lineup["player_id"].head(11).tolist())
 
     if isinstance(away_tactics, dict) and "lineup" in away_tactics:
@@ -96,7 +96,7 @@ def reconstruct_stints(
         drop=True
     )
 
-    # Calcular timestamp continuo em minutos (considerando periodos)
+    # Calcular timestamp continuo in minutos (considerando periodos)
     period_offsets = {1: 0, 2: 45, 3: 90, 4: 105}
     events["timestamp_minutes"] = events.apply(
         lambda row: period_offsets.get(row["period"], 0)
@@ -105,30 +105,30 @@ def reconstruct_stints(
         axis=1,
     )
 
-    # Identificar eventos que delimitam stints
+    # Identificar eventos that delimitam stints
     # Substituicoes
     subs = events[events["type"] == "Substitution"].copy()
 
-    # Half Start (inicio de periodo)
+    # Half Start (inicio of periodo)
     half_starts = events[events["type"] == "Half Start"].copy()
 
-    # Coletar pontos de corte (timestamps onde a composicao muda)
+    # Coletar points of corte (timestamps where a composicao muda)
     boundary_times: list[float] = []
     boundary_types: dict[float, str] = {}
 
-    # Inicio de cada periodo como boundary
+    # Inicio of each periodo as boundary
     for _, hs in half_starts.iterrows():
         ts = hs["timestamp_minutes"]
         boundary_times.append(ts)
         boundary_types[ts] = "period_start"
 
-    # Cada substituicao como boundary
+    # Each substitution as boundary
     for _, sub_event in subs.iterrows():
         ts = sub_event["timestamp_minutes"]
         boundary_times.append(ts)
         boundary_types[ts] = "substitution"
 
-    # Gols como boundaries (splints)
+    # Gols as boundaries (splints)
     if "shot_outcome" in events.columns:
         goal_events = events[
             (events["type"] == "Shot") & (events["shot_outcome"] == "Goal")
@@ -140,15 +140,15 @@ def reconstruct_stints(
 
     boundary_times = sorted(set(boundary_times))
 
-    # Se nao houver boundaries, usar inicio e fim da partida
+    # If nao houver boundaries, usar inicio and fim of the match
     if not boundary_times:
         boundary_times = [0.0]
         boundary_types[0.0] = "period_start"
 
-    # Fim da partida
+    # Fim of the match
     match_end = events["timestamp_minutes"].max()
 
-    # Construir intervalos de stints
+    # Construir intervalos of stints
     intervals: list[tuple[float, float]] = []
     interval_boundary_types: list[str] = []
     for i in range(len(boundary_times)):
@@ -158,20 +158,20 @@ def reconstruct_stints(
             intervals.append((start, end))
             interval_boundary_types.append(boundary_types.get(start, "period_start"))
 
-    # Tambem incluir intervalo antes da primeira boundary se > 0
+    # Tambem incluir intervalo antes of the first boundary se > 0
     if boundary_times[0] > 0:
         intervals.insert(0, (0.0, boundary_times[0]))
         interval_boundary_types.insert(0, "period_start")
 
-    # Processar substituicoes em ordem cronologica para rastrear composicao
+    # Processar substitutions in ordem cronologica for rastrear composicao
     subs_sorted = subs.sort_values("timestamp_minutes").reset_index(drop=True)
 
-    # Mapear substituicoes por timestamp para saber o estado do elenco em cada stint
+    # Mapear substitutions by timestamp for saber o state of the roster in each stint
     sub_records: list[dict] = []
     for _, sub_event in subs_sorted.iterrows():
         sub_team = sub_event["team"]
         player_out = sub_event.get("player_id", None)
-        # O jogador que entra esta em substitution_replacement
+        # O player that entra esta in substitution_replacement
         replacement_info = sub_event.get("substitution_replacement", {})
         if isinstance(replacement_info, dict):
             player_in = replacement_info.get("id", None)
@@ -187,7 +187,7 @@ def reconstruct_stints(
             }
         )
 
-    # Chutes com xG para calcular xG por stint
+    # Chutes with xG for calcular xG by stint
     shots = events[events["type"] == "Shot"].copy()
     if "shot_statsbomb_xg" in shots.columns:
         shots["xg_value"] = shots["shot_statsbomb_xg"].fillna(0.0)
@@ -200,7 +200,7 @@ def reconstruct_stints(
     current_away = set(away_players)
 
     for stint_idx, (start_t, end_t) in enumerate(intervals):
-        # Aplicar substituicoes que ocorreram exatamente no inicio deste stint
+        # Aplicar substitutions that ocorreram exatamente in the inicio deste stint
         for sub in sub_records:
             if abs(sub["timestamp"] - start_t) < 1e-6:
                 if sub["team"] == home_team:
@@ -212,7 +212,7 @@ def reconstruct_stints(
                         current_away.discard(sub["player_out"])
                         current_away.add(sub["player_in"])
 
-        # Filtrar chutes dentro do intervalo do stint
+        # Filtrar shots within of the intervalo of the stint
         stint_shots = shots[
             (shots["timestamp_minutes"] >= start_t)
             & (shots["timestamp_minutes"] < end_t)
@@ -253,27 +253,27 @@ def compute_spm_prior(
     player_metrics_list: list,
     player_ids: list[int],
 ) -> np.ndarray:
-    """Calcula prior SPM (Statistical Plus-Minus) a partir de box-score metrics.
+    """Compute prior SPM (Statistical Plus-Minus) from box-score metrics.
 
-    Usa metricas per-90 (goals, assists, xg, tackles, interceptions, key_passes)
-    para gerar um prior informativo para cada jogador. Esse prior e usado na
-    regressao aumentada do RAPM para estabilizar estimativas de jogadores com
+    Usa metrics per-90 (goals, assists, xg, tackles, interceptions, key_passes)
+    for generate a prior informative for each player. Esse prior is used na
+    regression aumentada of the RAPM for estabilizar estimativas of players com
     poucos minutos amostrados.
 
-    Parametros
+    Parameters
     ----------
     player_metrics_list : list
-        Lista de objetos/dicts com atributos: player_id, minutes_played,
-        goals, assists, xg, key_passes, tackles, interceptions. Cada
-        elemento representa metricas de uma partida para um jogador.
+        Lista of objetos/dicts with atributos: player_id, minutes_played,
+        goals, assists, xg, key_passes, tackles, interceptions. Each
+        elemento representa metrics of a match for a player.
     player_ids : list[int]
-        Lista de IDs de jogadores para os quais calcular o prior.
+        Lista of IDs of players for the quais calcular o prior.
 
-    Retorna
+    Returns
     -------
     np.ndarray
-        Array com o prior SPM para cada jogador (mesmo indice de player_ids),
-        centrado em 0.
+        Array with the prior SPM for each player (same index of player_ids),
+        centrado in 0.
     """
     if not player_metrics_list:
         return np.zeros(len(player_ids))
@@ -297,7 +297,7 @@ def compute_spm_prior(
         if mins < 10:
             continue
         per90 = 90.0 / mins
-        # Contribuicoes positivas (ofensivas e defensivas)
+        # Contribuicoes positivas (ofensivas and defensivas)
         score = (
             (_get("goals") or 0) * per90 * 1.0
             + (_get("assists") or 0) * per90 * 0.7
@@ -321,39 +321,39 @@ def compute_spm_prior(
 
 
 # ---------------------------------------------------------------------------
-# Construcao da matriz de design para RAPM
+# Construcao of the matriz of design for RAPM
 # ---------------------------------------------------------------------------
 
 def build_rapm_matrix(
     stints_df: pd.DataFrame,
     offensive_defensive_split: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, list[int]]:
-    """Constroi a matriz de design X e o vetor alvo y para a regressao Ridge.
+    """Builds the matriz of design X is the vetor alvo y for the regression Ridge.
 
-    Cada linha representa um stint. No modo padrao, cada jogador tem uma coluna
-    que recebe +weight se da casa, -weight se visitante (weight = sqrt(duracao)).
-    O vetor y e o diferencial de xG ponderado pela mesma raiz.
+    Each row representa a stint. In mode default, each player tem a column
+    that recebe +weight if of the home, -weight if away team (weight = sqrt(duration)).
+    O vetor y is the diferencial of xG weighted by the same raiz.
 
-    No modo ``offensive_defensive_split``, cada jogador gera duas colunas:
-    uma ofensiva (impacto no xG a favor) e uma defensiva (impacto no xG
-    contra), permitindo separacao real do RAPM ofensivo/defensivo.
+    In mode ``offensive_defensive_split``, each player gera duas colunas:
+    a offensive (impacto in the xG a favor) and a defensive (impacto in the xG
+    contra), permitindo separacao real of the RAPM offensive/defensive.
 
-    Parametros
+    Parameters
     ----------
     stints_df : pd.DataFrame
-        DataFrame de stints conforme retornado por ``reconstruct_stints``.
+        DataFrame of stints conforme retornado por ``reconstruct_stints``.
     offensive_defensive_split : bool, optional
-        Se True, cria 2 colunas por jogador (ofensiva e defensiva).
+        If True, cria 2 colunas by player (offensive and defensive).
         Padrao: False.
 
-    Retorna
+    Returns
     -------
     tuple[np.ndarray, np.ndarray, list[int]]
-        (X, y, player_ids) onde X e a matriz de design, y o vetor alvo
-        ponderado e player_ids a lista ordenada de IDs de jogadores
-        correspondente as colunas de X. Quando ``offensive_defensive_split``
-        e True, player_ids contem IDs intercalados: [p1_off, p1_def, p2_off,
-        p2_def, ...] e X tem 2*n_players colunas.
+        (X, y, player_ids) where X is the matriz of design, y o vetor alvo
+        weighted and player_ids a lista ordenada of IDs of players
+        correspondente as colunas of X. Quando ``offensive_defensive_split``
+        and True, player_ids contem IDs intercalados: [p1_off, p1_def, p2_off,
+        p2_def, ...] and X tem 2*n_players colunas.
     """
     # Coletar todos os player_ids unicos
     all_player_ids: set[int] = set()
@@ -372,7 +372,7 @@ def build_rapm_matrix(
     n_players = len(player_ids)
 
     if offensive_defensive_split:
-        # 2 colunas por jogador: [off, def] intercaladas
+        # 2 colunas by player: [off, def] intercaladas
         n_cols = 2 * n_players
         X = np.zeros((n_stints, n_cols), dtype=np.float64)
         y = np.zeros(n_stints, dtype=np.float64)
@@ -385,14 +385,14 @@ def build_rapm_matrix(
 
             weight = np.sqrt(max(duration, 0.01))
 
-            # Jogadores da casa: +weight na coluna ofensiva
+            # Players of the home: +weight in the column offensive
             if isinstance(home_ids, (list, set)):
                 for pid in home_ids:
                     if pid in pid_to_idx:
                         base_idx = pid_to_idx[pid] * 2
                         X[i, base_idx] = weight       # offensive column
 
-            # Jogadores do visitante: -weight na coluna defensiva
+            # Players of the away team: -weight in the column defensive
             if isinstance(away_ids, (list, set)):
                 for pid in away_ids:
                     if pid in pid_to_idx:
@@ -401,7 +401,7 @@ def build_rapm_matrix(
 
             y[i] = xg_diff * weight
 
-        # Gerar lista de player_ids com sufixos off/def
+        # Gerar lista of player_ids with sufixos off/def
         split_player_ids = []
         for pid in player_ids:
             split_player_ids.append(pid)  # offensive
@@ -409,7 +409,7 @@ def build_rapm_matrix(
         return X, y, split_player_ids
 
     else:
-        # Modo padrao: 1 coluna por jogador
+        # Modo default: 1 column by player
         X = np.zeros((n_stints, n_players), dtype=np.float64)
         y = np.zeros(n_stints, dtype=np.float64)
 
@@ -421,7 +421,7 @@ def build_rapm_matrix(
 
             weight = np.sqrt(max(duration, 0.01))
 
-            # +1 para jogadores da casa, -1 para visitantes (ponderados)
+            # +1 for players of the home, -1 for visitantes (weighted)
             if isinstance(home_ids, (list, set)):
                 for pid in home_ids:
                     if pid in pid_to_idx:
@@ -438,7 +438,7 @@ def build_rapm_matrix(
 
 
 # ---------------------------------------------------------------------------
-# Ajuste do modelo Ridge (RAPM)
+# Ajuste of the model Ridge (RAPM)
 # ---------------------------------------------------------------------------
 
 def fit_rapm(
@@ -448,35 +448,35 @@ def fit_rapm(
     alpha: float = 1.0,
     spm_prior: np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """Ajusta a regressao Ridge para estimar o RAPM de cada jogador.
+    """Fits a regression Ridge for estimate o RAPM of each player.
 
-    Quando um prior SPM e fornecido, utiliza regressao aumentada: empilha uma
-    matriz identidade escalada abaixo de X e o prior escalado abaixo de y. Isso
-    encolhe os coeficientes em direcao ao prior em vez de em direcao a zero,
-    produzindo estimativas mais estaveis para jogadores com poucos stints.
+    When a prior SPM and fornecido, uses regression aumentada: empilha uma
+    matriz identidade escalada abaixo of X is the prior escalado abaixo of y. Isso
+    encolhe os coeficientes in direcao ao prior in vez of in direcao a zero,
+    produzindo estimativas mais estaveis for players with poucos stints.
 
-    Parametros
+    Parameters
     ----------
     X : np.ndarray
-        Matriz de design (stints x jogadores).
+        Matriz of design (stints x players).
     y : np.ndarray
-        Vetor alvo (xG diferencial ponderado).
+        Vetor alvo (xG diferencial weighted).
     player_ids : list[int]
-        Lista de IDs de jogadores correspondente as colunas de X.
+        Lista of IDs of players correspondente as colunas of X.
     alpha : float, optional
-        Parametro de regularizacao da regressao Ridge. Padrao: 1.0.
+        Parametro of regularizacao of the regression Ridge. Padrao: 1.0.
     spm_prior : np.ndarray, optional
-        Prior SPM para regressao aumentada. Deve ter o mesmo numero de
-        elementos que colunas de X. Se None, usa Ridge padrao (shrink p/ zero).
+        Prior SPM for regression aumentada. Deve ter o same numero de
+        elementos that colunas of X. If None, usa Ridge default (shrink p/ zero).
 
-    Retorna
+    Returns
     -------
     pd.DataFrame
-        DataFrame com colunas: player_id, rapm_value, offensive_rapm,
+        DataFrame with colunas: player_id, rapm_value, offensive_rapm,
         defensive_rapm.
     """
     if spm_prior is not None:
-        # Regressao aumentada: encolhe em direcao ao prior SPM
+        # Regressao aumentada: encolhe in direcao ao prior SPM
         lambda_reg = alpha
         n_players = X.shape[1]
         X_aug = np.vstack([X, np.sqrt(lambda_reg) * np.eye(n_players)])
@@ -494,8 +494,8 @@ def fit_rapm(
         }
     )
 
-    # Tentar calcular RAPM ofensivo/defensivo separadamente
-    # Ofensivo: impacto no xG a favor; Defensivo: impacto no xG contra
+    # Tentar calcular RAPM offensive/defensive separadamente
+    # Ofensivo: impacto in the xG a favor; Defensivo: impacto in the xG contra
     # Aproximacao: usar o coeficiente total dividido proporcionalmente
     results["offensive_rapm"] = results["rapm_value"].clip(lower=0)
     results["defensive_rapm"] = results["rapm_value"].clip(upper=0)
@@ -504,7 +504,7 @@ def fit_rapm(
 
 
 # ---------------------------------------------------------------------------
-# Validacao cruzada para escolha do alpha otimo
+# Validacao cruzada for escolha of the alpha otimo
 # ---------------------------------------------------------------------------
 
 def cross_validate_alpha(
@@ -512,25 +512,25 @@ def cross_validate_alpha(
     y: np.ndarray,
     alphas: Optional[list[float]] = None,
 ) -> float:
-    """Encontra o melhor parametro de regularizacao alpha via validacao cruzada.
+    """Encontra o melhor parameter of regularizacao alpha via validacao cruzada.
 
-    Utiliza RidgeCV do scikit-learn para testar diferentes valores de alpha
-    e retornar aquele que minimiza o erro de validacao cruzada.
+    Utiliza RidgeCV of the scikit-learn for testar diferentes values of alpha
+    and retornar aquele that minimiza o erro of validacao cruzada.
 
-    Parametros
+    Parameters
     ----------
     X : np.ndarray
-        Matriz de design.
+        Matriz of design.
     y : np.ndarray
         Vetor alvo.
     alphas : list[float], optional
-        Lista de valores de alpha a testar. Se None, usa uma grade logaritmica
-        padrao de 0.01 a 1000.
+        Lista of values of alpha a testar. If None, usa a grade logaritmica
+        default of 0.01 a 1000.
 
-    Retorna
+    Returns
     -------
     float
-        O valor de alpha com melhor desempenho na validacao cruzada.
+        O value of alpha with melhor desempenho in the validacao cruzada.
     """
     if alphas is None:
         alphas = np.logspace(-2, 3, num=50).tolist()

@@ -1,8 +1,8 @@
-"""Testes para football_moneyball.domain.pressing — pressing via modulo hexagonal.
+"""Tests for football_moneyball.domain.pressing — pressing via the hexagonal module.
 
-Diferenca chave do test_pressing.py: compute_match_pressing recebe o
-DataFrame de eventos diretamente (sem sb.events), entao ZERO mocks sao
-necessarios.
+Key difference from test_pressing.py: compute_match_pressing takes the
+events DataFrame directly (no sb.events), so ZERO mocks are
+required.
 """
 
 import numpy as np

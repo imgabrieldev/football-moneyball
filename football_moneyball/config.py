@@ -1,7 +1,7 @@
-"""Configuracao centralizada e Dependency Injection.
+"""Centralized configuration and Dependency Injection.
 
-Ponto unico para criar providers, repositories e visualizers
-com base em configuracao ou parametros.
+Single entry point to create providers, repositories and visualizers
+based on configuration or parameters.
 """
 
 from __future__ import annotations
@@ -18,18 +18,18 @@ DEFAULT_PROVIDER = os.getenv("MONEYBALL_PROVIDER", "statsbomb")
 
 
 def get_provider(name: str | None = None):
-    """Retorna o DataProvider configurado.
+    """Return the configured DataProvider.
 
     Parameters
     ----------
     name : str, optional
-        Nome do provider ('statsbomb' ou 'sofascore').
-        Se None, usa DEFAULT_PROVIDER.
+        Provider name ('statsbomb' or 'sofascore').
+        If None, uses DEFAULT_PROVIDER.
 
     Returns
     -------
     DataProvider
-        Instancia do provider selecionado.
+        Instance of the selected provider.
     """
     name = name or DEFAULT_PROVIDER
 
@@ -40,16 +40,16 @@ def get_provider(name: str | None = None):
         from football_moneyball.adapters.sofascore_provider import SofascoreProvider
         return SofascoreProvider()
     else:
-        raise ValueError(f"Provider desconhecido: {name}. Use 'statsbomb' ou 'sofascore'.")
+        raise ValueError(f"Unknown provider: {name}. Use 'statsbomb' or 'sofascore'.")
 
 
 def get_repository():
-    """Retorna o MatchRepository configurado (PostgreSQL).
+    """Return the configured MatchRepository (PostgreSQL).
 
     Returns
     -------
     PostgresRepository
-        Instancia conectada ao banco de dados.
+        Instance connected to the database.
     """
     from football_moneyball.adapters.orm import get_session
     from football_moneyball.adapters.postgres_repository import PostgresRepository
@@ -57,26 +57,26 @@ def get_repository():
 
 
 def get_odds_provider():
-    """Retorna o OddsProvider configurado (The Odds API).
+    """Return the configured OddsProvider (The Odds API).
 
-    Requer ODDS_API_KEY configurada.
+    Requires ODDS_API_KEY to be set.
 
     Returns
     -------
     TheOddsAPIProvider
-        Instancia do provider de odds.
+        Instance of the odds provider.
     """
     from football_moneyball.adapters.odds_provider import TheOddsAPIProvider
     return TheOddsAPIProvider()
 
 
 def get_visualizer():
-    """Retorna o Visualizer configurado (Matplotlib).
+    """Return the configured Visualizer (Matplotlib).
 
     Returns
     -------
     MatplotlibVisualizer
-        Instancia do visualizer.
+        Instance of the visualizer.
     """
     from football_moneyball.adapters.matplotlib_viz import MatplotlibVisualizer
     return MatplotlibVisualizer()

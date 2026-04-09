@@ -1,6 +1,6 @@
-"""Testes para football_moneyball.domain.lineup_prediction.
+"""Tests for football_moneyball.domain.lineup_prediction.
 
-Lógica pura, zero mocks. Inputs determinísticos.
+Pure logic, zero mocks. Deterministic inputs.
 """
 
 import pandas as pd
@@ -13,19 +13,19 @@ from football_moneyball.domain.lineup_prediction import (
 
 class TestMinutesWeight:
     def test_full_regular(self):
-        # 5/5 jogos, 90min cada → 1.0
+        # 5/5 games, 90min each -> 1.0
         assert minutes_weight(5, 450, 5) == 1.0
 
     def test_partial_regular(self):
-        # 2/5 jogos, 90min cada → 0.4
+        # 2/5 games, 90min each -> 0.4
         assert minutes_weight(2, 180, 5) == 0.4
 
     def test_half_minutes(self):
-        # 5/5 jogos, 45min cada → 0.5
+        # 5/5 games, 45min each -> 0.5
         assert abs(minutes_weight(5, 225, 5) - 0.5) < 1e-9
 
     def test_rare_substitute(self):
-        # 1/5 jogos, 30min → 0.2 × 0.333... ≈ 0.0667
+        # 1/5 games, 30min -> 0.2 * 0.333... ~= 0.0667
         w = minutes_weight(1, 30, 5)
         assert 0.06 < w < 0.07
 
@@ -33,7 +33,7 @@ class TestMinutesWeight:
         assert minutes_weight(0, 0, 5) == 0.0
 
     def test_clamp_above_one(self):
-        # Impossível ter >5/5 mas se acontecer, clamp pra 1.0
+        # Impossible to have >5/5 but if it does, clamp to 1.0
         assert minutes_weight(10, 900, 5) == 1.0
 
     def test_zero_last_n(self):
@@ -42,7 +42,7 @@ class TestMinutesWeight:
 
 class TestProbableXI:
     def _make_aggregates(self, n_players: int) -> pd.DataFrame:
-        """Cria agregados sintéticos: jogador i com minutos decrescentes."""
+        """Build synthetic aggregates: player i with decreasing minutes."""
         rows = []
         for i in range(n_players):
             minutes = 450 - i * 20  # Player 0: 450, Player 1: 430, etc
@@ -68,22 +68,22 @@ class TestProbableXI:
     def test_ordered_by_minutes(self):
         aggs = self._make_aggregates(15)
         xi = probable_xi(aggs, last_n_matches=5)
-        # Player 1 tem mais minutos → primeiro
+        # Player 1 has more minutes -> first
         assert xi.iloc[0]["player_id"] == 1
-        # Player 11 é o 11º → último
+        # Player 11 is the 11th -> last
         assert xi.iloc[-1]["player_id"] == 11
 
     def test_xg_per_90_computed(self):
         aggs = self._make_aggregates(11)
         xi = probable_xi(aggs, last_n_matches=5)
-        # Player 1: xG=1.0, minutos=450 → 0.2 xG/90
+        # Player 1: xG=1.0, minutes=450 -> 0.2 xG/90
         p1 = xi[xi["player_id"] == 1].iloc[0]
         assert abs(p1["xg_per_90"] - 0.2) < 1e-9
 
     def test_weight_computed(self):
         aggs = self._make_aggregates(11)
         xi = probable_xi(aggs, last_n_matches=5)
-        # Player 1: 5/5 jogos, 450min → peso 1.0
+        # Player 1: 5/5 games, 450min -> weight 1.0
         p1 = xi[xi["player_id"] == 1].iloc[0]
         assert p1["weight"] == 1.0
 

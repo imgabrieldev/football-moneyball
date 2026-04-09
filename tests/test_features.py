@@ -1,4 +1,4 @@
-"""Testes unitarios para domain/features.py (v1.15.0)."""
+"""Unit tests for domain/features.py (v1.15.0)."""
 
 import pytest
 from football_moneyball.domain.features import (

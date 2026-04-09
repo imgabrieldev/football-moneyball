@@ -6,34 +6,35 @@ tags:
   - api
 ---
 
-# Research — Fontes de Dados para o Brasileirão
+# Research — Data Sources for the Brasileirão
 
 > Research date: 2026-04-03
-> Sources: [listadas ao final]
+> Sources: [listed at the end]
 
 ## Context
 
-O StatsBomb open data não cobre o Brasileirão. Precisamos de uma fonte alternativa com dados da temporada atual e granularidade compatível com nosso schema (métricas por jogador por partida, xG, passes, duelos, pressão, posições).
+StatsBomb open data does not cover the Brasileirão. We need an alternative source with current-season data and granularity compatible with our schema (per-player per-match metrics, xG, passes, duels, pressure, positions).
 
 ## Findings
 
-### Comparativo de APIs
+### API comparison
 
-| API | Brasileirão | Temporada atual | xG | Dados por jogador/partida | Eventos individuais | Preço/mês |
-|-----|-------------|-----------------|-----|--------------------------|---------------------|-----------|
-| **API-Football** | Sim | Sim | Parcial (time, não por chute) | Sim (shots, passes, tackles, dribbles, rating) | Não (agregado por jogador) | Free (100 req/dia) / $19+ |
-| **Sportmonks** | Sim | Sim | Sim (add-on, por time e lineup) | Sim | Parcial | Trial 14 dias / pago |
-| **Sofascore** (scraping) | Sim | Sim | Sim (shotmap com xG por chute) | Sim (heatmap, stats) | Sim (shotmap, heatmap coords) | Grátis (não oficial) |
-| **FootyStats** | Sim | Sim | Sim (por time) | Não (agregado) | Não | $36/mês |
-| **Understat** | **Não** | - | - | - | - | - |
-| **FBref** (scraping) | Sim | Sim | Sim (por jogador/temporada) | Parcial | Não | Grátis (scraping) |
+| API | Brasileirão | Current season | xG | Per-player/per-match data | Individual events | Price/month |
+|-----|-------------|----------------|-----|---------------------------|-------------------|-------------|
+| **API-Football** | Yes | Yes | Partial (team, not per shot) | Yes (shots, passes, tackles, dribbles, rating) | No (aggregated per player) | Free (100 req/day) / $19+ |
+| **Sportmonks** | Yes | Yes | Yes (add-on, per team and lineup) | Yes | Partial | 14-day trial / paid |
+| **Sofascore** (scraping) | Yes | Yes | Yes (shotmap with xG per shot) | Yes (heatmap, stats) | Yes (shotmap, heatmap coords) | Free (unofficial) |
+| **FootyStats** | Yes | Yes | Yes (per team) | No (aggregated) | No | $36/month |
+| **Understat** | **No** | - | - | - | - | - |
+| **FBref** (scraping) | Yes | Yes | Yes (per player/season) | Partial | No | Free (scraping) |
 
-### 1. API-Football (api-sports.io) — Melhor custo-benefício
+### 1. API-Football (api-sports.io) — Best value for money
 
-**Pontos fortes:**
-- 1200+ competições incluindo Brasileirão Série A/B
-- Endpoint `/fixtures/players` retorna por jogador por partida:
-  - `shots.total`, `shots.on` (finalizações)
+**Strengths:**
+
+- 1200+ competitions including Brasileirão Série A/B
+- `/fixtures/players` endpoint returns per player per match:
+  - `shots.total`, `shots.on` (shots)
   - `goals.total`, `goals.assists`
   - `passes.total`, `passes.key`, `passes.accuracy`
   - `tackles.total`, `tackles.blocks`, `tackles.interceptions`
@@ -41,98 +42,106 @@ O StatsBomb open data não cobre o Brasileirão. Precisamos de uma fonte alterna
   - `dribbles.attempts`, `dribbles.success`
   - `fouls.drawn`, `fouls.committed`
   - `cards.yellow`, `cards.red`
-  - `rating` (nota do jogo)
+  - `rating` (match rating)
   - `minutes`, `position`
-- Atualizado a cada minuto durante jogos ao vivo
-- Lineups com posições
+- Updated every minute during live matches
+- Lineups with positions
 
-**Limitações:**
-- **Sem xG por chute individual** — só agregado por time em endpoint separado
-- **Sem eventos sequenciais** (não tem cada passe/carry individualmente)
-- **Sem pressões/carries** como o StatsBomb tem
-- Sem heatmap/coordenadas de ações
+**Limitations:**
+
+- **No per-shot xG** — only team-level aggregated in a separate endpoint
+- **No sequential events** (no individual passes/carries)
+- **No pressures/carries** like StatsBomb has
+- No heatmap/action coordinates
 
 **Pricing:**
-- Free: 100 requests/dia, temporada atual apenas
-- Pro: $19/mês, 7.500 req/dia
-- Ultra: $49/mês, 25.000 req/dia
-- Mega: $99/mês, 75.000 req/dia
 
-**Compatibilidade com nosso schema:** ~70%. Cobre a maioria das métricas de `player_match_metrics` mas falta xG por chute, pressões, carries, progressive passes/carries. Precisaria adaptar o pipeline.
+- Free: 100 requests/day, current season only
+- Pro: $19/month, 7,500 req/day
+- Ultra: $49/month, 25,000 req/day
+- Mega: $99/month, 75,000 req/day
 
-### 2. Sofascore (via ScraperFC / API não oficial) — Mais dados, menos estável
+**Compatibility with our schema:** ~70%. Covers most of the metrics in `player_match_metrics` but lacks per-shot xG, pressures, carries, progressive passes/carries. Would need to adapt the pipeline.
 
-**Pontos fortes:**
-- **Shotmap com xG por chute** (coordenadas x,y + xG value)
-- **Heatmap** com coordenadas de posicionamento
-- Player stats detalhados por partida
-- Cobre Brasileirão com dados completos
-- Lib Python `ScraperFC` (pip install) ou `soccerdata`
-- Grátis
+### 2. Sofascore (via ScraperFC / unofficial API) — More data, less stable
 
-**Limitações:**
-- **API não oficial** — pode quebrar a qualquer momento
-- Rate limiting agressivo
-- Sem garantia de estabilidade
-- Sem eventos sequenciais completos (passes individuais, carries)
-- Scraping pode violar ToS
+**Strengths:**
 
-**Compatibilidade com nosso schema:** ~60%. Shotmap é excelente pra xG, mas falta granularidade de passes, pressões e carries individuais.
+- **Shotmap with xG per shot** (x,y coordinates + xG value)
+- **Heatmap** with positioning coordinates
+- Detailed player stats per match
+- Covers Brasileirão with complete data
+- Python libraries `ScraperFC` (pip install) or `soccerdata`
+- Free
 
-### 3. Sportmonks — Mais completo, mais caro
+**Limitations:**
 
-**Pontos fortes:**
-- xG por time e por lineup (mais granular que API-Football)
-- Brasileiro Série A coberto
-- API estável e bem documentada
-- Trial de 14 dias
+- **Unofficial API** — can break at any time
+- Aggressive rate limiting
+- No stability guarantee
+- No complete sequential events (individual passes, carries)
+- Scraping may violate ToS
 
-**Limitações:**
-- Preço não divulgado publicamente (enterprise)
-- Sem eventos individuais tipo StatsBomb
-- Necessita avaliação do trial pra confirmar granularidade
+**Compatibility with our schema:** ~60%. Shotmap is excellent for xG, but lacks granularity of individual passes, pressures, and carries.
 
-### 4. FBref (scraping via soccerdata) — Dados avançados gratuitos
+### 3. Sportmonks — More complete, more expensive
 
-**Pontos fortes:**
-- Dados de xG, xA, progressive passes/carries por jogador
-- Brasileirão coberto
-- Lib Python `soccerdata` (pip install)
-- **Dados powered by StatsBomb/Opta** — alta qualidade
+**Strengths:**
 
-**Limitações:**
-- Dados **por temporada**, não por partida individual
-- Scraping — sujeito a bloqueio
-- Sem eventos individuais
-- Atualização com delay
+- xG per team and per lineup (more granular than API-Football)
+- Brasileirão Série A covered
+- Stable and well-documented API
+- 14-day trial
 
-## Recomendação
+**Limitations:**
 
-### Melhor fit: **API-Football + Sofascore shotmap**
+- Price not publicly disclosed (enterprise)
+- No StatsBomb-style individual events
+- Requires trial evaluation to confirm granularity
 
-A combinação dá a melhor cobertura:
+### 4. FBref (scraping via soccerdata) — Free advanced data
 
-1. **API-Football** ($19/mês) como fonte principal:
-   - Métricas por jogador por partida (shots, passes, tackles, dribbles, duels)
-   - Lineups com posições
-   - Atualização em tempo real
-   - API estável e documentada
+**Strengths:**
 
-2. **Sofascore shotmap** (grátis, via ScraperFC) como complemento:
-   - xG por chute individual (que API-Football não tem)
-   - Coordenadas para heatmaps
+- xG, xA, progressive passes/carries per player
+- Brasileirão covered
+- Python library `soccerdata` (pip install)
+- **Data powered by StatsBomb/Opta** — high quality
 
-### Mapeamento API-Football → nosso schema
+**Limitations:**
 
-| Nosso campo | API-Football field | Status |
-|-------------|-------------------|--------|
+- Data **per season**, not per individual match
+- Scraping — subject to blocking
+- No individual events
+- Delayed updates
+
+## Recommendation
+
+### Best fit: **API-Football + Sofascore shotmap**
+
+The combination gives the best coverage:
+
+1. **API-Football** ($19/month) as the main source:
+   - Per-player per-match metrics (shots, passes, tackles, dribbles, duels)
+   - Lineups with positions
+   - Real-time updates
+   - Stable and documented API
+
+2. **Sofascore shotmap** (free, via ScraperFC) as a complement:
+   - Per-shot xG (which API-Football does not have)
+   - Coordinates for heatmaps
+
+### API-Football → our schema mapping
+
+| Our field | API-Football field | Status |
+|-----------|--------------------|--------|
 | goals | goals.total | OK |
 | assists | goals.assists | OK |
 | shots | shots.total | OK |
 | shots_on_target | shots.on | OK |
-| xg | **Não disponível por jogador** | Precisa Sofascore |
+| xg | **Not available per player** | Requires Sofascore |
 | passes | passes.total | OK |
-| passes_completed | passes.total * passes.accuracy/100 | Derivável |
+| passes_completed | passes.total * passes.accuracy/100 | Derivable |
 | key_passes | passes.key | OK |
 | tackles | tackles.total | OK |
 | interceptions | tackles.interceptions | OK |
@@ -142,29 +151,30 @@ A combinação dá a melhor cobertura:
 | fouls_committed | fouls.committed | OK |
 | fouls_won | fouls.drawn | OK |
 | minutes_played | games.minutes | OK |
-| progressive_passes | **Não disponível** | Precisa StatsBomb/FBref |
-| progressive_carries | **Não disponível** | Precisa StatsBomb/FBref |
-| carries | **Não disponível** | Precisa StatsBomb/FBref |
-| pressures | **Não disponível** | Precisa StatsBomb/FBref |
-| touches | **Não disponível** | Parcial (FBref) |
-| aerials_won/lost | duels.won / duels.total | Parcial |
+| progressive_passes | **Not available** | Requires StatsBomb/FBref |
+| progressive_carries | **Not available** | Requires StatsBomb/FBref |
+| carries | **Not available** | Requires StatsBomb/FBref |
+| pressures | **Not available** | Requires StatsBomb/FBref |
+| touches | **Not available** | Partial (FBref) |
+| aerials_won/lost | duels.won / duels.total | Partial |
 | position | games.position | OK |
 
-**Cobertura: ~18 de 30 métricas base mapeáveis diretamente.** As métricas avançadas (pressões, carries, progressive actions) não existem fora do StatsBomb/Opta.
+**Coverage: ~18 out of 30 base metrics directly mappable.** Advanced metrics (pressures, carries, progressive actions) do not exist outside of StatsBomb/Opta.
 
 ## Implications for Football Moneyball
 
-### O que precisaria mudar
+### What would need to change
 
-1. **Novo módulo `data_providers/`** com interface abstrata — StatsBomb e API-Football como implementações
-2. **Adapter pattern**: converter response da API-Football pro nosso schema `PlayerMatchMetrics`
-3. **Métricas degradadas**: features como pressing, carries e progressive actions ficariam NULL para dados do Brasileirão
-4. **xT não calculável**: sem eventos sequenciais com coordenadas, xT fica indisponível
-5. **RAPM funciona**: stints podem ser reconstruídos via lineups + events da API-Football
+1. **New `data_providers/` module** with an abstract interface — StatsBomb and API-Football as implementations
+2. **Adapter pattern**: convert API-Football responses to our `PlayerMatchMetrics` schema
+3. **Degraded metrics**: features like pressing, carries and progressive actions would be NULL for Brasileirão data
+4. **xT not computable**: without sequential events with coordinates, xT becomes unavailable
+5. **RAPM works**: stints can be reconstructed via lineups + API-Football events
 
-### Custo estimado
-- API-Football Pro: $19/mês (suficiente para ~25 partidas/dia)
-- Para uma temporada completa do Brasileirão (~380 jogos): ~3.800 requests = 1 dia de cota
+### Estimated cost
+
+- API-Football Pro: $19/month (enough for ~25 matches/day)
+- For a full Brasileirão season (~380 matches): ~3,800 requests = 1 day of quota
 
 ## Sources
 

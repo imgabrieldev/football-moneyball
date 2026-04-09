@@ -7,15 +7,15 @@ tags:
 
 # Pitch — UX Polish (v0.8.0)
 
-## Problema
+## Problem
 
-Frontend mostra dados brutos sem interpretação. Usuário não entende intuitivamente quem é favorito, dados duplicados nas value bets, sem datas, sem filtros.
+Frontend shows raw data without interpretation. User doesn't intuitively grasp who's the favorite, value bets have duplicated data, no dates, no filters.
 
-## Solução
+## Solution
 
-1. Deduplicar value bets — 1 linha por mercado/aposta, melhor odd
-2. Cards com interpretação textual ("Bahia forte favorito em casa")
-3. Filtro de bookmaker nas value bets
-4. Datas dos jogos
-5. Cards maiores com contexto (mandante em cima, visitante em baixo)
-6. Nomes com acentos corrigidos
+1. Deduplicate value bets — 1 row per market/bet, best odds
+2. Cards with textual interpretation ("Bahia strong favorite at home")
+3. Bookmaker filter on value bets
+4. Match dates
+5. Larger cards with context (home on top, away on bottom)
+6. Team names with corrected accents

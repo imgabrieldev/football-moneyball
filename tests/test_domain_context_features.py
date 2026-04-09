@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.context_features."""
+"""Tests for football_moneyball.domain.context_features."""
 
 from football_moneyball.domain.context_features import (
     coach_features,

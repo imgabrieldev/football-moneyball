@@ -1,4 +1,4 @@
-"""Port para provedores de dados de futebol."""
+"""Port for football data providers."""
 
 from __future__ import annotations
 
@@ -8,99 +8,99 @@ import pandas as pd
 
 
 class DataProvider(Protocol):
-    """Interface para fontes de dados de futebol (StatsBomb, Sofascore, etc).
+    """Interface for football data sources (StatsBomb, Sofascore, etc).
 
-    Define o contrato que qualquer provedor de dados deve implementar para
-    ser usado pelo Football Moneyball. A implementacao padrao utiliza
-    statsbombpy, mas o sistema pode ser estendido para outros provedores.
+    Defines the contract that any data provider must implement to
+    be used by Football Moneyball. The default implementation uses
+    statsbombpy, but the system can be extended to other providers.
     """
 
     def get_match_events(self, match_id: int) -> pd.DataFrame:
-        """Retorna eventos de uma partida como DataFrame.
+        """Return events of a match as a DataFrame.
 
-        O DataFrame deve conter, no minimo, as colunas: type, player,
+        The DataFrame must contain at least the columns: type, player,
         player_id, team, location, period, minute, second, timestamp.
-        Colunas adicionais dependem do tipo de evento (ex: pass_end_location,
+        Additional columns depend on the event type (e.g. pass_end_location,
         shot_outcome, shot_statsbomb_xg).
 
         Parameters
         ----------
         match_id : int
-            Identificador da partida.
+            Match identifier.
 
         Returns
         -------
         pd.DataFrame
-            DataFrame com todos os eventos da partida.
+            DataFrame with all events of the match.
         """
         ...
 
     def get_lineups(self, match_id: int) -> dict[str, pd.DataFrame]:
-        """Retorna lineups por time com dados de posicao.
+        """Return lineups per team with position data.
 
-        O dicionario mapeia nome do time para um DataFrame com colunas:
-        player_id, player_name, jersey_number, positions (lista de dicts
-        com position_id e position).
+        The dictionary maps team name to a DataFrame with columns:
+        player_id, player_name, jersey_number, positions (list of dicts
+        with position_id and position).
 
         Parameters
         ----------
         match_id : int
-            Identificador da partida.
+            Match identifier.
 
         Returns
         -------
         dict[str, pd.DataFrame]
-            Mapeamento nome_do_time -> DataFrame de jogadores.
+            Mapping team_name -> DataFrame of players.
         """
         ...
 
     def get_competitions(self) -> pd.DataFrame:
-        """Lista competicoes disponiveis.
+        """List available competitions.
 
-        Retorna DataFrame com colunas: competition_id, competition_name,
-        season_id, season_name, e opcionalmente match_available.
+        Returns DataFrame with columns: competition_id, competition_name,
+        season_id, season_name, and optionally match_available.
 
         Returns
         -------
         pd.DataFrame
-            DataFrame com as competicoes disponiveis.
+            DataFrame with the available competitions.
         """
         ...
 
     def get_matches(self, competition_id: int, season_id: int) -> pd.DataFrame:
-        """Lista partidas de uma competicao/temporada.
+        """List matches of a competition/season.
 
-        Retorna DataFrame com colunas: match_id, match_date, home_team,
+        Returns DataFrame with columns: match_id, match_date, home_team,
         away_team, home_score, away_score, competition, season.
 
         Parameters
         ----------
         competition_id : int
-            Identificador da competicao.
+            Competition identifier.
         season_id : int
-            Identificador da temporada.
+            Season identifier.
 
         Returns
         -------
         pd.DataFrame
-            DataFrame com informacoes de todas as partidas.
+            DataFrame with info of all matches.
         """
         ...
 
     def get_match_info(self, match_id: int) -> dict:
-        """Retorna metadados de uma partida (competicao, placar, times).
+        """Return metadata of a match (competition, score, teams).
 
-        O dicionario retornado deve conter as chaves: match_id, competition,
+        The returned dictionary must contain the keys: match_id, competition,
         season, match_date, home_team, away_team, home_score, away_score.
 
         Parameters
         ----------
         match_id : int
-            Identificador da partida.
+            Match identifier.
 
         Returns
         -------
         dict
-            Dicionario com metadados da partida.
+            Dictionary with match metadata.
         """
         ...

@@ -1,7 +1,7 @@
-"""Testes para football_moneyball.domain.rapm — RAPM via modulo hexagonal.
+"""Tests for football_moneyball.domain.rapm — RAPM via the hexagonal module.
 
-Estes testes ja eram puros (build_rapm_matrix, fit_rapm, cross_validate_alpha
-operam sobre arrays numpy), entao a migracao e apenas troca de import paths.
+These tests were already pure (build_rapm_matrix, fit_rapm, cross_validate_alpha
+operate on numpy arrays), so the migration is simply swapping import paths.
 """
 
 import numpy as np

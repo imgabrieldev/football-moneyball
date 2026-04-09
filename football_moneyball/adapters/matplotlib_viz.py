@@ -1,7 +1,7 @@
-"""Adapter Matplotlib — implementa Visualizer via matplotlib + mplsoccer.
+"""Matplotlib adapter - implements Visualizer via matplotlib + mplsoccer.
 
-Gera graficos e visualizacoes de redes de passes, radares de comparacao
-de jogadores, mapas de calor de acoes, grafos de sinergia e rankings RAPM.
+Generates charts and visualizations of pass networks, player comparison
+radars, action heatmaps, synergy graphs and RAPM rankings.
 """
 
 import matplotlib.pyplot as plt
@@ -13,11 +13,11 @@ from mplsoccer import Pitch, Radar
 
 
 class MatplotlibVisualizer:
-    """Implementacao do port Visualizer usando matplotlib e mplsoccer."""
+    """Implementation of the Visualizer port using matplotlib and mplsoccer."""
 
     @staticmethod
     def _save_and_return(fig: Figure, save_path: str | None) -> Figure:
-        """Aplica tight_layout, salva e retorna a figura."""
+        """Applies tight_layout, saves and returns the figure."""
         fig.tight_layout()
         if save_path:
             fig.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -31,13 +31,13 @@ class MatplotlibVisualizer:
         match_info: dict | None = None,
         save_path: str | None = None,
     ) -> Figure:
-        """Desenha rede de passes sobre campo StatsBomb."""
+        """Draws a pass network over a StatsBomb pitch."""
         plt.style.use("dark_background")
         pitch = Pitch(pitch_type="statsbomb", line_color="white", pitch_color="#1a1a2e")
         fig, ax = pitch.draw(figsize=(12, 8))
 
         if len(G.nodes) == 0:
-            ax.set_title(f"Rede de Passes - {team} (sem dados)", color="white", fontsize=16)
+            ax.set_title(f"Pass Network - {team} (no data)", color="white", fontsize=16)
             return self._save_and_return(fig, save_path)
 
         node_positions = {}
@@ -70,7 +70,7 @@ class MatplotlibVisualizer:
             ax.annotate(label, (x, y), textcoords="offset points", xytext=(0, 10),
                         ha="center", fontsize=7, color="white", fontweight="bold", zorder=4)
 
-        title = f"Rede de Passes - {team}"
+        title = f"Pass Network - {team}"
         if match_info:
             parts = []
             if "opponent" in match_info:
@@ -88,7 +88,7 @@ class MatplotlibVisualizer:
         self, player_a: dict, player_b: dict,
         metrics: list[str] | None = None, save_path: str | None = None,
     ) -> Figure:
-        """Radar chart comparando dois jogadores."""
+        """Radar chart comparing two players."""
         plt.style.use("dark_background")
         if metrics is None:
             metrics = ["goals", "assists", "xg", "key_passes", "progressive_passes",
@@ -101,8 +101,8 @@ class MatplotlibVisualizer:
         radar = Radar(display_labels, low, high, num_rings=5, ring_width=1, center_circle_radius=1)
         values_a = [player_a.get(m, 0) for m in metrics]
         values_b = [player_b.get(m, 0) for m in metrics]
-        name_a = player_a.get("name", "Jogador A")
-        name_b = player_b.get("name", "Jogador B")
+        name_a = player_a.get("name", "Player A")
+        name_b = player_b.get("name", "Player B")
 
         fig, ax = radar.setup_axis()
         fig.set_facecolor("#1a1a2e")
@@ -118,14 +118,14 @@ class MatplotlibVisualizer:
         radar.draw_param_labels(ax=ax, fontsize=10, color="white", fontweight="bold")
         ax.legend([radar_poly, radar_poly2], [name_a, name_b], loc="upper right",
                   fontsize=12, facecolor="#16213e", edgecolor="white", labelcolor="white")
-        fig.suptitle(f"Comparacao: {name_a} vs {name_b}", color="white", fontsize=18, fontweight="bold", y=0.97)
+        fig.suptitle(f"Comparison: {name_a} vs {name_b}", color="white", fontsize=18, fontweight="bold", y=0.97)
         return self._save_and_return(fig, save_path)
 
     def plot_action_heatmap(
         self, events_df: pd.DataFrame, player_name: str,
         action_type: str | None = None, save_path: str | None = None,
     ) -> Figure:
-        """Mapa de calor das acoes de um jogador."""
+        """Heatmap of a player's actions."""
         plt.style.use("dark_background")
         mask = events_df["player"] == player_name
         if action_type:
@@ -156,7 +156,7 @@ class MatplotlibVisualizer:
             pitch.scatter(x_coords, y_coords, ax=ax, s=15, c="white", alpha=0.3, zorder=2)
 
         action_label = f" ({action_type})" if action_type else ""
-        ax.set_title(f"Mapa de Calor - {player_name}{action_label}",
+        ax.set_title(f"Heatmap - {player_name}{action_label}",
                      color="white", fontsize=16, fontweight="bold", pad=10)
         return self._save_and_return(fig, save_path)
 
@@ -164,7 +164,7 @@ class MatplotlibVisualizer:
         self, compatibility_df: pd.DataFrame,
         team: str | None = None, save_path: str | None = None,
     ) -> Figure:
-        """Grafo de sinergia/compatibilidade entre jogadores."""
+        """Synergy/compatibility graph between players."""
         plt.style.use("dark_background")
         fig, ax = plt.subplots(figsize=(14, 10))
         fig.set_facecolor("#1a1a2e")
@@ -172,9 +172,9 @@ class MatplotlibVisualizer:
         G = nx.Graph()
 
         if compatibility_df.empty:
-            title = "Sinergia entre Jogadores" + (f" - {team}" if team else "")
+            title = "Player Synergy" + (f" - {team}" if team else "")
             ax.set_title(title, color="white", fontsize=16)
-            ax.text(0.5, 0.5, "Sem dados", ha="center", va="center", color="white", fontsize=14, transform=ax.transAxes)
+            ax.text(0.5, 0.5, "No data", ha="center", va="center", color="white", fontsize=14, transform=ax.transAxes)
             ax.axis("off")
             return self._save_and_return(fig, save_path)
 
@@ -184,7 +184,7 @@ class MatplotlibVisualizer:
             G.add_edge(row["player_a"], row["player_b"], weight=row["score"])
 
         if len(G.nodes) == 0:
-            ax.text(0.5, 0.5, "Sem conexoes acima do limiar", ha="center", va="center",
+            ax.text(0.5, 0.5, "No connections above threshold", ha="center", va="center",
                     color="white", fontsize=14, transform=ax.transAxes)
             ax.axis("off")
             return self._save_and_return(fig, save_path)
@@ -205,11 +205,11 @@ class MatplotlibVisualizer:
             node_color=node_colors, cmap=plt.cm.plasma, edgecolors="white", linewidths=1.5, alpha=0.9)
         nx.draw_networkx_labels(G, pos, ax=ax, font_size=8, font_color="white", font_weight="bold")
 
-        title = "Sinergia entre Jogadores" + (f" - {team}" if team else "")
+        title = "Player Synergy" + (f" - {team}" if team else "")
         ax.set_title(title, color="white", fontsize=16, fontweight="bold")
         ax.axis("off")
         cbar = fig.colorbar(scatter, ax=ax, shrink=0.6, pad=0.02)
-        cbar.set_label("Grau de Conexao", color="white", fontsize=10)
+        cbar.set_label("Connection Degree", color="white", fontsize=10)
         cbar.ax.yaxis.set_tick_params(color="white")
         plt.setp(cbar.ax.yaxis.get_ticklabels(), color="white")
         return self._save_and_return(fig, save_path)
@@ -217,7 +217,7 @@ class MatplotlibVisualizer:
     def plot_rapm_rankings(
         self, rapm_df: pd.DataFrame, top_n: int = 20, save_path: str | None = None,
     ) -> Figure:
-        """Ranking RAPM em barras horizontais."""
+        """RAPM ranking as horizontal bars."""
         plt.style.use("dark_background")
         df = rapm_df.copy()
         if "rapm" not in df.columns and "rapm_value" in df.columns:
@@ -244,7 +244,7 @@ class MatplotlibVisualizer:
                     ha=ha, va="center", color="white", fontsize=8, fontweight="bold")
 
         ax.axvline(x=0, color="white", linewidth=0.8, alpha=0.5)
-        ax.set_title("RAPM - Impacto Individual Ajustado", color="white", fontsize=16, fontweight="bold", pad=15)
+        ax.set_title("RAPM - Adjusted Individual Impact", color="white", fontsize=16, fontweight="bold", pad=15)
         ax.set_xlabel("RAPM", color="white", fontsize=12)
         ax.tick_params(colors="white", labelsize=9)
         ax.spines["top"].set_visible(False)
@@ -256,19 +256,19 @@ class MatplotlibVisualizer:
     def plot_xt_heatmap(
         self, xt_grid: np.ndarray, l: int = 16, w: int = 12, save_path: str | None = None,
     ) -> Figure:
-        """Superficie xT sobre o campo."""
+        """xT surface over the pitch."""
         plt.style.use("dark_background")
         pitch = Pitch(pitch_type="statsbomb", line_color="white", line_alpha=0.3)
         fig, ax = pitch.draw(figsize=(12, 8))
         fig.set_facecolor("#1a1a2e")
         ax.imshow(xt_grid.T, extent=[0, 120, 80, 0], cmap="YlOrRd", alpha=0.75, interpolation="bilinear", aspect="auto")
-        ax.set_title("Expected Threat (xT) — Superficie de Ameaca", color="white", fontsize=16, fontweight="bold", pad=15)
+        ax.set_title("Expected Threat (xT) - Threat Surface", color="white", fontsize=16, fontweight="bold", pad=15)
         return self._save_and_return(fig, save_path)
 
     def plot_pressing_zones(
         self, pressing_data: dict, team: str, save_path: str | None = None,
     ) -> Figure:
-        """Distribuicao de pressing por zona."""
+        """Pressing distribution by zone."""
         plt.style.use("dark_background")
         pitch = Pitch(pitch_type="statsbomb", line_color="white", line_alpha=0.3)
         fig, ax = pitch.draw(figsize=(12, 8))
@@ -287,14 +287,14 @@ class MatplotlibVisualizer:
         ppda = pressing_data.get("ppda", 0)
         success = pressing_data.get("pressing_success_rate", 0)
         cp_frac = pressing_data.get("counter_pressing_fraction", 0)
-        info = f"PPDA: {ppda:.1f}  |  Sucesso: {success:.0f}%  |  Counter-press: {cp_frac:.0f}%"
-        ax.set_title(f"Pressing Zones — {team}\n{info}", color="white", fontsize=14, fontweight="bold", pad=15)
+        info = f"PPDA: {ppda:.1f}  |  Success: {success:.0f}%  |  Counter-press: {cp_frac:.0f}%"
+        ax.set_title(f"Pressing Zones - {team}\n{info}", color="white", fontsize=14, fontweight="bold", pad=15)
         return self._save_and_return(fig, save_path)
 
     def plot_shot_map(
         self, shots_df: pd.DataFrame, player_name: str, save_path: str | None = None,
     ) -> Figure:
-        """Mapa de chutes com xG e resultado."""
+        """Shot map with xG and outcome."""
         plt.style.use("dark_background")
         pitch = Pitch(pitch_type="statsbomb", line_color="white", line_alpha=0.5)
         fig, ax = pitch.draw(figsize=(12, 8))
@@ -314,12 +314,12 @@ class MatplotlibVisualizer:
             ax.scatter(loc[0], loc[1], s=xg * 800 + 30, c=color, alpha=0.85,
                        edgecolors="white" if is_big else "none", linewidths=2 if is_big else 0, zorder=3)
 
-        for label, color in [("Gol", "#2ecc71"), ("Defesa", "#f39c12"), ("Bloqueado", "#95a5a6"), ("Fora", "#e74c3c")]:
+        for label, color in [("Goal", "#2ecc71"), ("Saved", "#f39c12"), ("Blocked", "#95a5a6"), ("Off Target", "#e74c3c")]:
             ax.scatter([], [], c=color, s=80, label=label)
         ax.legend(loc="upper left", fontsize=10, framealpha=0.5)
 
         total_xg = shots_df.get("shot_statsbomb_xg", pd.Series([0])).sum()
         n_shots = len(shots_df)
-        ax.set_title(f"Mapa de Chutes — {player_name}\n{n_shots} chutes | xG total: {total_xg:.2f}",
+        ax.set_title(f"Shot Map - {player_name}\n{n_shots} shots | total xG: {total_xg:.2f}",
                      color="white", fontsize=14, fontweight="bold", pad=15)
         return self._save_and_return(fig, save_path)

@@ -1,4 +1,4 @@
-"""Use case: geracao de scout report completo."""
+"""Use case: geracao of scout report complete."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import pandas as pd
 
 
 class GenerateReport:
-    """Gera relatorio de scouting de um jogador.
+    """Generate relatorio of scouting of a player.
 
     Parameters
     ----------
     repo : MatchRepository
-        Repositorio para buscar dados.
+        Repositorio for buscar data.
     """
 
     def __init__(self, repo) -> None:
@@ -26,17 +26,17 @@ class GenerateReport:
         season: str | None = None,
         team_target: str | None = None,
     ) -> dict[str, Any]:
-        """Monta o relatorio completo.
+        """Monta o relatorio complete.
 
         Returns
         -------
         dict
-            Relatorio com metricas, percentis, arquetipo, similares,
-            pressing e compatibilidade.
+            Relatorio with metrics, percentis, arquetipo, similares,
+            pressing and compatibilidade.
         """
         metrics_df = self.repo.get_player_metrics(player_name, season)
         if metrics_df.empty:
-            return {"error": f"Jogador '{player_name}' nao encontrado."}
+            return {"error": f"Player '{player_name}' nao encontrado."}
 
         # Aggregate
         numeric_cols = metrics_df.select_dtypes(include="number").columns.tolist()
@@ -88,9 +88,9 @@ class GenerateReport:
             pass
 
         report = {
-            "jogador": player_name,
-            "temporada": season or "Todas",
-            "partidas": matches_played,
+            "player": player_name,
+            "season": season or "Todas",
+            "matches": matches_played,
             "arquetipo": archetype,
             "metricas_totais": {k: float(v) for k, v in agg.items()},
             "metricas_por_90": per90,

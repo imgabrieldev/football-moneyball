@@ -10,11 +10,11 @@ tags:
 
 # Pitch — v1.11.0: Isotonic + Auto Method Selection
 
-## Problema
+## Problem
 
-Modelo v1.10.0 tem **Brier 0.2437** em 78 predições resolvidas (meta realista: 0.20, linha de bookmakers). Reliability diagram expôs overconfidence sistemática:
+The v1.10.0 model has **Brier 0.2437** on 78 resolved predictions (realistic target: 0.20, bookmaker line). The reliability diagram exposed systematic overconfidence:
 
-| Bin confiança | n | Predito | Real | Gap |
+| Confidence bin | n | Predicted | Actual | Gap |
 |---|---|---|---|---|
 | 33-40% | 6 | 37.9% | 16.7% | +21pts |
 | 40-50% | 24 | 44.9% | 50.0% | -5pts ✓ |
@@ -22,43 +22,43 @@ Modelo v1.10.0 tem **Brier 0.2437** em 78 predições resolvidas (meta realista:
 | 60-70% | 9 | 66.0% | 55.6% | +10pts |
 | **70%+** | **18** | **81.1%** | **38.9%** | **+42pts** 🔥 |
 
-Platt scaling v1.9.0 (a=0.46, b=0.04) é tímido: comprime 81%→67% quando deveria cair pra ~40%.
+The v1.9.0 Platt scaling (a=0.46, b=0.04) is timid: it compresses 81%→67% when it should drop to ~40%.
 
-## Solução
+## Solution
 
-Adicionar 2 métodos alternativos de calibração + auto-seleção via CV Brier:
+Add 2 alternative calibration methods + auto-selection via CV Brier:
 
 ### 1. Isotonic Regression (non-parametric)
-- Qualquer distorção monotônica, não assume sigmoid como Platt
-- Precisa n≥1000 pra não overfittar
-- Tende a dominar quando há dados suficientes
+- Any monotonic distortion, doesn't assume sigmoid like Platt
+- Needs n≥1000 to avoid overfitting
+- Tends to dominate when there's enough data
 
 ### 2. Temperature Scaling (1-param, safe)
 - `p_cal = p^(1/T) / Z` — single parameter
-- Risco mínimo de overfitting
-- Fallback seguro pra n pequeno
+- Minimal overfitting risk
+- Safe fallback for small n
 
 ### 3. Auto-selection
-- Time-split 80/20 (últimos 20% são val)
-- Fit 3 métodos no train, avaliar Brier + ECE no val
-- Escolher melhor, re-fittar no dataset completo
+- Time-split 80/20 (last 20% is val)
+- Fit 3 methods on train, evaluate Brier + ECE on val
+- Choose the best, re-fit on the full dataset
 
-## Arquitetura
+## Architecture
 
-**Módulos afetados:**
-- `domain/calibration.py` — 2 classes novas (`TemperatureScaler`, `IsotonicCalibrator`), 6 funções (fit + apply + métricas)
-- `use_cases/fit_calibration.py` — refactor pra multi-method CV
-- `use_cases/predict_all.py` — dispatch por método no `_apply_calibration`
+**Affected modules:**
+- `domain/calibration.py` — 2 new classes (`TemperatureScaler`, `IsotonicCalibrator`), 6 functions (fit + apply + metrics)
+- `use_cases/fit_calibration.py` — refactor for multi-method CV
+- `use_cases/predict_all.py` — dispatch by method in `_apply_calibration`
 - `cli.py` — flag `--method auto|platt|isotonic|temperature`
 
-**Schema novo do pickle:**
+**New pickle schema:**
 ```python
 {
     "method": "platt" | "isotonic" | "temperature",
     "dixon_coles_rho": float,
-    "platt_home/draw/away": {...},  # sempre salvo (fallback)
-    "iso_home/draw/away": {...},    # se isotonic
-    "temperature": {"T": float},    # se temperature
+    "platt_home/draw/away": {...},  # always saved (fallback)
+    "iso_home/draw/away": {...},    # if isotonic
+    "temperature": {"T": float},    # if temperature
     "cv_results": {method: {brier_val, ece_val} for 3 methods},
     "metrics": {"brier_raw", "brier_calibrated", "ece_raw", "ece_calibrated", ...}
 }
@@ -67,57 +67,57 @@ Adicionar 2 métodos alternativos de calibração + auto-seleção via CV Brier:
 ## Scope
 
 **In:**
-- Isotonic + Temperature + métricas ECE
-- CV time-split + auto-select
+- Isotonic + Temperature + ECE metrics
+- Time-split CV + auto-select
 - CLI flag
-- Dispatch backward-compat (pickle antigo sem `method` default pra platt)
-- 22 testes novos
+- Backward-compat dispatch (old pickle without `method` defaults to platt)
+- 22 new tests
 
 **Out:**
-- Ingestão de 2022/2023 (próximo step obvio — ataca root cause de n baixo)
+- Ingestion of 2022/2023 (obvious next step — attacks the root cause of low n)
 - Beta calibration
 - Hybrid temperature+isotonic residual
 
 ## Research
 
-Baseado em `docs/research/calibration-methods.md`:
-- Isotonic > Platt quando n ≥ 1000 (Sports AI blog, scikit-learn docs)
-- Temperature scaling é post-hoc "millisecond fix" (Geoff Pleiss)
-- **Calibração > Acurácia**: +34.69% ROI vs -35.17% (Wilkens, 2024)
-- Bookmaker RPS benchmark: 0.17-0.22 (penaltyblog, 250M linhas)
-- Meta <0.19 do pitch v1.6.0 é mais ambiciosa que bookmakers reais — ajustar pra 0.20
+Based on `docs/research/calibration-methods.md`:
+- Isotonic > Platt when n ≥ 1000 (Sports AI blog, scikit-learn docs)
+- Temperature scaling is a post-hoc "millisecond fix" (Geoff Pleiss)
+- **Calibration > Accuracy**: +34.69% ROI vs -35.17% (Wilkens, 2024)
+- Bookmaker RPS benchmark: 0.17-0.22 (penaltyblog, 250M lines)
+- The <0.19 target from pitch v1.6.0 is more ambitious than real bookmakers — adjust to 0.20
 
 ## Testing
 
-Unit tests em `tests/test_domain_calibration.py`:
-- TemperatureScaler: T=1 identity, T>1 compress, T<1 sharpen, normalização
-- IsotonicCalibrator: identity, correção, monotonia, thresholds vazios
-- fit_temperature: recupera T de dados sintéticos, reduz Brier em overconfident
-- fit_isotonic_binary: monotonia, redução de Brier
+Unit tests in `tests/test_domain_calibration.py`:
+- TemperatureScaler: T=1 identity, T>1 compress, T<1 sharpen, normalization
+- IsotonicCalibrator: identity, correction, monotonicity, empty thresholds
+- fit_temperature: recovers T from synthetic data, reduces Brier on overconfident
+- fit_isotonic_binary: monotonicity, Brier reduction
 - compute_ece: perfect = 0, overconfident > 0.4
 - compute_brier_3class: formula checks
 
 ## Success Criteria
 
-1. **Funcional**: `moneyball fit-calibration --method auto` mostra comparação CV e seleciona vencedor
-2. **Tests**: 295+ passando (22 novos)
-3. **Arch**: domain puro (só numpy/scipy/sklearn)
-4. **Métricas reais (409 samples)**: Platt vence CV (Brier_val 0.652 vs Iso 0.695 vs Temp 0.673)
+1. **Functional**: `moneyball fit-calibration --method auto` shows CV comparison and selects winner
+2. **Tests**: 295+ passing (22 new)
+3. **Arch**: pure domain (only numpy/scipy/sklearn)
+4. **Real metrics (409 samples)**: Platt wins CV (Brier_val 0.652 vs Iso 0.695 vs Temp 0.673)
 5. **In-sample improvements**: Brier -3%, **ECE -53%** (0.060→0.028), Acc +1.4pts
 
-## Resultado
+## Result
 
-**SHIPPED 2026-04-05** — implementação completa, todos os testes passando.
+**SHIPPED 2026-04-05** — full implementation, all tests passing.
 
-**Descoberta empírica:** Com n=409 ainda insuficiente pra isotonic dominar (overfit no val split). Auto-selection funcionou corretamente escolhendo Platt. Próximo pitch natural: **ingestão 2022+2023** pra ultrapassar n=1000 e liberar isotonic.
+**Empirical finding:** With n=409 still insufficient for isotonic to dominate (overfits on the val split). Auto-selection worked correctly by choosing Platt. Natural next pitch: **2022+2023 ingestion** to exceed n=1000 and unlock isotonic.
 
-**Comportamento em input extremo `[0.81, 0.10, 0.09]`:**
+**Behavior on extreme input `[0.81, 0.10, 0.09]`:**
 - Platt → 67.6%
-- Isotonic → 83.0% (class-wise sem joint constraint, inflou)
+- Isotonic → 83.0% (class-wise without joint constraint, inflated)
 - Temperature → 63.5%
 
-## Próximos pitches ligados
+## Next linked pitches
 
-- **v1.12.0 — Backfill histórico 2022/2023** (~760 matches adicionais) → re-fit calibração, isotonic deve dominar
-- **v1.13.0 — Calibração monitorada** (cron de re-fit quando ECE > 0.015)
-- **v1.14.0 — Beta calibration / hybrid** (se isotonic sozinho não atingir meta)
+- **v1.12.0 — Historical backfill 2022/2023** (~760 additional matches) → re-fit calibration, isotonic should dominate
+- **v1.13.0 — Monitored calibration** (re-fit cron when ECE > 0.015)
+- **v1.14.0 — Beta calibration / hybrid** (if isotonic alone doesn't reach target)

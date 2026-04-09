@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.shots_predictor."""
+"""Tests for football_moneyball.domain.shots_predictor."""
 
 from football_moneyball.domain.shots_predictor import predict_shots
 
@@ -10,8 +10,8 @@ class TestPredictShots:
         assert abs(la - 10.0) < 1e-9
 
     def test_attacking_home(self):
-        # Home chuta 14, away sofre 12 (league 10)
-        # λ = 14 × (12/10) = 16.8
+        # Home shoots 14, away concedes 12 (league 10)
+        # lambda = 14 * (12/10) = 16.8
         lh, la = predict_shots(14.0, 8.0, 8.0, 12.0, 10.0)
         assert abs(lh - 16.8) < 1e-9
 

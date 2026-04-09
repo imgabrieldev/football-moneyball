@@ -1,10 +1,11 @@
-"""Modulo de previsao de cartoes via Poisson + referee factor.
+"""Cards prediction module via Poisson + referee factor.
 
-λ_cards = base_cards × referee_factor
+lambda_cards = base_cards x referee_factor
 
-Simplificacao do ZIP: usamos Poisson puro, validamos depois se vale migrar.
+Simplification of ZIP: we use pure Poisson, we can later validate whether
+it is worth migrating.
 
-Logica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -18,33 +19,33 @@ def predict_cards(
     referee_factor: float = 1.0,
     derby_factor: float = 1.0,
 ) -> tuple[float, float]:
-    """Retorna (λ_home_cards, λ_away_cards).
+    """Return (lambda_home_cards, lambda_away_cards).
 
-    Combina cartoes recebidos historicos + faltas cometidas pelo adversario
-    (proxy de "time violento contra vc"), ajustado pelo juiz.
+    Combines historical cards received + fouls committed by the opponent
+    (proxy for "violent team against you"), adjusted by the referee.
 
     Parameters
     ----------
     home_cards_avg : float
-        Media cartoes recebidos pelo home nos ultimos N.
+        Average cards received by the home team in the last N.
     away_cards_avg : float
-        Media cartoes recebidos pelo away.
+        Average cards received by the away team.
     home_fouls_avg : float
-        Media faltas cometidas pelo home.
+        Average fouls committed by the home team.
     away_fouls_avg : float
-        Media faltas cometidas pelo away.
+        Average fouls committed by the away team.
     referee_factor : float
-        Fator do arbitro (1.0 = media, 1.5 = rigoroso).
+        Referee factor (1.0 = average, 1.5 = strict).
     derby_factor : float
-        1.2 em derby, 1.0 caso contrario.
+        1.2 in a derby, 1.0 otherwise.
 
     Returns
     -------
     tuple[float, float]
-        (λ_home_cards, λ_away_cards) com minimo de 0.5.
+        (lambda_home_cards, lambda_away_cards) with a minimum of 0.5.
     """
-    # Base: cards_recebidos + contribuicao de faltas do adversario
-    # (assumindo ~1 cartao por 7-8 faltas perigosas)
+    # Base: cards_received + contribution from opponent fouls
+    # (assuming ~1 card per 7-8 dangerous fouls)
     fouls_to_cards = 0.15
 
     base_home = home_cards_avg + (away_fouls_avg * fouls_to_cards * 0.3)

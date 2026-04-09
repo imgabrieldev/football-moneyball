@@ -1,8 +1,8 @@
-"""Repositorio PostgreSQL para o Football Moneyball.
+"""PostgreSQL repository for Football Moneyball.
 
-Encapsula todas as operacoes de persistencia e consulta ao banco de dados,
-incluindo upserts de metricas, busca por similaridade via pgvector e
-queries de suporte a relatorios.
+Encapsulates all persistence and query operations on the database,
+including metric upserts, similarity search via pgvector and
+queries supporting reports.
 """
 
 from __future__ import annotations
@@ -18,10 +18,11 @@ from sqlalchemy.orm import Session
 
 
 def _fuzzy_team_match(db_session, team: str) -> str:
-    """Encontra nome de time no DB ignorando acentos/case.
+    """Finds a team name in the DB ignoring accents/case.
 
-    Se 'Sao Paulo' vem da odds API mas DB tem 'São Paulo', resolve.
-    Retorna o nome DO DB se achou, senao devolve original.
+    If 'Sao Paulo' comes from the odds API but the DB has 'Sao Paulo',
+    resolves it. Returns the DB name if found, otherwise returns the
+    original.
     """
     if not team:
         return team
@@ -58,17 +59,18 @@ def _fuzzy_team_match(db_session, team: str) -> str:
 
 
 def _stable_match_key(home: str, away: str) -> int:
-    """Gera match_key estavel (deterministico entre processos) de home+away.
+    """Generates a stable match_key (deterministic across processes) from home+away.
 
-    Normaliza acentos antes pra ter 'Grêmio' e 'Gremio' como mesma chave.
-    Chave é simétrica: 'A vs B' e 'B vs A' geram a mesma chave pra evitar
-    duplicatas quando odds API e Sofascore divergem no mando de campo.
+    Normalizes accents first so that 'Gremio' and 'Gremio' produce the
+    same key. The key is symmetric: 'A vs B' and 'B vs A' produce the
+    same key to avoid duplicates when the odds API and Sofascore
+    disagree on home/away.
     """
     def _norm(s: str) -> str:
         nfkd = unicodedata.normalize("NFKD", s.strip())
         return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
 
-    # Ordenar alfabeticamente pra chave ser independente de home/away
+    # Sort alphabetically so the key is independent of home/away
     pair = sorted([_norm(home), _norm(away)])
     key_str = f"{pair[0]}-{pair[1]}"
     digest = hashlib.md5(key_str.encode("utf-8")).hexdigest()
@@ -95,10 +97,10 @@ from football_moneyball.adapters.orm import (
 
 
 class PostgresRepository:
-    """Repositorio de acesso a dados via PostgreSQL + pgvector.
+    """Data access repository via PostgreSQL + pgvector.
 
-    Todos os metodos de persistencia e consulta sao expostos como metodos
-    de instancia, recebendo a sessao SQLAlchemy no construtor.
+    All persistence and query methods are exposed as instance methods,
+    receiving the SQLAlchemy session in the constructor.
     """
 
     def __init__(self, session: Session) -> None:
@@ -106,15 +108,15 @@ class PostgresRepository:
 
     @property
     def session(self) -> Session:
-        """Retorna a sessao SQLAlchemy subjacente."""
+        """Returns the underlying SQLAlchemy session."""
         return self._session
 
     # =====================================================================
-    # Verificacao de existencia
+    # Existence checks
     # =====================================================================
 
     def match_exists(self, match_id: int) -> bool:
-        """Verifica se uma partida ja esta cadastrada no banco."""
+        """Checks whether a match is already stored in the database."""
         return (
             self._session.query(Match)
             .filter_by(match_id=match_id)
@@ -127,10 +129,10 @@ class PostgresRepository:
     # =====================================================================
 
     def save_match(self, match_data: dict) -> None:
-        """Insere ou atualiza os dados de uma partida.
+        """Inserts or updates the data of a match.
 
-        Recebe um dicionario com as chaves correspondentes as colunas da
-        tabela matches.
+        Receives a dictionary with keys corresponding to the columns of
+        the matches table.
         """
         existing = self._session.get(Match, match_data["match_id"])
         if existing:
@@ -141,10 +143,10 @@ class PostgresRepository:
         self._session.commit()
 
     def save_player_metrics(self, metrics_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza metricas de jogadores para uma partida.
+        """Inserts or updates player metrics for a match.
 
-        O DataFrame deve conter uma coluna 'player_id' e colunas compativeis
-        com os campos de PlayerMatchMetrics.
+        The DataFrame must contain a 'player_id' column and columns
+        compatible with the PlayerMatchMetrics fields.
         """
         metrics_df = metrics_df.copy()
         metrics_df["match_id"] = match_id
@@ -165,10 +167,10 @@ class PostgresRepository:
         self._session.commit()
 
     def save_pass_network(self, edges_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza as arestas da rede de passes de uma partida.
+        """Inserts or updates the edges of a match's pass network.
 
-        O DataFrame deve conter as colunas 'passer_id', 'receiver_id',
-        'weight' e opcionalmente 'features'.
+        The DataFrame must contain the columns 'passer_id', 'receiver_id',
+        'weight' and optionally 'features'.
         """
         edges_df = edges_df.copy()
         edges_df["match_id"] = match_id
@@ -188,11 +190,11 @@ class PostgresRepository:
         self._session.commit()
 
     def save_embeddings(self, embeddings_df: pd.DataFrame) -> None:
-        """Insere ou atualiza embeddings vetoriais de jogadores.
+        """Inserts or updates player vector embeddings.
 
-        O DataFrame deve conter 'player_id', 'season', 'embedding'
-        (lista de floats), e opcionalmente 'player_name', 'cluster_label'
-        e 'archetype'.
+        The DataFrame must contain 'player_id', 'season', 'embedding'
+        (list of floats), and optionally 'player_name', 'cluster_label'
+        and 'archetype'.
         """
         columns = {c.key for c in PlayerEmbedding.__table__.columns}
 
@@ -210,10 +212,10 @@ class PostgresRepository:
         self._session.commit()
 
     def save_stints(self, stints_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza os stints (periodos de jogo) de uma partida.
+        """Inserts or updates the stints (game periods) of a match.
 
-        O DataFrame deve conter 'stint_number' e colunas compativeis com
-        o modelo Stint.
+        The DataFrame must contain 'stint_number' and columns compatible
+        with the Stint model.
         """
         stints_df = stints_df.copy()
         stints_df["match_id"] = match_id
@@ -234,7 +236,7 @@ class PostgresRepository:
         self._session.commit()
 
     def save_action_values(self, values_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza valores de acao (xT/VAEP) de uma partida."""
+        """Inserts or updates action values (xT/VAEP) of a match."""
         values_df = values_df.copy()
         values_df["match_id"] = match_id
         columns = {c.key for c in ActionValue.__table__.columns}
@@ -251,7 +253,7 @@ class PostgresRepository:
         self._session.commit()
 
     def save_pressing_metrics(self, metrics_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza metricas de pressing de uma partida."""
+        """Inserts or updates pressing metrics of a match."""
         metrics_df = metrics_df.copy()
         metrics_df["match_id"] = match_id
         columns = {c.key for c in PressingMetrics.__table__.columns}
@@ -268,7 +270,7 @@ class PostgresRepository:
         self._session.commit()
 
     # =====================================================================
-    # Consultas basicas
+    # Basic queries
     # =====================================================================
 
     def get_player_metrics(
@@ -276,10 +278,10 @@ class PostgresRepository:
         player_name: str,
         season: str | None = None,
     ) -> pd.DataFrame:
-        """Retorna as metricas de um jogador, opcionalmente filtradas por temporada.
+        """Returns a player's metrics, optionally filtered by season.
 
-        Faz join com a tabela matches para obter a temporada quando o filtro
-        e aplicado.
+        Joins with the matches table to obtain the season when the filter
+        is applied.
         """
         query = self._session.query(PlayerMatchMetrics).filter(
             PlayerMatchMetrics.player_name == player_name
@@ -300,7 +302,7 @@ class PostgresRepository:
         return pd.DataFrame(data)
 
     def get_match_data(self, match_id: int) -> pd.DataFrame:
-        """Retorna metricas dos jogadores de uma partida como DataFrame."""
+        """Returns a match's player metrics as a DataFrame."""
         rows = (
             self._session.query(PlayerMatchMetrics)
             .filter_by(match_id=match_id)
@@ -317,7 +319,7 @@ class PostgresRepository:
         competition: str,
         season: str,
     ) -> list[Match]:
-        """Retorna todas as partidas de uma competicao/temporada."""
+        """Returns all matches of a competition/season."""
         return (
             self._session.query(Match)
             .filter(Match.competition == competition, Match.season == season)
@@ -325,7 +327,7 @@ class PostgresRepository:
         )
 
     def get_cached_stints(self, match_id: int) -> list[Stint]:
-        """Retorna os stints ja persistidos para uma partida."""
+        """Returns the stints already persisted for a match."""
         return (
             self._session.query(Stint)
             .filter(Stint.match_id == match_id)
@@ -337,9 +339,9 @@ class PostgresRepository:
         competition: str | None = None,
         season: str | None = None,
     ) -> pd.DataFrame:
-        """Retorna todas as metricas de jogadores, filtradas por competicao/temporada.
+        """Returns all player metrics, filtered by competition/season.
 
-        Faz join com matches para aplicar os filtros.
+        Joins with matches to apply the filters.
         """
         query = self._session.query(PlayerMatchMetrics)
 
@@ -363,7 +365,7 @@ class PostgresRepository:
         team: str,
         season: str | None = None,
     ) -> list[PressingMetrics]:
-        """Retorna metricas de pressing de um time, opcionalmente por temporada."""
+        """Returns a team's pressing metrics, optionally filtered by season."""
         query = self._session.query(PressingMetrics).filter(
             PressingMetrics.team == team
         )
@@ -378,7 +380,7 @@ class PostgresRepository:
         player_name: str,
         season: str | None = None,
     ) -> Optional[PlayerEmbedding]:
-        """Retorna o embedding de um jogador por temporada."""
+        """Returns a player's embedding for a given season."""
         query = self._session.query(PlayerEmbedding).filter(
             PlayerEmbedding.player_name == player_name
         )
@@ -387,7 +389,7 @@ class PostgresRepository:
         return query.first()
 
     # =====================================================================
-    # Busca por similaridade (pgvector)
+    # Similarity search (pgvector)
     # =====================================================================
 
     def find_similar_players(
@@ -397,11 +399,11 @@ class PostgresRepository:
         limit: int = 10,
         cross_position: bool = False,
     ) -> pd.DataFrame:
-        """Encontra jogadores com estilo de jogo mais parecido via pgvector.
+        """Finds players with the most similar playing style via pgvector.
 
-        Utiliza distancia cosseno (operador ``<=>``) na tabela
-        ``player_embeddings``. Por padrao, filtra apenas jogadores do mesmo
-        grupo posicional.
+        Uses cosine distance (``<=>`` operator) on the
+        ``player_embeddings`` table. By default, filters only players in
+        the same positional group.
         """
         position_filter = ""
         if not cross_position:
@@ -442,7 +444,7 @@ class PostgresRepository:
         return df
 
     # =====================================================================
-    # Busca por complementaridade (pgvector)
+    # Complementarity search (pgvector)
     # =====================================================================
 
     def find_complementary_players(
@@ -452,10 +454,10 @@ class PostgresRepository:
         limit: int = 10,
         cross_position: bool = False,
     ) -> pd.DataFrame:
-        """Encontra jogadores com perfil complementar (mais dissimilar).
+        """Finds players with a complementary profile (most dissimilar).
 
-        Ordena pela maior distancia cosseno, retornando jogadores que cobrem
-        caracteristicas opostas ao jogador de referencia.
+        Orders by the largest cosine distance, returning players that
+        cover characteristics opposite to the reference player.
         """
         position_filter = ""
         if not cross_position:
@@ -495,7 +497,7 @@ class PostgresRepository:
         return df
 
     # =====================================================================
-    # Recomendacao por perfil sintetico (pgvector)
+    # Recommendation by synthetic profile (pgvector)
     # =====================================================================
 
     def recommend_by_profile(
@@ -505,22 +507,22 @@ class PostgresRepository:
         limit: int = 10,
         position_group: str | None = None,
     ) -> pd.DataFrame:
-        """Recomenda jogadores mais proximos de um embedding sintetico.
+        """Recommends players closest to a synthetic embedding.
 
-        Recebe um embedding ja projetado no espaco PCA e consulta os vizinhos
-        mais proximos via pgvector.
+        Receives an embedding already projected into PCA space and
+        queries nearest neighbors via pgvector.
 
         Parameters
         ----------
         embedding:
-            Vetor de embedding ja transformado via PCA/scaler.
+            Embedding vector already transformed via PCA/scaler.
         season:
-            Temporada para filtrar.
+            Season to filter by.
         limit:
-            Numero maximo de resultados.
+            Maximum number of results.
         position_group:
-            Grupo posicional para filtrar resultados. Se ``None``, busca
-            entre todos os jogadores.
+            Positional group to filter results. If ``None``, searches
+            across all players.
         """
         embedding_literal = "[" + ",".join(str(v) for v in embedding) + "]"
 
@@ -553,7 +555,7 @@ class PostgresRepository:
         return df
 
     # =====================================================================
-    # Compatibilidade com elenco-alvo
+    # Compatibility with a target squad
     # =====================================================================
 
     def compute_compatibility(
@@ -562,11 +564,11 @@ class PostgresRepository:
         season: str,
         target_team: str,
     ) -> list[dict]:
-        """Calcula compatibilidade entre o jogador e o elenco do time-alvo.
+        """Computes compatibility between a player and a target team's squad.
 
-        Usa distancia cosseno no espaco de embeddings: menor distancia
-        significa estilo mais similar, maior distancia significa mais
-        complementar.
+        Uses cosine distance in the embeddings space: smaller distance
+        means a more similar style, larger distance means more
+        complementary.
         """
         query = text("""
             SELECT
@@ -614,10 +616,10 @@ class PostgresRepository:
     def get_all_match_data(
         self, competition: str | None = None, season: str | None = None
     ) -> pd.DataFrame:
-        """Retorna todos os jogos: match_id, team, goals, xg, is_home.
+        """Returns all games: match_id, team, goals, xg, is_home.
 
-        Uma linha por time por partida. Usado pelo predictor pra
-        calcular parametros dinamicos.
+        One row per team per match. Used by the predictor to compute
+        dynamic parameters.
         """
         query = text("""
             SELECT pmm.match_id, pmm.team,
@@ -641,26 +643,26 @@ class PostgresRepository:
         season: str | None = None,
         last_n: int = 5,
     ) -> pd.DataFrame:
-        # Fuzzy match: resolver acentos (ex: 'Sao Paulo' → 'São Paulo')
+        # Fuzzy match: resolve accents (e.g. 'Sao Paulo' -> 'Sao Paulo')
         team = _fuzzy_team_match(self._session, team)
-        """Retorna agregacao por jogador nos ultimos N jogos do time.
+        """Returns player aggregation over the team's last N games.
 
-        Usado pelo pipeline player-aware pra construir probable XI e
-        calcular xG/90 individual.
+        Used by the player-aware pipeline to build the probable XI and
+        compute individual xG/90.
 
         Parameters
         ----------
         team : str
-            Nome do time.
+            Team name.
         season : str, optional
-            Temporada. Se None, todas.
+            Season. If None, all seasons.
         last_n : int
-            Quantos jogos recentes considerar.
+            How many recent games to consider.
 
         Returns
         -------
         pd.DataFrame
-            Colunas: player_id, player_name, matches_played, minutes_total,
+            Columns: player_id, player_name, matches_played, minutes_total,
             xg_total, xa_total, shots_total, shots_on_target_total,
             goals_total, assists_total, fouls_total, crosses_total, tackles_total.
         """
@@ -698,12 +700,12 @@ class PostgresRepository:
         })
 
     def save_match_lineups(self, lineups: list[dict]) -> None:
-        """Persiste lineups (provaveis ou confirmadas) de partidas.
+        """Persists lineups (probable or confirmed) of matches.
 
         Parameters
         ----------
         lineups : list[dict]
-            Cada dict: match_key, player_id, team, side, player_name,
+            Each dict: match_key, player_id, team, side, player_name,
             position, is_starter, jersey_number, source, fetched_at.
         """
         from datetime import datetime
@@ -733,13 +735,13 @@ class PostgresRepository:
         self._session.commit()
 
     def get_match_lineup(self, match_key: int) -> dict[str, list[dict]]:
-        """Retorna lineup de uma partida indexada por lado.
+        """Returns a match's lineup indexed by side.
 
         Returns
         -------
         dict
-            {"home": [...], "away": [...]} com dicts de jogadores.
-            Vazio se nao houver lineup.
+            {"home": [...], "away": [...]} with player dicts.
+            Empty if no lineup exists.
         """
         rows = (
             self._session.query(MatchLineup)
@@ -761,7 +763,7 @@ class PostgresRepository:
         return result
 
     def get_team_shots(self, team: str, n_matches: int = 6) -> list[float]:
-        """Lista de xG por chute do time nos ultimos N jogos (via action_values)."""
+        """List of per-shot xG for the team over the last N games (via action_values)."""
         query = text("""
             SELECT av.vaep_offensive as shot_xg
             FROM action_values av
@@ -782,7 +784,7 @@ class PostgresRepository:
         return [float(row.shot_xg) for row in result if row.shot_xg]
 
     def get_latest_match_date(self, competition: str | None = None) -> str | None:
-        """Retorna data da partida mais recente."""
+        """Returns the date of the most recent match."""
         query = text("""
             SELECT MAX(match_date)::text as latest
             FROM matches
@@ -796,13 +798,13 @@ class PostgresRepository:
     # =====================================================================
 
     def save_predictions(self, predictions: list[dict]) -> None:
-        """Persiste previsoes pre-computadas."""
+        """Persists pre-computed predictions."""
         from datetime import datetime
         from football_moneyball.adapters.orm import MatchPrediction
         now = datetime.now().isoformat()
 
         def _float(v):
-            """Converte numpy float pra Python float nativo."""
+            """Converts numpy float to native Python float."""
             if v is None:
                 return None
             return float(v)
@@ -840,7 +842,7 @@ class PostgresRepository:
         self._session.commit()
 
     def get_predictions(self) -> list[dict]:
-        """Retorna previsoes pre-computadas ordenadas por commence_time ASC (proximas primeiro)."""
+        """Returns pre-computed predictions ordered by commence_time ASC (upcoming first)."""
         from football_moneyball.adapters.orm import MatchPrediction
         rows = (
             self._session.query(MatchPrediction)
@@ -870,10 +872,10 @@ class PostgresRepository:
     # =====================================================================
 
     def save_prediction_history(self, predictions: list[dict]) -> None:
-        """Insere previsoes no historico imutavel.
+        """Inserts predictions into the immutable history.
 
-        Nao atualiza registros existentes — cada snapshot e imutavel.
-        Usa match_key + predicted_at para evitar duplicatas exatas.
+        Does not update existing records - each snapshot is immutable.
+        Uses match_key + predicted_at to avoid exact duplicates.
         """
         from datetime import datetime
 
@@ -926,7 +928,7 @@ class PostgresRepository:
         self._session.commit()
 
     def save_value_bet_history(self, bets: list[dict]) -> None:
-        """Insere value bets no historico imutavel."""
+        """Inserts value bets into the immutable history."""
         for bet in bets:
             home = str(bet.get("home_team", ""))
             away = str(bet.get("away_team", ""))
@@ -950,7 +952,7 @@ class PostgresRepository:
         self._session.commit()
 
     def get_pending_predictions(self) -> list[dict]:
-        """Retorna previsoes pendentes (status='pending')."""
+        """Returns pending predictions (status='pending')."""
         rows = (
             self._session.query(PredictionHistory)
             .filter(PredictionHistory.status == "pending")
@@ -960,7 +962,7 @@ class PostgresRepository:
         return [{col: getattr(r, col) for col in columns} for r in rows]
 
     def resolve_prediction_in_db(self, pred_id: int, result: dict) -> None:
-        """Atualiza previsao com resultado real."""
+        """Updates a prediction with the actual result."""
         from datetime import datetime
 
         row = self._session.get(PredictionHistory, pred_id)
@@ -969,7 +971,7 @@ class PostgresRepository:
         row.actual_home_goals = result.get("actual_home_goals")
         row.actual_away_goals = result.get("actual_away_goals")
         row.actual_outcome = result.get("actual_outcome")
-        # Colunas sao INTEGER (SQLite compat) — converter bool → int
+        # Columns are INTEGER (SQLite compat) - convert bool -> int
         c1x2 = result.get("correct_1x2")
         cou = result.get("correct_over_under")
         row.correct_1x2 = int(c1x2) if c1x2 is not None else None
@@ -980,7 +982,7 @@ class PostgresRepository:
         self._session.commit()
 
     def resolve_value_bet_in_db(self, bet_id: int, result: dict) -> None:
-        """Atualiza value bet com resultado real."""
+        """Updates a value bet with the actual result."""
         from datetime import datetime
 
         row = self._session.get(ValueBetHistory, bet_id)
@@ -997,11 +999,11 @@ class PostgresRepository:
         round_num: int | None = None,
         status: str | None = None,
     ) -> list[dict]:
-        """Retorna historico de previsoes com filtros opcionais.
+        """Returns prediction history with optional filters.
 
-        Dedupe: prediction_history eh imutavel (1 linha por predicao), entao
-        podemos ter a mesma partida N vezes. Retornamos apenas a MAIS RECENTE
-        por match_key (por predicted_at desc).
+        Dedupe: prediction_history is immutable (1 row per prediction), so
+        we may have the same match N times. We return only the MOST RECENT
+        per match_key (by predicted_at desc).
         """
         query = self._session.query(PredictionHistory)
         if round_num is not None:
@@ -1016,16 +1018,16 @@ class PostgresRepository:
         rows = query.all()
         columns = [c.key for c in PredictionHistory.__table__.columns]
 
-        # Dedup por par de times (simétrico): manter apenas a mais recente
-        # Exclui entradas de rehis/backtest (round=0 ou commence_time contém "rehis")
+        # Dedup by team pair (symmetric): keep only the most recent
+        # Exclude rehis/backtest entries (round=0 or commence_time contains "rehis")
         seen_matchups: set[frozenset] = set()
         deduped = []
         for r in rows:
-            # Filtra rehis/backtest contaminando track-record
+            # Filter out rehis/backtest contaminating the track record
             ct = r.commence_time or ""
             if "rehis" in ct or (r.round is not None and r.round == 0):
                 continue
-            # Dedup simétrico: "A vs B" e "B vs A" = mesmo jogo
+            # Symmetric dedup: "A vs B" and "B vs A" = same match
             matchup = frozenset([
                 (r.home_team or "").strip().lower(),
                 (r.away_team or "").strip().lower(),
@@ -1035,7 +1037,7 @@ class PostgresRepository:
             seen_matchups.add(matchup)
             deduped.append({col: getattr(r, col) for col in columns})
 
-        # Ordenar deduped por commence_time (proximas primeiro)
+        # Order deduped by commence_time (upcoming first)
         deduped.sort(
             key=lambda x: (x.get("commence_time") or "", x.get("id") or 0),
             reverse=True,
@@ -1043,7 +1045,7 @@ class PostgresRepository:
         return deduped
 
     def get_value_bet_history(self) -> list[dict]:
-        """Retorna todo o historico de value bets."""
+        """Returns the full value bet history."""
         rows = (
             self._session.query(ValueBetHistory)
             .order_by(ValueBetHistory.id.desc())
@@ -1053,7 +1055,7 @@ class PostgresRepository:
         return [{col: getattr(r, col) for col in columns} for r in rows]
 
     def get_track_record_summary(self) -> dict:
-        """Retorna estatisticas agregadas do track record."""
+        """Returns aggregated track record statistics."""
         from football_moneyball.domain.track_record import calculate_track_record
         preds = self.get_prediction_history()
         return calculate_track_record(preds)
@@ -1063,9 +1065,9 @@ class PostgresRepository:
     # =====================================================================
 
     def save_odds(self, odds_data: list[dict]) -> None:
-        """Persiste odds na tabela match_odds.
+        """Persists odds into the match_odds table.
 
-        Recebe lista de jogos no formato normalizado do odds_provider:
+        Receives a list of games in the normalized format from the odds_provider:
         [{"home_team": "...", "away_team": "...", "bookmakers": [{"name": "...", "markets": [...]}]}]
         """
         from datetime import datetime
@@ -1106,7 +1108,7 @@ class PostgresRepository:
         self._session.commit()
 
     def get_cached_odds(self, max_age_hours: int = 24) -> list[dict] | None:
-        """Busca odds do cache no PG se recentes o suficiente."""
+        """Fetches odds from the PG cache if they are recent enough."""
         from datetime import datetime, timedelta
 
         cutoff = (datetime.now() - timedelta(hours=max_age_hours)).isoformat()
@@ -1154,7 +1156,7 @@ class PostgresRepository:
         return result
 
     def get_odds_for_match(self, home_team: str, away_team: str) -> list[dict]:
-        """Busca odds de uma partida por nomes dos times."""
+        """Fetches odds for a match by team names."""
         match_id = _stable_match_key(home_team, away_team)
         rows = (
             self._session.query(MatchOdds)
@@ -1176,7 +1178,7 @@ class PostgresRepository:
     # =====================================================================
 
     def save_match_stats(self, match_id: int, stats: dict) -> None:
-        """Persiste estatisticas match-level (corners, cards, fouls, HT score)."""
+        """Persists match-level stats (corners, cards, fouls, HT score)."""
         data = {
             "match_id": int(match_id),
             "home_corners": int(stats.get("home_corners", 0) or 0),
@@ -1235,7 +1237,7 @@ class PostgresRepository:
         self, competition: str = "Brasileirão Série A",
         seasons: list[str] | None = None,
     ) -> "pd.DataFrame":
-        """Retorna match_stats de todas as temporadas como DataFrame."""
+        """Returns match_stats from all seasons as a DataFrame."""
         import pandas as pd
         from sqlalchemy import text
         q = text("""
@@ -1257,7 +1259,7 @@ class PostgresRepository:
         return pd.DataFrame([dict(r._mapping) for r in rows])
 
     def get_all_coach_data_for_training(self) -> dict:
-        """Retorna coach data indexado por (team, match_id) pra training leak-proof.
+        """Returns coach data indexed by (team, match_id) for leak-proof training.
 
         Returns dict: {(team, match_id) -> {tenure_days, win_rate, changed_30d}}
         """
@@ -1344,7 +1346,7 @@ class PostgresRepository:
         return result
 
     def get_all_standings_for_training(self) -> dict:
-        """Retorna standings indexado por match_id pra training.
+        """Returns standings indexed by match_id for training.
 
         Returns dict: {match_id -> {home_position, away_position, position_gap}}
         """
@@ -1397,7 +1399,7 @@ class PostgresRepository:
         return result
 
     def save_referee_stats(self, referee: dict) -> None:
-        """Upsert de estatisticas de arbitro."""
+        """Upserts referee statistics."""
         from datetime import datetime
         rid = int(referee.get("referee_id", 0) or 0)
         if rid <= 0:
@@ -1423,16 +1425,16 @@ class PostgresRepository:
     def get_team_stats_aggregates(
         self, team: str, season: str | None = None, last_n: int = 5,
     ) -> dict:
-        """Retorna medias de goals/xg/corners/cards/shots/fouls do time nos ultimos N jogos.
+        """Returns averages of goals/xg/corners/cards/shots/fouls over the team's last N games.
 
-        Fuzzy match aplicado ao nome do time (resolve 'Sao Paulo' → 'São Paulo').
+        Fuzzy match applied to the team name (resolves 'Sao Paulo' -> 'Sao Paulo').
 
-        Considera tambem o que o time SOFREU (pra calcular opponent factor).
+        Also considers what the team CONCEDED (to compute opponent factor).
 
         Returns
         -------
         dict
-            Chaves: goals_for, goals_against, xg_for, xg_against,
+            Keys: goals_for, goals_against, xg_for, xg_against,
             corners_for, corners_against, cards_for, shots_for,
             shots_against, fouls_committed, matches.
         """
@@ -1495,7 +1497,7 @@ class PostgresRepository:
         }
 
     def get_league_stats_averages(self, season: str | None = None) -> dict:
-        """Retorna medias da liga: corners/jogo, cards/jogo, shots/jogo, HT goals."""
+        """Returns league averages: corners/game, cards/game, shots/game, HT goals."""
         query = text("""
             SELECT
                 COALESCE(AVG(ms.home_corners + ms.away_corners), 10.0) AS corners_per_match,
@@ -1521,19 +1523,19 @@ class PostgresRepository:
         }
 
     def get_rest_days(self, team: str, reference_date: str) -> int:
-        """Dias desde ultimo jogo do time antes da data de referencia.
+        """Days since the team's last game before the reference date.
 
         Parameters
         ----------
         team : str
-            Nome do time.
+            Team name.
         reference_date : str
-            ISO format (YYYY-MM-DD ou com timestamp).
+            ISO format (YYYY-MM-DD or with timestamp).
 
         Returns
         -------
         int
-            Dias desde ultimo jogo (minimo 1, default 7 se sem historico).
+            Days since the last game (minimum 1, default 7 if no history).
         """
         if not reference_date:
             return 7
@@ -1563,13 +1565,13 @@ class PostgresRepository:
     def get_team_advanced_aggregates(
         self, team: str, season: str | None = None, last_n: int = 5,
     ) -> dict:
-        """Retorna agregados avancados do time para feature engineering v1.5.0.
+        """Returns advanced team aggregates for feature engineering v1.5.0.
 
-        Estende get_team_stats_aggregates com:
+        Extends get_team_stats_aggregates with:
         goal_diff_ema, xg_overperf, xga_overperf,
         creation_index, defensive_intensity, touches_per_match.
 
-        Returns dict com todas as chaves que build_rich_team_features espera.
+        Returns a dict with all keys that build_rich_team_features expects.
         """
         team = _fuzzy_team_match(self._session, team)
         basic = self.get_team_stats_aggregates(team, season, last_n)
@@ -1675,14 +1677,14 @@ class PostgresRepository:
     def get_training_dataset(
         self, season: str | None = None,
     ) -> pd.DataFrame:
-        """Retorna todas partidas resolvidas com stats ricos pra treino ML v1.5.0.
+        """Returns all resolved matches with rich stats for ML training v1.5.0.
 
-        Join de matches + match_stats + player_match_metrics agregado.
+        Join of matches + match_stats + aggregated player_match_metrics.
 
         Returns
         -------
         pd.DataFrame
-            Colunas: match_id, match_date, home_team, away_team,
+            Columns: match_id, match_date, home_team, away_team,
             home_goals, away_goals, home_xg, away_xg,
             home_corners, away_corners, home_cards, away_cards,
             home_xa, away_xa, home_key_passes, away_key_passes,
@@ -1737,7 +1739,7 @@ class PostgresRepository:
     def get_team_style_aggregates(
         self, team: str, season: str | None = None, last_n: int = 5,
     ) -> dict:
-        """Retorna agregados de estilo de jogo (v1.8.0).
+        """Returns playing-style aggregates (v1.8.0).
 
         Features: finishing_efficiency, sot_rate, gk_quality, possession_avg,
         long_balls_pct, big_chance_conversion.
@@ -1768,7 +1770,7 @@ class PostgresRepository:
                 AVG(CASE WHEN r.side='home' THEN ms.home_possession ELSE ms.away_possession END) AS possession_avg,
                 -- Long balls (directness)
                 AVG(CASE WHEN r.side='home' THEN ms.home_long_balls_pct ELSE ms.away_long_balls_pct END) AS long_balls_avg,
-                -- Goals prevented (GK quality — do time)
+                -- Goals prevented (GK quality - team's own)
                 AVG(CASE WHEN r.side='home' THEN ms.home_goals_prevented ELSE ms.away_goals_prevented END) AS gk_quality_avg,
                 -- Touches box
                 AVG(CASE WHEN r.side='home' THEN ms.home_touches_box ELSE ms.away_touches_box END) AS touches_box_avg,
@@ -1817,21 +1819,22 @@ class PostgresRepository:
     def get_round_for_date(
         self, commence_time: str, season: str | None = None,
     ) -> int | None:
-        """Estima round de uma data baseado nos jogos ja ingeridos.
+        """Estimates the matchday for a date based on already-ingested games.
 
-        Usa a rodada mais recente antes de commence_time + 1 como proxima.
-        Se commence_time eh anterior ao ultimo jogo, usa o round daquela data.
+        Uses the most recent matchday before commence_time + 1 as the
+        next one. If commence_time is before the latest game, uses the
+        matchday of that date.
 
         Parameters
         ----------
         commence_time : str
-            ISO format (ex: '2026-04-12T21:30:00Z').
+            ISO format (e.g. '2026-04-12T21:30:00Z').
         season : str, optional
 
         Returns
         -------
         int | None
-            Numero da rodada estimada.
+            Estimated matchday number.
         """
         if not commence_time:
             return None
@@ -1854,14 +1857,14 @@ class PostgresRepository:
             closest_round = int(result.round)
             closest_date = str(result.match_date)
 
-            # Se target_date eh DEPOIS do closest match, estimar rodadas a frente
+            # If target_date is AFTER the closest match, estimate matchdays ahead
             if date_only > closest_date:
                 import math
                 from datetime import datetime
                 d1 = datetime.fromisoformat(date_only)
                 d2 = datetime.fromisoformat(closest_date)
                 days_diff = (d1 - d2).days
-                # Cada rodada ~7 dias no Brasileirao — usar ceil pra nao subestimar
+                # Each matchday ~7 days in Brasileirao - use ceil to avoid underestimating
                 rounds_ahead = max(1, math.ceil(days_diff / 7.0))
                 return closest_round + rounds_ahead
             return closest_round
@@ -1876,7 +1879,7 @@ class PostgresRepository:
         self, team: str, coach_id: int, coach_name: str,
         start_match_date: str, end_match_date: str | None = None,
     ) -> None:
-        """Upsert de coach-team relationship."""
+        """Upserts a coach-team relationship."""
         team = _fuzzy_team_match(self._session, team)
         existing = self._session.get(TeamCoach, (team, coach_id, start_match_date))
         data = {
@@ -1896,7 +1899,7 @@ class PostgresRepository:
     def save_player_injuries(
         self, match_id: int, team: str, injuries: list[dict],
     ) -> None:
-        """Upsert lista de ausentes de um jogo."""
+        """Upserts the list of absent players for a game."""
         from datetime import datetime
         now = datetime.now().isoformat()
         team = _fuzzy_team_match(self._session, team)
@@ -1926,7 +1929,7 @@ class PostgresRepository:
         self, snapshot: list[dict], snapshot_date: str,
         competition: str, season: str,
     ) -> None:
-        """Persiste snapshot da classificacao."""
+        """Persists a standings snapshot."""
         for row in snapshot:
             team = _fuzzy_team_match(self._session, row.get("team", ""))
             data = {
@@ -1954,16 +1957,16 @@ class PostgresRepository:
                 self._session.add(LeagueStanding(**data))
         self._session.commit()
 
-    # Context queries (pra feature engineering)
+    # Context queries (for feature engineering)
 
     def get_coach_change_info(self, team: str, ref_date: str) -> dict:
-        """Retorna info sobre coach do time na data de referencia.
+        """Returns info about the team's coach at the reference date.
 
         Returns
         -------
         dict
             coach_name, games_since_change, coach_change_recent (<30d),
-            coach_win_rate (pra essa relacao team-coach).
+            coach_win_rate (for this team-coach relationship).
         """
         team = _fuzzy_team_match(self._session, team)
         if not ref_date:
@@ -1988,7 +1991,7 @@ class PostgresRepository:
         if not row:
             return {"games_since_change": 10, "coach_change_recent": False, "coach_win_rate": 0.5}
 
-        # Count games coached + wins sob esse coach ate ref_date
+        # Count games coached + wins under this coach up to ref_date
         count_query = text("""
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN (pmm.team = :team AND home_score > away_score AND pmm.team = m.home_team)
@@ -2015,7 +2018,7 @@ class PostgresRepository:
         wins = int(stats.wins or 0) if stats else 0
         win_rate = (wins / total) if total > 0 else 0.5
 
-        # Dias desde inicio do coach
+        # Days since the coach's start
         from datetime import datetime
         try:
             start_d = datetime.fromisoformat(row.start_match_date[:10]).date()
@@ -2037,10 +2040,10 @@ class PostgresRepository:
         self, team: str, match_id: int | None = None,
         ref_date: str | None = None, top_n: int = 3,
     ) -> dict:
-        """Conta desfalques entre top N por xG/90 + xG contribution perdida.
+        """Counts absences among top N by xG/90 + lost xG contribution.
 
-        Identifica top N players do time por xG/90 historico.
-        Retorna quantos estao ausentes na partida/data de referencia.
+        Identifies the team's top N players by historical xG/90.
+        Returns how many are absent for the target match/reference date.
         """
         team = _fuzzy_team_match(self._session, team)
 
@@ -2099,7 +2102,7 @@ class PostgresRepository:
     def get_games_in_window(
         self, team: str, days_before: int, days_after: int, ref_date: str,
     ) -> int:
-        """Numero de jogos do time em janela ao redor da data."""
+        """Number of team games in a window around the date."""
         team = _fuzzy_team_match(self._session, team)
         if not ref_date:
             return 0
@@ -2124,7 +2127,7 @@ class PostgresRepository:
     def get_standing_gap(
         self, home_team: str, away_team: str, ref_date: str,
     ) -> dict:
-        """Retorna position/points gap entre os times na data de referencia."""
+        """Returns position/points gap between the teams at the reference date."""
         home_team = _fuzzy_team_match(self._session, home_team)
         away_team = _fuzzy_team_match(self._session, away_team)
         if not ref_date:
@@ -2167,7 +2170,7 @@ class PostgresRepository:
         }
 
     def get_referee_stats_by_name(self, name: str) -> dict | None:
-        """Busca arbitro por nome (fuzzy: LIKE)."""
+        """Looks up a referee by name (fuzzy: LIKE)."""
         if not name:
             return None
         row = (
@@ -2198,16 +2201,16 @@ class PostgresRepository:
         ref_date: str | None = None,
         last_n: int = 5,
     ) -> list[dict]:
-        """Retorna últimas N partidas entre os dois times (qualquer mando).
+        """Returns the last N matches between the two teams (either venue).
 
         Parameters
         ----------
         home_team, away_team : str
         ref_date : str | None
-            Data ISO (YYYY-MM-DD). Só considera partidas ANTERIORES a essa data.
-            None = todas as partidas.
+            ISO date (YYYY-MM-DD). Only considers matches BEFORE that date.
+            None = all matches.
         last_n : int
-            Máximo de partidas a retornar.
+            Maximum number of matches to return.
         """
         home_team = _fuzzy_team_match(self._session, home_team)
         away_team = _fuzzy_team_match(self._session, away_team)
@@ -2243,7 +2246,7 @@ class PostgresRepository:
         ]
 
     def get_referee_for_match(self, match_id: int) -> dict | None:
-        """Retorna stats do árbitro designado pra uma partida (via match_stats.referee_id)."""
+        """Returns stats of the referee assigned to a match (via match_stats.referee_id)."""
         query = text("""
             SELECT rs.referee_id, rs.name, rs.matches, rs.yellow_total,
                    rs.red_total, rs.yellowred_total, rs.cards_per_game
@@ -2274,17 +2277,18 @@ class PostgresRepository:
         away_team: str,
         preferred_bookmakers: list[str] | None = None,
     ) -> list[dict] | None:
-        """Retorna odds h2h de várias casas pra consensus devig.
+        """Returns h2h odds from several bookmakers for consensus devig.
 
         Parameters
         ----------
         home_team, away_team : str
         preferred_bookmakers : list[str] | None
-            Se informado, filtra só essas casas. Útil pra usar só Pinnacle/Betfair.
+            If provided, filters only those bookmakers. Useful for using
+            only Pinnacle/Betfair.
 
         Returns
         -------
-        list[dict] com odds_home, odds_draw, odds_away de cada casa. None se vazio.
+        list[dict] with odds_home, odds_draw, odds_away from each bookmaker. None if empty.
         """
         query_base = """
             SELECT bookmaker, outcome, odds
@@ -2305,7 +2309,7 @@ class PostgresRepository:
         if not rows:
             return None
 
-        # Agrupar por bookmaker
+        # Group by bookmaker
         by_book: dict[str, dict[str, float]] = {}
         for r in rows:
             book = r.bookmaker
@@ -2318,7 +2322,7 @@ class PostgresRepository:
             elif r.outcome == "Draw":
                 by_book[book]["odds_draw"] = r.odds
 
-        # Só retorna casas com todos 3 outcomes
+        # Only return bookmakers with all 3 outcomes
         return [
             odds for odds in by_book.values()
             if "odds_home" in odds and "odds_draw" in odds and "odds_away" in odds
@@ -2329,5 +2333,5 @@ class PostgresRepository:
     # =====================================================================
 
     def close(self) -> None:
-        """Fecha a sessao SQLAlchemy."""
+        """Closes the SQLAlchemy session."""
         self._session.close()

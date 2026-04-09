@@ -1,4 +1,4 @@
-"""Port para persistencia de dados."""
+"""Port for data persistence."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ import pandas as pd
 
 
 class MatchRepository(Protocol):
-    """Interface para operacoes de persistencia.
+    """Interface for persistence operations.
 
-    Define o contrato que qualquer implementacao de repositorio deve seguir.
-    A implementacao padrao utiliza PostgreSQL + pgvector via SQLAlchemy,
-    mas o sistema pode ser estendido para outros backends (SQLite, DuckDB, etc).
+    Defines the contract that any repository implementation must follow.
+    The default implementation uses PostgreSQL + pgvector via SQLAlchemy,
+    but the system can be extended to other backends (SQLite, DuckDB, etc).
     """
 
     # ------------------------------------------------------------------
@@ -20,23 +20,23 @@ class MatchRepository(Protocol):
     # ------------------------------------------------------------------
 
     def match_exists(self, match_id: int) -> bool:
-        """Verifica se uma partida ja esta cadastrada no banco."""
+        """Check whether a match is already stored in the database."""
         ...
 
     def save_match(self, match_data: dict) -> None:
-        """Insere ou atualiza os dados de uma partida.
+        """Insert or update the data of a match.
 
-        O dicionario deve conter: match_id, competition, season,
+        The dictionary must contain: match_id, competition, season,
         match_date, home_team, away_team, home_score, away_score.
         """
         ...
 
     def get_match_data(self, match_id: int) -> pd.DataFrame:
-        """Retorna os dados de uma partida como DataFrame."""
+        """Return the data of a match as a DataFrame."""
         ...
 
     def get_season_matches(self, competition: str, season: str) -> list:
-        """Retorna lista de match_ids de uma competicao/temporada."""
+        """Return list of match_ids for a competition/season."""
         ...
 
     # ------------------------------------------------------------------
@@ -44,9 +44,9 @@ class MatchRepository(Protocol):
     # ------------------------------------------------------------------
 
     def save_player_metrics(self, metrics_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza metricas de jogadores para uma partida.
+        """Insert or update player metrics for a match.
 
-        O DataFrame deve conter player_id e colunas compativeis com
+        The DataFrame must contain player_id and columns compatible with
         PlayerMatchMetrics.
         """
         ...
@@ -54,11 +54,11 @@ class MatchRepository(Protocol):
     def get_player_metrics(
         self, player_name: str, season: str | None = None
     ) -> pd.DataFrame:
-        """Retorna metricas de um jogador, opcionalmente filtradas por temporada."""
+        """Return metrics of a player, optionally filtered by season."""
         ...
 
     def get_all_metrics(self, competition: str, season: str) -> pd.DataFrame:
-        """Retorna metricas de todos os jogadores de uma competicao/temporada."""
+        """Return metrics of all players of a competition/season."""
         ...
 
     # ------------------------------------------------------------------
@@ -66,10 +66,10 @@ class MatchRepository(Protocol):
     # ------------------------------------------------------------------
 
     def save_pass_network(self, edges_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza arestas da rede de passes de uma partida.
+        """Insert or update pass network edges of a match.
 
-        O DataFrame deve conter: passer_id, receiver_id, weight,
-        e opcionalmente passer_name, receiver_name, features.
+        The DataFrame must contain: passer_id, receiver_id, weight,
+        and optionally passer_name, receiver_name, features.
         """
         ...
 
@@ -78,17 +78,17 @@ class MatchRepository(Protocol):
     # ------------------------------------------------------------------
 
     def save_embeddings(self, embeddings_df: pd.DataFrame) -> None:
-        """Insere ou atualiza embeddings vetoriais de jogadores.
+        """Insert or update vector embeddings of players.
 
-        O DataFrame deve conter: player_id, season, embedding (lista de floats),
-        e opcionalmente player_name, cluster_label, archetype, position_group.
+        The DataFrame must contain: player_id, season, embedding (list of floats),
+        and optionally player_name, cluster_label, archetype, position_group.
         """
         ...
 
     def get_embedding(
         self, player_name: str, season: str | None = None
     ) -> Any:
-        """Retorna o embedding de um jogador para uma temporada."""
+        """Return the embedding of a player for a season."""
         ...
 
     # ------------------------------------------------------------------
@@ -98,9 +98,9 @@ class MatchRepository(Protocol):
     def find_similar_players(
         self, player_name: str, season: str, limit: int = 10
     ) -> pd.DataFrame:
-        """Busca jogadores com embeddings similares via distancia cosseno.
+        """Search for players with similar embeddings via cosine distance.
 
-        Retorna DataFrame com: player_name, team, archetype,
+        Returns DataFrame with: player_name, team, archetype,
         position_group, distance, similarity.
         """
         ...
@@ -108,9 +108,9 @@ class MatchRepository(Protocol):
     def find_complementary_players(
         self, player_name: str, season: str, limit: int = 10
     ) -> pd.DataFrame:
-        """Busca jogadores com perfil complementar (mais dissimilar).
+        """Search for players with a complementary profile (most dissimilar).
 
-        Retorna DataFrame com: player_name, team, archetype,
+        Returns DataFrame with: player_name, team, archetype,
         position_group, distance, similarity.
         """
         ...
@@ -120,16 +120,16 @@ class MatchRepository(Protocol):
     # ------------------------------------------------------------------
 
     def save_stints(self, stints_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza stints (periodos de jogo) de uma partida.
+        """Insert or update stints (game periods) of a match.
 
-        O DataFrame deve conter: stint_number, home_player_ids,
+        The DataFrame must contain: stint_number, home_player_ids,
         away_player_ids, duration_minutes, home_xg, away_xg, xg_diff,
         boundary_type.
         """
         ...
 
     def get_cached_stints(self, match_id: int) -> pd.DataFrame:
-        """Retorna stints previamente persistidos para uma partida."""
+        """Return previously persisted stints for a match."""
         ...
 
     # ------------------------------------------------------------------
@@ -137,9 +137,9 @@ class MatchRepository(Protocol):
     # ------------------------------------------------------------------
 
     def save_action_values(self, values_df: pd.DataFrame, match_id: int) -> None:
-        """Insere ou atualiza valores de acao (xT/VAEP) de uma partida.
+        """Insert or update action values (xT/VAEP) of a match.
 
-        O DataFrame deve conter: event_index, player_id, player_name,
+        The DataFrame must contain: event_index, player_id, player_name,
         team, action_type, start_x, start_y, end_x, end_y, xt_value,
         vaep_value, vaep_offensive, vaep_defensive.
         """
@@ -152,9 +152,9 @@ class MatchRepository(Protocol):
     def save_pressing_metrics(
         self, metrics_df: pd.DataFrame, match_id: int
     ) -> None:
-        """Insere ou atualiza metricas de pressing de uma partida.
+        """Insert or update pressing metrics of a match.
 
-        O DataFrame deve conter: team, ppda, pressing_success_rate,
+        The DataFrame must contain: team, ppda, pressing_success_rate,
         counter_pressing_fraction, high_turnovers,
         shot_ending_high_turnovers, pressing_zone_1..6.
         """
@@ -163,7 +163,7 @@ class MatchRepository(Protocol):
     def get_pressing_metrics(
         self, team: str, season: str | None = None
     ) -> list:
-        """Retorna metricas de pressing de um time, opcionalmente por temporada."""
+        """Return pressing metrics of a team, optionally by season."""
         ...
 
     # ------------------------------------------------------------------
@@ -171,5 +171,5 @@ class MatchRepository(Protocol):
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """Fecha a conexao/sessao do repositorio."""
+        """Close the repository connection/session."""
         ...

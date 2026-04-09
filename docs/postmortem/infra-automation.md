@@ -8,174 +8,174 @@ tags:
   - infra
 ---
 
-# Pitch — Infra & Automação K8s (v0.6.0)
+# Pitch — Infra & K8s Automation (v0.6.0)
 
-## Problema
+## Problem
 
-O sistema funciona mas é 100% manual e frágil:
+The system works but is 100% manual and fragile:
 
-1. **Odds em JSON local** — `data/odds_*.json` e `data/snapshots/` existem só no filesystem local. Se o PC reiniciar sem backup, perdemos o histórico. A tabela `match_odds` existe no PostgreSQL mas não é usada.
+1. **Odds in local JSON** — `data/odds_*.json` and `data/snapshots/` only exist on the local filesystem. If the PC restarts without a backup, we lose history. The `match_odds` table exists in PostgreSQL but isn't used.
 
-2. **Ingestão manual** — pra atualizar dados do Sofascore, precisa rodar script manualmente. Dados ficam stale entre rodadas.
+2. **Manual ingestion** — to update Sofascore data, you need to run a script manually. Data gets stale between matchdays.
 
-3. **K8s subutilizado** — cluster Minikube roda só PostgreSQL. Nenhum CronJob, nenhuma automação.
+3. **Underused K8s** — Minikube cluster runs only PostgreSQL. No CronJob, no automation.
 
-4. **CLI-only** — sem API REST, impossível integrar com frontend, bot ou mobile.
+4. **CLI-only** — no REST API, impossible to integrate with frontend, bot or mobile.
 
-5. **Port-forward manual** — precisa rodar `kubectl port-forward` toda vez que reinicia o PC.
+5. **Manual port-forward** — need to run `kubectl port-forward` every time the PC restarts.
 
-## Solução
+## Solution
 
-### A. Persistir odds no PostgreSQL
+### A. Persist odds in PostgreSQL
 
-Mover de JSON local pra tabela `match_odds` (já existe no schema). O odds_provider salva no banco via repository ao invés de arquivo.
+Move from local JSON to `match_odds` table (already in schema). odds_provider saves to the database via repository instead of file.
 
-### B. Container da aplicação
+### B. Application container
 
-Criar Dockerfile pra empacotar o moneyball como container. Roda no K8s junto com o PostgreSQL.
+Create Dockerfile to package moneyball as a container. Runs on K8s alongside PostgreSQL.
 
 ```
 k8s/
-├── postgres/ (já existe)
+├── postgres/ (already exists)
 ├── moneyball-app/
 │   ├── Dockerfile
 │   └── deployment.yaml
 └── cronjobs/
-    ├── ingest-sofascore.yaml    # a cada 6h
-    ├── snapshot-odds.yaml        # 1x/dia
-    └── predict-matchday.yaml     # 2h antes dos jogos
+    ├── ingest-sofascore.yaml    # every 6h
+    ├── snapshot-odds.yaml        # 1x/day
+    └── predict-matchday.yaml     # 2h before matches
 ```
 
-### C. CronJobs K8s
+### C. K8s CronJobs
 
-3 CronJobs usando o mesmo container moneyball:
+3 CronJobs using the same moneyball container:
 
-1. **ingest-sofascore** (`0 */6 * * *` = a cada 6h)
+1. **ingest-sofascore** (`0 */6 * * *` = every 6h)
    - `moneyball ingest --provider sofascore`
-   - Busca jogos novos, persiste player_match_metrics
+   - Fetches new matches, persists player_match_metrics
 
-2. **snapshot-odds** (`0 8 * * *` = todo dia 8h)
+2. **snapshot-odds** (`0 8 * * *` = every day 8am)
    - `moneyball snapshot-odds`
-   - Busca odds da The Odds API, persiste em match_odds
+   - Fetches odds from The Odds API, persists in match_odds
 
-3. **predict-matchday** (`0 16 * * 3,6` = qua e sab 16h, ~2h antes dos jogos)
+3. **predict-matchday** (`0 16 * * 3,6` = Wed and Sat 4pm, ~2h before matches)
    - `moneyball predict-all`
-   - Roda predictor pra todos os jogos do dia, persiste em match_predictions
+   - Runs predictor for all matches of the day, persists in match_predictions
 
-### D. FastAPI (endpoints básicos)
+### D. FastAPI (basic endpoints)
 
-API mínima pra servir dados ao frontend futuro (v0.7.0):
+Minimal API to serve data to future frontend (v0.7.0):
 
 ```
-GET /api/predictions          — previsões da rodada
-GET /api/predictions/{id}     — previsão de um jogo
-GET /api/value-bets           — value bets atuais
-GET /api/backtest             — resultados do backtesting
-GET /api/verify               — modelo vs realidade
+GET /api/predictions          — matchday predictions
+GET /api/predictions/{id}     — single match prediction
+GET /api/value-bets           — current value bets
+GET /api/backtest             — backtesting results
+GET /api/verify               — model vs reality
 GET /health                   — healthcheck
 ```
 
-Roda como Deployment no K8s (porta 8000).
+Runs as a Deployment on K8s (port 8000).
 
-### E. CLI: novos comandos de automação
+### E. CLI: new automation commands
 
 ```bash
 moneyball ingest --provider sofascore   # delta ingest
-moneyball snapshot-odds                  # salvar odds no PG
-moneyball predict-all                    # prever todos os jogos do dia
+moneyball snapshot-odds                  # save odds to PG
+moneyball predict-all                    # predict all matches of the day
 ```
 
-## Arquitetura
+## Architecture
 
-### Módulos afetados
+### Affected modules
 
-| Módulo | Ação | Descrição |
+| Module | Action | Description |
 |--------|------|-----------|
-| `adapters/odds_provider.py` | MODIFICAR | Persistir odds no PG via repo (não JSON) |
-| `adapters/postgres_repository.py` | MODIFICAR | Queries pra match_odds, save odds |
-| `use_cases/ingest_matches.py` | NOVO | Delta ingest Sofascore |
-| `use_cases/snapshot_odds.py` | NOVO | Snapshot odds → PG |
-| `use_cases/predict_all.py` | NOVO | Predict todos jogos do dia |
-| `api.py` | NOVO | FastAPI endpoints |
-| `cli.py` | MODIFICAR | Novos comandos |
-| `Dockerfile` | NOVO | Container da aplicação |
-| `k8s/app-deployment.yaml` | NOVO | Deployment moneyball |
-| `k8s/cronjob-ingest.yaml` | NOVO | CronJob ingest |
-| `k8s/cronjob-odds.yaml` | NOVO | CronJob odds |
-| `k8s/cronjob-predict.yaml` | NOVO | CronJob predict |
+| `adapters/odds_provider.py` | MODIFY | Persist odds in PG via repo (not JSON) |
+| `adapters/postgres_repository.py` | MODIFY | Queries for match_odds, save odds |
+| `use_cases/ingest_matches.py` | NEW | Delta ingest Sofascore |
+| `use_cases/snapshot_odds.py` | NEW | Snapshot odds → PG |
+| `use_cases/predict_all.py` | NEW | Predict all matches of the day |
+| `api.py` | NEW | FastAPI endpoints |
+| `cli.py` | MODIFY | New commands |
+| `Dockerfile` | NEW | Application container |
+| `k8s/app-deployment.yaml` | NEW | moneyball deployment |
+| `k8s/cronjob-ingest.yaml` | NEW | ingest CronJob |
+| `k8s/cronjob-odds.yaml` | NEW | odds CronJob |
+| `k8s/cronjob-predict.yaml` | NEW | predict CronJob |
 
 ### Schema
 
-Sem mudanças — tabela `match_odds` já existe, só não era usada.
+No changes — the `match_odds` table already exists, it just wasn't used.
 
 ### Infra (K8s)
 
 ```
 Namespace: football-moneyball
-├── Deployment: postgres (existente)
-├── Deployment: moneyball-api (NOVO — FastAPI porta 8000)
-├── Service: postgres (existente)
-├── Service: moneyball-api (NOVO)
-├── CronJob: ingest-sofascore (NOVO)
-├── CronJob: snapshot-odds (NOVO)
-├── CronJob: predict-matchday (NOVO)
-├── ConfigMap: postgres-init (existente)
-├── ConfigMap: moneyball-config (NOVO — ODDS_API_KEY, etc.)
-├── Secret: postgres-secret (existente)
-└── PVC: postgres-pvc (existente)
+├── Deployment: postgres (existing)
+├── Deployment: moneyball-api (NEW — FastAPI port 8000)
+├── Service: postgres (existing)
+├── Service: moneyball-api (NEW)
+├── CronJob: ingest-sofascore (NEW)
+├── CronJob: snapshot-odds (NEW)
+├── CronJob: predict-matchday (NEW)
+├── ConfigMap: postgres-init (existing)
+├── ConfigMap: moneyball-config (NEW — ODDS_API_KEY, etc.)
+├── Secret: postgres-secret (existing)
+└── PVC: postgres-pvc (existing)
 ```
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] Persistir odds no PostgreSQL (usar tabela match_odds existente)
-- [ ] Dockerfile pra empacotar moneyball como container
-- [ ] CronJob: ingest-sofascore (a cada 6h)
-- [ ] CronJob: snapshot-odds (diário)
-- [ ] CronJob: predict-matchday (pré-jogo)
-- [ ] FastAPI com 6 endpoints básicos (read-only)
+- [ ] Persist odds in PostgreSQL (use existing match_odds table)
+- [ ] Dockerfile to package moneyball as container
+- [ ] CronJob: ingest-sofascore (every 6h)
+- [ ] CronJob: snapshot-odds (daily)
+- [ ] CronJob: predict-matchday (pre-match)
+- [ ] FastAPI with 6 basic endpoints (read-only)
 - [ ] CLI: `ingest`, `snapshot-odds`, `predict-all`
 - [ ] K8s manifests (deployment, service, cronjobs, configmap)
-- [ ] Deployment: moneyball-api no K8s
-- [ ] Remover dependência de `kubectl port-forward` pra API
+- [ ] Deployment: moneyball-api on K8s
+- [ ] Remove dependency on `kubectl port-forward` for API
 
-### Fora do Escopo
+### Out of Scope
 
 - Frontend/dashboard (v0.7.0)
-- Alertas Telegram/Discord (v0.7.0)
-- Autenticação na API
+- Telegram/Discord alerts (v0.7.0)
+- API authentication
 - CI/CD pipeline
 - Monitoring/observability (Grafana, Prometheus)
-- Multi-cluster (só Minikube)
+- Multi-cluster (Minikube only)
 
-## Research Necessária
+## Research Needed
 
-- [x] K8s CronJobs com Python — confirmado via docs oficiais
-- [x] FastAPI + SQLAlchemy async — documentação abundante
-- [ ] Melhor forma de compartilhar código entre CLI e API (monorepo)
-- [ ] Imagem Docker mínima pra Python 3.14 + dependências
+- [x] K8s CronJobs with Python — confirmed via official docs
+- [x] FastAPI + SQLAlchemy async — abundant documentation
+- [ ] Best way to share code between CLI and API (monorepo)
+- [ ] Minimal Docker image for Python 3.14 + dependencies
 
-## Estratégia de Testes
+## Testing Strategy
 
-### Unitários
-- Use cases novos (ingest, snapshot, predict_all) com mocks
+### Unit
+- New use cases (ingest, snapshot, predict_all) with mocks
 
-### Integração
-- FastAPI endpoints com test client
-- CronJobs: rodar manualmente e verificar dados no PG
+### Integration
+- FastAPI endpoints with test client
+- CronJobs: run manually and verify data in PG
 
 ### Manual
-- `kubectl apply -k k8s/` → todos os recursos criados
-- Verificar CronJobs executam no schedule
-- `curl http://localhost:8000/api/predictions` → JSON válido
+- `kubectl apply -k k8s/` → all resources created
+- Verify CronJobs execute on schedule
+- `curl http://localhost:8000/api/predictions` → valid JSON
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] Odds persistidas no PostgreSQL (não mais em JSON local)
-- [ ] CronJobs rodam no schedule e atualizam dados
-- [ ] `curl /api/predictions` retorna previsões válidas
-- [ ] `curl /health` retorna 200
-- [ ] `moneyball ingest` atualiza dados sem intervenção manual
-- [ ] Container moneyball roda no K8s sem port-forward pra app
-- [ ] Zero regressão nos comandos CLI existentes
+- [ ] Odds persisted in PostgreSQL (no longer in local JSON)
+- [ ] CronJobs run on schedule and update data
+- [ ] `curl /api/predictions` returns valid predictions
+- [ ] `curl /health` returns 200
+- [ ] `moneyball ingest` updates data without manual intervention
+- [ ] moneyball container runs on K8s without port-forward for the app
+- [ ] Zero regression in existing CLI commands

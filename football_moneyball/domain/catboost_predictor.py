@@ -1,9 +1,9 @@
 """CatBoost 1x2 predictor — prediz P(H), P(D), P(A) end-to-end.
 
-Substitui Poisson Monte Carlo pra 1x2. Usa Pi-Rating + form EMA +
-xG + odds como features. Treinado com temporal CV.
+Substitui Poisson Monte Carlo for 1x2. Usa Pi-Rating + form EMA +
+xG + odds as features. Treinado with temporal CV.
 
-Lógica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ CATBOOST_FEATURE_NAMES = [
     # Rest (2)
     "home_rest_days",
     "away_rest_days",
-    # Market proxy (3) — Pi-Rating implied probs no training, odds reais na inferência
+    # Market proxy (3) — Pi-Rating implied probs in the training, real odds at inference
     "market_home_prob",
     "market_draw_prob",
     "market_away_prob",
@@ -85,7 +85,7 @@ def compute_form_ema(
     results: list[float],
     alpha: float = 0.1,
 ) -> float:
-    """EMA de resultados (1=win, 0.5=draw, 0=loss). Último = mais recente."""
+    """Results EMA (1=win, 0.5=draw, 0=loss). Last = most recent."""
     if not results:
         return 0.5
     ema = 0.5
@@ -98,7 +98,7 @@ def compute_gd_ema(
     goal_diffs: list[float],
     alpha: float = 0.15,
 ) -> float:
-    """EMA de goal difference."""
+    """EMA of goal difference."""
     if not goal_diffs:
         return 0.0
     ema = 0.0
@@ -143,7 +143,7 @@ def build_match_features(
     home_points_5: float = 7.0,
     away_points_5: float = 7.0,
 ) -> np.ndarray:
-    """Constroi feature vector pra um match (43 features)."""
+    """Builds feature vector for a match (43 features)."""
     from football_moneyball.domain.pi_rating import PiRating, rating_diff
 
     rd = rating_diff(pi_ratings, home_team, away_team)
@@ -210,7 +210,7 @@ def pi_rating_to_probs(
     """Converte Pi-Rating diff → probs (H, D, A) via logistic + empirical draw rate."""
     from football_moneyball.domain.pi_rating import rating_diff
     rd = rating_diff(pi_ratings, home_team, away_team)
-    # Logistic pra P(home > away)
+    # Logistic for P(home > away)
     p_home_vs_away = 1.0 / (1.0 + np.exp(-1.2 * rd))
     # Empirical draw allocation: ~26% base, adjusted by closeness
     closeness = 1.0 - abs(p_home_vs_away - 0.5) * 2  # 0-1, 1=perfectly balanced
@@ -228,24 +228,24 @@ def build_training_dataset(
     coach_data: dict | None = None,
     standings_data: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Constroi X, y a partir de matches históricos (leak-proof).
+    """Builds X, y from historical matches (leak-proof).
 
-    Pra cada match M: usa apenas matches anteriores (match_id < M)
-    pra computar Pi-Ratings, form EMA e rolling stats.
+    For each match M: usa only earlier matches (match_id < M)
+    for computar Pi-Ratings, form EMA and rolling stats.
 
     Parameters
     ----------
     all_matches : pd.DataFrame
         Formato: match_id, team, goals, xg, is_home.
     match_stats : pd.DataFrame | None
-        Formato: match_id + colunas de stats (possession, shots, etc).
+        Formato: match_id + colunas of stats (possession, shots, etc).
     min_history : int
-        Mínimo de matches anteriores pra incluir no dataset.
+        Minimum of earlier matches for include in the dataset.
 
     Returns
     -------
     (X, y) : (np.ndarray, np.ndarray)
-        X shape (n_samples, N_FEATURES), y shape (n_samples,) com 0/1/2.
+        X shape (n_samples, N_FEATURES), y shape (n_samples,) with 0/1/2.
     """
     from football_moneyball.domain.pi_rating import PiRating, update_ratings
 
@@ -304,10 +304,10 @@ def build_training_dataset(
         home_rest = max(1, idx - team_last_match.get(home_team, idx - 7))
         away_rest = max(1, idx - team_last_match.get(away_team, idx - 7))
 
-        # Pi-Rating implied probs como proxy de mercado
+        # Pi-Rating implied probs as proxy of mercado
         mh, md, ma = pi_rating_to_probs(ratings, home_team, away_team)
 
-        # Rolling match stats (últimos 5)
+        # Rolling match stats (lasts 5)
         home_ms = _rolling_stats(team_stats_hist.get(home_team, []), n=5)
         away_ms = _rolling_stats(team_stats_hist.get(away_team, []), n=5)
 
@@ -407,7 +407,7 @@ def _update_form(
     xg: float,
     is_home: bool,
 ) -> None:
-    """Atualiza histórico de forma do time."""
+    """Updates history of form of the time."""
     if team not in team_form:
         team_form[team] = []
 
@@ -430,7 +430,7 @@ def _update_stats_hist(
     match_id: int,
     stats_map: dict[int, dict],
 ) -> None:
-    """Atualiza histórico de match stats por time."""
+    """Updates history of match stats by time."""
     st = stats_map.get(match_id)
     if not st:
         return
@@ -448,7 +448,7 @@ def _update_stats_hist(
 
 
 def _rolling_stats(history: list[dict], n: int = 5) -> dict:
-    """Computa média móvel dos últimos n matches de stats."""
+    """Compute rolling mean of the last n matches of stats."""
     recent = history[-n:] if history else []
     if not recent:
         return {}
@@ -475,17 +475,17 @@ def train_catboost_1x2(
     val_fraction: float = 0.2,
     seed: int = 42,
 ) -> tuple:
-    """Treina CatBoost MultiClass pra 1x2.
+    """Treina CatBoost MultiClass for 1x2.
 
     Returns
     -------
     (model, metrics) : tuple
-        model = CatBoostClassifier treinado
-        metrics = dict com RPS, accuracy, log_loss no val set
+        model = CatBoostClassifier trained
+        metrics = dict with RPS, accuracy, log_loss in the val set
     """
     from catboost import CatBoostClassifier, Pool
 
-    # Time-split: últimos val_fraction% como validação
+    # Time-split: last val_fraction% as validation
     n = len(X)
     cut = int(n * (1 - val_fraction))
     X_train, X_val = X[:cut], X[cut:]
@@ -527,7 +527,7 @@ def train_catboost_1x2(
 
 
 def _compute_metrics(probs: np.ndarray, y: np.ndarray) -> dict:
-    """Computa RPS, accuracy, Brier no validation set."""
+    """Compute RPS, accuracy, Brier in the validation set."""
     n = len(y)
     if n == 0:
         return {"rps": 1.0, "accuracy": 0.0, "brier": 2.0}
@@ -562,12 +562,12 @@ def predict_1x2(
     model,
     features: np.ndarray,
 ) -> dict:
-    """Prediz P(H), P(D), P(A) pra um match.
+    """Prediz P(H), P(D), P(A) for a match.
 
     Parameters
     ----------
     model : CatBoostClassifier
-        Modelo treinado.
+        Model trained.
     features : np.ndarray
         Shape (N_FEATURES,) ou (1, N_FEATURES).
 

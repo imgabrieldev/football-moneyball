@@ -1,4 +1,4 @@
-"""Fixtures compartilhadas para testes do Football Moneyball."""
+"""Shared fixtures for Football Moneyball tests."""
 
 import numpy as np
 import pandas as pd
@@ -7,7 +7,7 @@ import pytest
 
 @pytest.fixture
 def mock_events_df():
-    """DataFrame de eventos StatsBomb fabricado para testes unitarios."""
+    """Fabricated StatsBomb events DataFrame for unit tests."""
     return pd.DataFrame([
         # Passes
         {"index": 0, "type": "Pass", "player": "Player A", "player_id": 1,
@@ -81,7 +81,7 @@ def mock_events_df():
 
 @pytest.fixture
 def mock_lineups():
-    """Simula retorno de sb.lineups() com dados de posicao."""
+    """Simulate sb.lineups() return with position data."""
     return {
         "Home": pd.DataFrame([
             {"player_id": 1, "player_name": "Player A", "jersey_number": 9,

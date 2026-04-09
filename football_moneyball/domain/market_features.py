@@ -1,32 +1,32 @@
-"""Market blending — devig + ensemble com probabilidades do mercado.
+"""Market blending — devig + ensemble with market probabilities.
 
-Mercados de apostas (Pinnacle, Betfair) são ~80% eficientes. Blendar a previsão
-do modelo com a do mercado reduz erro significativamente.
+Betting markets (Pinnacle, Betfair) are ~80% efficient. Blending the model
+prediction with the market significantly reduces error.
 
-Lógica pura: zero deps de infra.
+Pure logic: zero infra deps.
 """
 from __future__ import annotations
 
 
 def devig_odds(odds_home: float, odds_draw: float, odds_away: float) -> dict[str, float]:
-    """Remove vig das odds 1x2. Retorna probabilidades implícitas normalizadas.
+    """Remove vig from 1x2 odds. Returns normalized implied probabilities.
 
-    Método: normalização proporcional (mais simples, shrinkage power removido).
+    Method: proportional normalization (simpler, power shrinkage removed).
 
     Parameters
     ----------
     odds_home, odds_draw, odds_away : float
-        Odds decimais (>1.0). Ex: 1.85, 3.40, 4.20.
+        Decimal odds (>1.0). Ex: 1.85, 3.40, 4.20.
 
     Returns
     -------
-    dict com p_home, p_draw, p_away normalizados (soma=1.0).
+    dict with p_home, p_draw, p_away normalized (sum=1.0).
     """
     if odds_home <= 1.0 or odds_draw <= 1.0 or odds_away <= 1.0:
-        # Odds inválidas — retorna uniforme
+        # Invalid odds — return uniform
         return {"p_home": 1 / 3, "p_draw": 1 / 3, "p_away": 1 / 3}
 
-    # Implied probs brutas (com vig)
+    # Raw implied probs (with vig)
     p_h = 1.0 / odds_home
     p_d = 1.0 / odds_draw
     p_a = 1.0 / odds_away
@@ -47,20 +47,20 @@ def blend_with_market(
     market_probs: dict[str, float],
     alpha: float = 0.6,
 ) -> dict[str, float]:
-    """Combina probs do modelo com probs devigged do mercado.
+    """Combine model probs with devigged market probs.
 
-    p_final = alpha * p_modelo + (1 - alpha) * p_market
+    p_final = alpha * p_model + (1 - alpha) * p_market
 
     Parameters
     ----------
-    model_probs : dict com home_win_prob, draw_prob, away_win_prob.
-    market_probs : dict com p_home, p_draw, p_away (devigged).
+    model_probs : dict with home_win_prob, draw_prob, away_win_prob.
+    market_probs : dict with p_home, p_draw, p_away (devigged).
     alpha : float
-        Peso do modelo [0, 1]. 0.6 = 60% modelo, 40% mercado.
+        Model weight [0, 1]. 0.6 = 60% model, 40% market.
 
     Returns
     -------
-    dict com home_win_prob, draw_prob, away_win_prob blendado.
+    dict with blended home_win_prob, draw_prob, away_win_prob.
     """
     a = max(0.0, min(1.0, alpha))
 
@@ -84,16 +84,16 @@ def blend_with_market(
 def consensus_devig(
     bookmaker_odds: list[dict[str, float]],
 ) -> dict[str, float] | None:
-    """Calcula consenso devigged de múltiplas casas.
+    """Compute the devigged consensus from multiple bookmakers.
 
     Parameters
     ----------
     bookmaker_odds : list[dict]
-        Lista de dicts com odds_home, odds_draw, odds_away de cada casa.
+        List of dicts with odds_home, odds_draw, odds_away of each bookmaker.
 
     Returns
     -------
-    dict com p_home, p_draw, p_away (média das devigged). None se vazio.
+    dict with p_home, p_draw, p_away (mean of devigged). None if empty.
     """
     if not bookmaker_odds:
         return None

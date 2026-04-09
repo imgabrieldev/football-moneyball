@@ -10,65 +10,65 @@ tags:
 
 # Pitch — Frontend Dashboard (v0.7.0)
 
-## Problema
+## Problem
 
-O sistema inteiro é CLI-only. Tem 15 comandos, 7 endpoints de API, dados de 87 partidas, previsões Monte Carlo e value bets — mas tudo só acessível via terminal. Não tem visualização em tempo real, não tem como compartilhar análises, não tem interface pra acompanhar a rodada.
+The whole system is CLI-only. It has 15 commands, 7 API endpoints, data for 87 matches, Monte Carlo predictions and value bets — but everything is only accessible via terminal. There's no real-time visualization, no way to share analyses, no interface to follow the matchday.
 
-O backend está completo (v0.1.0 a v0.6.0):
-- API FastAPI com 7 endpoints funcionando
-- Previsões Dixon-Coles com Brier 0.70
-- Value bets com odds reais de 39 casas
-- Backtesting com 87 partidas do Brasileirão 2026
-- K8s com PostgreSQL + CronJobs de automação
+The backend is complete (v0.1.0 to v0.6.0):
+- FastAPI API with 7 working endpoints
+- Dixon-Coles predictions with Brier 0.70
+- Value bets with real odds from 39 bookmakers
+- Backtesting with 87 Brasileirão 2026 matches
+- K8s with PostgreSQL + automation CronJobs
 
-Falta a camada visual.
+The visual layer is missing.
 
-## Solução
+## Solution
 
-SPA React + Vite com 6 páginas consumindo a API FastAPI. Design dark theme (consistente com os plots matplotlib que já temos). Deploy como container nginx no Minikube.
+React + Vite SPA with 6 pages consuming the FastAPI. Dark-theme design (consistent with the matplotlib plots we already have). Deploy as an nginx container on Minikube.
 
-### Páginas
+### Pages
 
 #### 1. Dashboard (Home) — `/`
-Visão geral da rodada atual:
-- Cards com próximos jogos e previsões (P(H) / P(D) / P(A))
-- Destaque de value bets da rodada (edge > 3%)
-- Resumo: partidas analisadas, Brier score, ROI do backtest
+Current matchday overview:
+- Cards with next matches and predictions (P(H) / P(D) / P(A))
+- Highlight value bets of the matchday (edge > 3%)
+- Summary: matches analyzed, Brier score, backtest ROI
 
-#### 2. Previsões — `/predictions`
-Todas as previsões da rodada em tabela:
-- Time Casa vs Time Fora
-- xG esperado (home/away)
-- Probabilidades 1X2 com barra visual
+#### 2. Predictions — `/predictions`
+All matchday predictions in a table:
+- Home Team vs Away Team
+- Expected xG (home/away)
+- 1X2 probabilities with visual bar
 - Over/Under 2.5, BTTS
-- Placar mais provável
-- Score matrix expandível
+- Most likely scoreline
+- Expandable score matrix
 
 #### 3. Value Bets — `/value-bets`
-Scanner de apostas com valor:
-- Tabela: partida, mercado, aposta, modelo%, odds, edge%, EV, stake Kelly
-- Filtros: edge mínimo, mercado (1X2, O/U), bankroll
-- Ordenação por edge ou EV
-- Cores: verde (edge alto), amarelo (moderado)
+Value bet scanner:
+- Table: match, market, bet, model%, odds, edge%, EV, Kelly stake
+- Filters: minimum edge, market (1X2, O/U), bankroll
+- Sort by edge or EV
+- Colors: green (high edge), yellow (moderate)
 
-#### 4. Jogadores — `/players`
-Tabela de jogadores com métricas:
-- Filtro por time
-- Colunas: jogos, minutos, gols, xG, assists, xA, passes, tackles
-- Ordenação por qualquer coluna
-- Barra visual xG vs gols reais (over/underperformance)
+#### 4. Players — `/players`
+Players table with metrics:
+- Filter by team
+- Columns: matches, minutes, goals, xG, assists, xA, passes, tackles
+- Sort by any column
+- Visual xG vs actual goals bar (over/underperformance)
 
 #### 5. Backtest — `/backtest`
-Resultados do backtesting:
-- Panel de métricas: ROI, hit rate, Brier, drawdown
-- Gráfico de bankroll ao longo do tempo (line chart)
-- Tabela de apostas recentes (ganhou/perdeu)
+Backtesting results:
+- Metrics panel: ROI, hit rate, Brier, drawdown
+- Bankroll-over-time chart (line chart)
+- Recent bets table (won/lost)
 
-#### 6. Verificação — `/verify`
-Modelo vs realidade:
-- Tabela: partida, placar, previsão, resultado, acertou?
-- Métricas: accuracy 1X2, accuracy O/U, Brier score
-- Calibração visual (predicted prob vs actual frequency)
+#### 6. Verification — `/verify`
+Model vs reality:
+- Table: match, scoreline, prediction, result, hit?
+- Metrics: 1X2 accuracy, O/U accuracy, Brier score
+- Visual calibration (predicted prob vs actual frequency)
 
 ### Tech Stack
 
@@ -77,15 +77,15 @@ React 19 + Vite 6
 ├── React Router (client-side routing)
 ├── TanStack Query (data fetching + cache)
 ├── Tailwind CSS (styling — dark theme)
-├── Recharts (gráficos — bankroll, calibração)
-└── Lucide React (ícones)
+├── Recharts (charts — bankroll, calibration)
+└── Lucide React (icons)
 ```
 
-Sem backend adicional — consome direto a API FastAPI (`/api/*`).
+No additional backend — consumes the FastAPI directly (`/api/*`).
 
-## Arquitetura
+## Architecture
 
-### Estrutura do frontend
+### Frontend structure
 
 ```
 frontend/
@@ -97,14 +97,14 @@ frontend/
 │   ├── main.tsx
 │   ├── App.tsx
 │   ├── api/
-│   │   └── client.ts          # fetch wrapper pra API
+│   │   └── client.ts          # fetch wrapper for API
 │   ├── components/
 │   │   ├── Layout.tsx          # sidebar + header
-│   │   ├── MatchCard.tsx       # card de partida com previsão
-│   │   ├── ProbabilityBar.tsx  # barra visual H/D/A
-│   │   ├── ValueBetRow.tsx     # linha de value bet
-│   │   ├── PlayerTable.tsx     # tabela de jogadores
-│   │   └── BankrollChart.tsx   # gráfico de evolução
+│   │   ├── MatchCard.tsx       # match card with prediction
+│   │   ├── ProbabilityBar.tsx  # visual H/D/A bar
+│   │   ├── ValueBetRow.tsx     # value bet row
+│   │   ├── PlayerTable.tsx     # players table
+│   │   └── BankrollChart.tsx   # evolution chart
 │   ├── pages/
 │   │   ├── Dashboard.tsx
 │   │   ├── Predictions.tsx
@@ -113,28 +113,28 @@ frontend/
 │   │   ├── Backtest.tsx
 │   │   └── Verify.tsx
 │   └── lib/
-│       └── utils.ts            # formatação, cores, helpers
+│       └── utils.ts            # formatting, colors, helpers
 ├── Dockerfile
-└── nginx.conf                  # serve SPA + proxy /api → moneyball-api
+└── nginx.conf                  # serves SPA + proxy /api → moneyball-api
 ```
 
-### Módulos backend afetados
+### Affected backend modules
 
-Nenhum módulo Python precisa mudar. O frontend consome a API existente.
+No Python module needs to change. The frontend consumes the existing API.
 
-Possível melhoria: adicionar CORS origin específico no `api.py` ao invés de `*`.
+Possible improvement: add specific CORS origin in `api.py` instead of `*`.
 
 ### Schema
 
-Sem mudanças no PostgreSQL.
+No changes in PostgreSQL.
 
 ### Infra (K8s)
 
 ```
 k8s/
-├── (existentes)
+├── (existing)
 ├── frontend-deployment.yaml    # nginx + SPA
-├── frontend-service.yaml       # porta 3000
+├── frontend-service.yaml       # port 3000
 └── kustomization.yaml          # + frontend resources
 ```
 
@@ -154,58 +154,58 @@ server {
 }
 ```
 
-Acesso: `kubectl port-forward -n football-moneyball svc/moneyball-frontend 3000:3000`
+Access: `kubectl port-forward -n football-moneyball svc/moneyball-frontend 3000:3000`
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
 - [ ] Setup React + Vite + Tailwind + React Router
 - [ ] API client (`src/api/client.ts`)
-- [ ] Layout com sidebar dark theme
-- [ ] Página Dashboard (cards de jogos + value bets)
-- [ ] Página Predictions (tabela com probabilidades)
-- [ ] Página Value Bets (tabela com filtros)
-- [ ] Página Players (tabela com métricas, filtro por time)
-- [ ] Página Backtest (métricas + gráfico bankroll)
-- [ ] Página Verify (tabela + accuracy)
+- [ ] Layout with dark-theme sidebar
+- [ ] Dashboard page (match cards + value bets)
+- [ ] Predictions page (table with probabilities)
+- [ ] Value Bets page (table with filters)
+- [ ] Players page (table with metrics, team filter)
+- [ ] Backtest page (metrics + bankroll chart)
+- [ ] Verify page (table + accuracy)
 - [ ] Dockerfile (nginx + SPA build)
 - [ ] K8s manifests (deployment + service)
-- [ ] Proxy nginx /api → moneyball-api
+- [ ] Nginx proxy /api → moneyball-api
 
-### Fora do Escopo
+### Out of Scope
 
-- Autenticação / login
-- Modo mobile (desktop-first, responsive básico)
+- Authentication / login
+- Mobile mode (desktop-first, basic responsive)
 - Real-time updates (WebSocket)
-- Testes E2E (Cypress, Playwright)
+- E2E tests (Cypress, Playwright)
 - CI/CD pipeline
 - PWA / offline
-- Internacionalização (PT-BR only)
+- Internationalization (PT-BR only)
 
-## Research Necessária
+## Research Needed
 
-- [ ] Confirmar que Vite 6 + React 19 funcionam com Node disponível no Arch
-- [ ] Escolher entre Recharts vs Chart.js pra gráficos
+- [ ] Confirm that Vite 6 + React 19 work with the Node version available on Arch
+- [ ] Choose between Recharts vs Chart.js for charts
 
-## Estratégia de Testes
+## Testing Strategy
 
 ### Frontend
-- Manual: navegar cada página e verificar dados
-- Verificar que API retorna dados corretos (já testado na v0.6.0)
+- Manual: navigate each page and verify data
+- Verify the API returns correct data (already tested in v0.6.0)
 
-### Integração
-- `docker build` do frontend
-- `kubectl apply` e verificar que nginx serve SPA
-- Verificar que proxy `/api` funciona
+### Integration
+- `docker build` of the frontend
+- `kubectl apply` and verify nginx serves the SPA
+- Verify the `/api` proxy works
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] 6 páginas navegáveis com dados reais do Brasileirão
-- [ ] Dashboard mostra previsões da rodada
-- [ ] Value bets listadas com edge, odds e stake
-- [ ] Tabela de jogadores com filtro por time
-- [ ] Backtest mostra gráfico de bankroll
-- [ ] Runs no Minikube via `kubectl port-forward`
-- [ ] Tempo de carregamento < 2s por página
-- [ ] Dark theme consistente
+- [ ] 6 navigable pages with real Brasileirão data
+- [ ] Dashboard shows matchday predictions
+- [ ] Value bets listed with edge, odds and stake
+- [ ] Players table with team filter
+- [ ] Backtest shows bankroll chart
+- [ ] Runs on Minikube via `kubectl port-forward`
+- [ ] Load time < 2s per page
+- [ ] Consistent dark theme

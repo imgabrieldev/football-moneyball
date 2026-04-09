@@ -10,9 +10,9 @@ tags:
 
 # Pitch — v1.17.0: CatBoost Hyperopt + SHAP Feature Pruning
 
-## Problema
+## Problem
 
-O CatBoost 1x2 de v1.14.0 usa hiperparâmetros fixos escolhidos por heurística:
+The v1.14.0 CatBoost 1x2 uses fixed hyperparameters chosen heuristically:
 
 ```python
 # football_moneyball/domain/catboost_predictor.py:466
@@ -20,7 +20,7 @@ iterations=1000, depth=6, learning_rate=0.03, l2_leaf_reg=3.0,
 draw_weight=1.3, early_stopping_rounds=50
 ```
 
-E tem **43 features** ([CATBOOST_FEATURE_NAMES](football_moneyball/domain/catboost_predictor.py#L22)) acumuladas em v1.14→v1.15:
+And it has **43 features** ([CATBOOST_FEATURE_NAMES](football_moneyball/domain/catboost_predictor.py#L22)) accumulated across v1.14→v1.15:
 
 1. Pi-Rating (3)
 2. Form EMA (4)
@@ -32,15 +32,15 @@ E tem **43 features** ([CATBOOST_FEATURE_NAMES](football_moneyball/domain/catboo
 8. Coach profile (6) — v1.15.0
 9. Standings (5) — v1.15.0
 
-Várias são provavelmente redundantes (duas formas EMA, dois xG rollings em janelas diferentes, standings × points_last_5 × form_ema medindo forma), sem terem passado por ablation.
+Several are likely redundant (two EMA forms, two xG rollings over different windows, standings × points_last_5 × form_ema all measuring form), without having gone through ablation.
 
-Resultado: modelo possivelmente sub-tunado E com overfit latente por feature bloat.
+Result: model is possibly under-tuned AND carrying latent overfit from feature bloat.
 
-## Solução
+## Solution
 
-**Fase A — Hyperopt via Optuna**
+**Phase A — Hyperopt via Optuna**
 
-TPE sampler com 50 trials, temporal CV 3-fold expanding, objetivo RPS. Search space nos 5 parâmetros de maior impacto:
+TPE sampler with 50 trials, 3-fold expanding temporal CV, RPS objective. Search space over the 5 highest-impact parameters:
 
 ```python
 search_space = {
@@ -52,98 +52,98 @@ search_space = {
 }
 ```
 
-Com `MedianPruner(n_startup_trials=10, n_warmup_steps=200)` pra matar trials ruins cedo. Best params salvos em `/data/models/catboost_best_params.json`.
+With `MedianPruner(n_startup_trials=10, n_warmup_steps=200)` to kill bad trials early. Best params saved in `/data/models/catboost_best_params.json`.
 
-**Fase B — SHAP pruning**
+**Phase B — SHAP pruning**
 
-1. Computar SHAP values do modelo best-tuned
-2. Ranquear features por `mean(|SHAP|)` (média através das 3 classes)
-3. Identificar candidatos a remoção: features com importância < 0.5% do total
-4. Complementar com correlação: se `|corr(f_i, f_j)| > 0.85`, remover o de menor SHAP
-5. **Ablation**: remover candidatos em blocos de 5, re-treinar com best params, medir ΔRPS
-6. Aceitar remoção se ΔRPS ≤ +1% (modelo mantém ou melhora)
-7. Parar quando próximo bloco piora > 1%
+1. Compute SHAP values for the best-tuned model
+2. Rank features by `mean(|SHAP|)` (averaged across the 3 classes)
+3. Identify removal candidates: features with importance < 0.5% of the total
+4. Complement with correlation: if `|corr(f_i, f_j)| > 0.85`, remove the lower-SHAP one
+5. **Ablation**: remove candidates in blocks of 5, retrain with best params, measure ΔRPS
+6. Accept removal if ΔRPS ≤ +1% (model holds or improves)
+7. Stop when the next block worsens by > 1%
 
-Feature set final salvo em `CATBOOST_FEATURE_NAMES_V2` ao lado do original pra backward compat.
+Final feature set saved as `CATBOOST_FEATURE_NAMES_V2` alongside the original for backward compat.
 
-## Arquitetura
+## Architecture
 
-### Novos módulos
+### New modules
 
-| Módulo | Responsabilidade |
+| Module | Responsibility |
 |---|---|
 | `domain/feature_pruning.py` | `rank_features_by_shap(model, X) → list[tuple[name, importance]]`, `find_redundant_pairs(X, names, threshold) → list[tuple]`, `ablation_step(model_fn, X, y, features_to_drop) → ΔRPS`. Pure numpy/pandas. |
-| `use_cases/tune_catboost.py` | Orquestra Optuna study: carrega dataset via repo, define objective com temporal CV, salva best_params.json |
-| `use_cases/prune_catboost_features.py` | Carrega best model, roda SHAP, ablation loop, salva feature set V2 + model re-treinado |
+| `use_cases/tune_catboost.py` | Orchestrates the Optuna study: loads dataset via repo, defines the objective with temporal CV, saves best_params.json |
+| `use_cases/prune_catboost_features.py` | Loads best model, runs SHAP, ablation loop, saves V2 feature set + retrained model |
 
-### Módulos modificados
+### Modified modules
 
-| Módulo | Mudança |
+| Module | Change |
 |---|---|
-| `domain/catboost_predictor.py` | `train_catboost_1x2` aceita dict `params` em vez de kwargs individuais; adicionar `CATBOOST_FEATURE_NAMES_V2` |
-| `domain/catboost_predictor.py` | Nova função `temporal_cv_rps(X, y, params, n_folds=3) → float` (expanding window) |
-| `use_cases/train_catboost.py` | Refactor pra usar params dict + reutilizar `temporal_cv_rps` |
+| `domain/catboost_predictor.py` | `train_catboost_1x2` accepts a `params` dict instead of individual kwargs; add `CATBOOST_FEATURE_NAMES_V2` |
+| `domain/catboost_predictor.py` | New function `temporal_cv_rps(X, y, params, n_folds=3) → float` (expanding window) |
+| `use_cases/train_catboost.py` | Refactor to use params dict + reuse `temporal_cv_rps` |
 | `cli.py` | `tune-catboost [--trials 50]`, `prune-features [--ablation-tolerance 0.01]` |
 
 ### Schema
 
-Nenhuma tabela nova. Artefatos em filesystem:
+No new tables. Artifacts on the filesystem:
 
 ```
 /data/models/
-├── catboost_1x2.cbm              # best model atual (produção)
-├── catboost_1x2_v2.cbm           # novo modelo após hyperopt + pruning
-├── catboost_best_params.json     # params vindos do Optuna
-├── catboost_feature_importance.json   # SHAP + correlação report
+├── catboost_1x2.cbm              # current best model (production)
+├── catboost_1x2_v2.cbm           # new model after hyperopt + pruning
+├── catboost_best_params.json     # params coming from Optuna
+├── catboost_feature_importance.json   # SHAP + correlation report
 └── history/
-    └── catboost_1x2_<timestamp>.cbm   # versões antigas
+    └── catboost_1x2_<timestamp>.cbm   # old versions
 ```
 
-### Dependências novas
+### New dependencies
 
 - `optuna >= 3.5`
 - `shap >= 0.44`
 
-Adicionar ao `pyproject.toml`.
+Add to `pyproject.toml`.
 
 ## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] `tune-catboost` CLI: 50 trials Optuna, temporal CV 3-fold, salva best_params.json
-- [ ] Temporal CV helper em `domain/catboost_predictor.py` (3-fold expanding)
-- [ ] `prune-features` CLI: SHAP ranking + correlação + ablation loop
-- [ ] `CATBOOST_FEATURE_NAMES_V2` no code (não deletar V1)
-- [ ] Modelo v2 salvo em paralelo, sem auto-promoção
-- [ ] Report texto em `/data/models/catboost_feature_importance.json`: ranking SHAP, pares correlacionados, ablation log
-- [ ] Testes: `temporal_cv_rps` splits corretos, `rank_features_by_shap` ordenação, `find_redundant_pairs` threshold
-- [ ] CLI integration test: `tune-catboost --trials 3` smoke test (3 trials só)
+- [ ] `tune-catboost` CLI: 50 Optuna trials, 3-fold temporal CV, saves best_params.json
+- [ ] Temporal CV helper in `domain/catboost_predictor.py` (3-fold expanding)
+- [ ] `prune-features` CLI: SHAP ranking + correlation + ablation loop
+- [ ] `CATBOOST_FEATURE_NAMES_V2` in the code (do not delete V1)
+- [ ] V2 model saved in parallel, with no auto-promotion
+- [ ] Text report in `/data/models/catboost_feature_importance.json`: SHAP ranking, correlated pairs, ablation log
+- [ ] Tests: `temporal_cv_rps` correct splits, `rank_features_by_shap` ordering, `find_redundant_pairs` threshold
+- [ ] CLI integration test: `tune-catboost --trials 3` smoke test (3 trials only)
 
-### Fora do Escopo
+### Out of Scope
 
-- Auto-promoção do v2 para produção (requer A/B ou backtest explícito — outra iteração)
-- Tuning de `border_count`, `random_strength`, `min_data_in_leaf` (só os 5 core)
-- Hyperopt do Pi-Rating γ (outro módulo)
-- SHAP interactions (só main effects)
-- Dashboard frontend com SHAP plots
-- Integração com v1.16 (monitored calibration) — ortogonal
+- Auto-promotion of V2 to production (requires explicit A/B or backtest — another iteration)
+- Tuning `border_count`, `random_strength`, `min_data_in_leaf` (only the 5 core ones)
+- Hyperopt of Pi-Rating γ (other module)
+- SHAP interactions (main effects only)
+- Frontend dashboard with SHAP plots
+- Integration with v1.16 (monitored calibration) — orthogonal
 
 ## Research
 
-Ver [[../research/catboost-hyperopt-shap|catboost-hyperopt-shap]]:
+See [[../research/catboost-hyperopt-shap|catboost-hyperopt-shap]]:
 
-- **Optuna TPE** é o sampler padrão pra tree-based HPO
-- **5 params core** cobrem ~90% do ganho — não tunar 10+ de uma vez
-- **RPS** como objetivo (nunca accuracy)
-- **Temporal CV expanding**, não K-Fold (dados temporais)
-- **MedianPruner** com warmup de 10 trials economiza 30-50% do tempo
-- **SHAP + ablation** > threshold direto no feature importance (built-in e SHAP discordam em ~20% dos rankings)
-- **Correlação |r| > 0.85** como filtro prévio pra redundância
-- **Ganho esperado**: 1.5-4% RPS — aceitar mesmo se modesto
+- **Optuna TPE** is the default sampler for tree-based HPO
+- **5 core params** cover ~90% of the gain — do not tune 10+ at once
+- **RPS** as the objective (never accuracy)
+- **Expanding temporal CV**, not K-Fold (temporal data)
+- **MedianPruner** with 10-trial warmup saves 30-50% of the time
+- **SHAP + ablation** > direct threshold on feature importance (built-in and SHAP disagree on ~20% of rankings)
+- **Correlation |r| > 0.85** as a pre-filter for redundancy
+- **Expected gain**: 1.5-4% RPS — acceptable even if modest
 
 ## Testing
 
-### Unit (domain puro)
+### Unit (pure domain)
 
 ```python
 # tests/test_feature_pruning.py
@@ -163,7 +163,7 @@ def test_temporal_cv_rps_shape_matches_n_folds()
 
 ```python
 # tests/test_tune_catboost_usecase.py
-def test_tune_catboost_smoke_3_trials()  # verifica que roda sem crash
+def test_tune_catboost_smoke_3_trials()  # verifies it runs without crashing
 def test_tune_catboost_saves_best_params_json()
 def test_tune_catboost_best_params_in_search_space()
 
@@ -174,23 +174,23 @@ def test_prune_features_respects_ablation_tolerance()
 
 ### Manual
 
-- `moneyball tune-catboost --trials 50` no dataset completo (1610+ matches) → checar best RPS < baseline
-- `moneyball prune-features --ablation-tolerance 0.01` → checar que feature set V2 mantém ou melhora RPS
-- Inspecionar `/data/models/catboost_feature_importance.json`: ver se Pi-Rating e market_probs estão no top-5 (esperado)
+- `moneyball tune-catboost --trials 50` on the full dataset (1610+ matches) → check best RPS < baseline
+- `moneyball prune-features --ablation-tolerance 0.01` → check that V2 feature set holds or improves RPS
+- Inspect `/data/models/catboost_feature_importance.json`: check whether Pi-Rating and market_probs are in the top-5 (expected)
 
 ## Success Criteria
 
-- [ ] `tune-catboost --trials 50` completa em < 6h no dataset atual
-- [ ] Best RPS em temporal CV 3-fold ≤ baseline × 0.98 (≥ 2% de melhora) **OU** decisão documentada de aceitar baseline se ganho < 2%
-- [ ] `prune-features` produz V2 com ≤ 35 features (pruning de ≥ 8) mantendo RPS dentro de +1% do best tuned
-- [ ] SHAP report mostra Pi-Rating, market probs, xG rolling no top-10 (sanity check)
-- [ ] Testes novos passando, zero regressão em testes existentes
-- [ ] Feature names V1 preservados no código (rollback trivial)
-- [ ] pyproject.toml atualizado com `optuna`, `shap`
-- [ ] README do pitch documenta como rodar e como decidir promover V2 → produção
+- [ ] `tune-catboost --trials 50` completes in < 6h on the current dataset
+- [ ] Best RPS in 3-fold temporal CV ≤ baseline × 0.98 (≥ 2% improvement) **OR** a documented decision to accept the baseline if the gain is < 2%
+- [ ] `prune-features` produces V2 with ≤ 35 features (pruning ≥ 8) keeping RPS within +1% of the best tuned
+- [ ] SHAP report shows Pi-Rating, market probs, xG rolling in the top-10 (sanity check)
+- [ ] New tests passing, zero regression in existing tests
+- [ ] V1 feature names preserved in the code (trivial rollback)
+- [ ] pyproject.toml updated with `optuna`, `shap`
+- [ ] Pitch README documents how to run it and how to decide on promoting V2 → production
 
-## Próximos pitches ligados
+## Related upcoming pitches
 
-- v1.16.0 — Calibração monitorada (ortogonal: monitora probs calibradas, não tuning do base)
-- v1.18.0 (futuro) — A/B backtesting framework pra promover V2 → produção com confiança
-- v1.19.0 (futuro) — Expandir HPO pro Pi-Rating γ e EMA α (atualmente hardcoded)
+- v1.16.0 — Monitored calibration (orthogonal: monitors calibrated probs, not tuning of the base)
+- v1.18.0 (future) — A/B backtesting framework to promote V2 → production with confidence
+- v1.19.0 (future) — Expand HPO to Pi-Rating γ and EMA α (currently hardcoded)

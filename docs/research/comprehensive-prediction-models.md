@@ -10,188 +10,195 @@ tags:
   - xgboost
 ---
 
-# Research — Modelos Matemáticos Completos pra Prever Futebol
+# Research — Complete Mathematical Models for Football Prediction
 
 > Research date: 2026-04-04
-> Sources: [listadas ao final]
+> Sources: [listed at the end]
 
 ## Context
 
-Precisamos evoluir de "Poisson simples com xG do time" pra um sistema completo que use TODOS os dados disponíveis (jogadores, técnico, árbitro, escanteios, cartões, chutes, faltas) pra prever TODOS os mercados da Betfair.
+We need to evolve from "simple Poisson with team xG" to a complete system that uses ALL available data (players, coach, referee, corners, cards, shots, fouls) to predict ALL Betfair markets.
 
 ## Findings
 
-### 1. Arquitetura dos Syndicates (Starlizard, Smartodds)
+### 1. Syndicate Architectures (Starlizard, Smartodds)
 
-**Starlizard (Tony Bloom, £600M/ano):**
-- 4 equipes especializadas, cada uma num papel diferente
-- Calcula o **placar mais provável** → deriva todos os mercados
-- Foco em Asian Handicap (mais líquido)
-- Modelos consideram: clima, moral do time, escalação
-- Aposta perto do match day (pra incluir info de escalação)
-- Processa milhares de eventos por segundo
+**Starlizard (Tony Bloom, £600M/year):**
 
-**Smartodds (Matthew Benham, dono do Brentford):**
-- "Não tentamos dizer o que vai acontecer, tentamos dizer probabilidades"
-- Se as probabilidades são melhores que as do bookmaker → bet
+- 4 specialized teams, each in a different role
+- Computes the **most likely score** → derives all markets
+- Focus on Asian Handicap (more liquid)
+- Models consider: weather, team morale, lineup
+- Bets close to match day (to include lineup info)
+- Processes thousands of events per second
 
-**Insight:** Ambos geram **um placar probabilístico** (score matrix) e derivam todos os mercados dele. Exatamente o que nosso Monte Carlo faz — mas eles alimentam com dados muito mais ricos.
+**Smartodds (Matthew Benham, owner of Brentford):**
 
-### 2. Abordagens Acadêmicas (Estado da Arte 2024-2025)
+- "We don't try to say what will happen, we try to say probabilities"
+- If the probabilities are better than the bookmaker's → bet
 
-#### A. Dixon-Coles Estendido (Poisson Bivariado)
+**Insight:** Both generate a **probabilistic score** (score matrix) and derive all markets from it. Exactly what our Monte Carlo does — but they feed it with much richer data.
+
+### 2. Academic Approaches (State of the Art 2024-2025)
+
+#### A. Extended Dixon-Coles (Bivariate Poisson)
 
 **Paper:** "Extending the Dixon and Coles model" (JRSS Series C, Jan 2025)
-- Usa família Sarmanov pra modelar correlação entre gols dos times
-- Extensões incluem **covariáveis táticas** extraídas de network clustering
-- Parâmetros time-varying (attack/defense mudam ao longo da temporada)
 
-**Limitação:** Ainda opera a nível de time, não de jogador.
+- Uses the Sarmanov family to model correlation between teams' goals
+- Extensions include **tactical covariates** extracted from network clustering
+- Time-varying parameters (attack/defense change throughout the season)
 
-#### B. ML Poisson Inflado (Beat the Bookie, 2022)
+**Limitation:** Still operates at team level, not player level.
 
-**Modelo:** XGBoost/Random Forest → prediz λ (xG) → Poisson → score matrix
+#### B. Inflated ML Poisson (Beat the Bookie, 2022)
 
-**Features (EMA de 5-20 jogos):**
+**Model:** XGBoost/Random Forest → predicts λ (xG) → Poisson → score matrix
+
+**Features (EMA of 5-20 matches):**
+
 - Goals for/against
 - xG for/against
-- Shots e shots on target
-- **Corner kicks** ← já inclui escanteios
+- Shots and shots on target
+- **Corner kicks** ← already includes corners
 - Deep passes
-- **PPDA** (pressing) ← já inclui pressing
+- **PPDA** (pressing) ← already includes pressing
 
-**Inovação:** Zero-Inflated Poisson (ZIP) pra corrigir excesso de 0x0
+**Innovation:** Zero-Inflated Poisson (ZIP) to correct excess 0x0
 
-**Resultado:** ~5.3% profit médio em simulação (Big5 leagues, 7.178 jogos)
+**Result:** ~5.3% average profit in simulation (Big5 leagues, 7,178 matches)
 
 #### C. Feedforward Neural Network + XGBoost Ensemble (2024)
 
 **Paper:** "Data-driven prediction of soccer outcomes" (Journal of Big Data, 2024)
 
-**Features incluem:**
+**Features include:**
+
 - Out-to-in actions, interceptions, sprinting/min
 - **Yellow/red cards, corners, shots on target**
 - Possession percentage
 - Half-time results (real-time)
 
-**Melhor modelo:** Voting ensemble (Random Forest + XGBoost) + Feedforward NN
+**Best model:** Voting ensemble (Random Forest + XGBoost) + Feedforward NN
 
 #### D. Bayes-xG: Player + Position Correction (2023)
 
 **Paper:** "Bayes-xG" (arxiv 2311.13707)
 
-**Inovação:** Mesmo controlando por localização do chute, **player-level effects persistem** — certos jogadores têm ajuste positivo/negativo de xG. Usa Bayesian Hierarchical Model.
+**Innovation:** Even controlling for shot location, **player-level effects persist** — certain players have positive/negative xG adjustments. Uses a Bayesian Hierarchical Model.
 
-**Implicação:** Nosso modelo deveria ajustar xG por jogador, não só por time.
+**Implication:** Our model should adjust xG by player, not just by team.
 
-#### E. Bayesian Hierarchical com Network Indicators (2021)
+#### E. Bayesian Hierarchical with Network Indicators (2021)
 
 **Paper:** "The role of passing network indicators in modeling football outcomes" (Springer)
 
-**Features:** Shots on target, **corners**, passing network metrics são os "main determinants" de resultados.
+**Features:** Shots on target, **corners**, passing network metrics are the "main determinants" of results.
 
-### 3. Framework Unificado Recomendado
+### 3. Recommended Unified Framework
 
-Baseado em tudo que pesquisei, o modelo mais robusto combina:
+Based on everything researched, the most robust model combines:
 
 ```
-Camada 1: FEATURE ENGINEERING (por jogador dos 22 em campo)
-├── xG/90 individual (Sofascore expectedGoals)
-├── Chutes/90, chutes no alvo/90 (totalShots, shotsOnTarget)
-├── Cruzamentos/90 (totalCross) → proxy pra escanteios
-├── Faltas/90 (fouls, wasFouled) → proxy pra cartões
+Layer 1: FEATURE ENGINEERING (per player of the 22 on the pitch)
+├── Individual xG/90 (Sofascore expectedGoals)
+├── Shots/90, shots on target/90 (totalShots, shotsOnTarget)
+├── Crosses/90 (totalCross) → proxy for corners
+├── Fouls/90 (fouls, wasFouled) → proxy for cards
 ├── Tackles/90 (totalTackle)
 ├── Passes/90 (totalPass, accuratePass)
 └── Carries, progressive actions
 
-Camada 2: TEAM AGGREGATION (somar/média dos 11 titulares)
-├── λ_gols = Σ xG/90 dos 11 × opponent_defense_factor
-├── λ_chutes = Σ shots/90 dos 11
-├── λ_escanteios = f(cruzamentos dos laterais + chutes bloqueados)
-├── λ_cartões = Σ faltas/90 dos volantes × referee_card_rate
-├── λ_defesas = chutes_adversário × (1 - goalkeeper_save_rate)
-└── λ_gols_HT = λ_gols × 0.45
+Layer 2: TEAM AGGREGATION (sum/average of the 11 starters)
+├── λ_goals = Σ xG/90 of the 11 × opponent_defense_factor
+├── λ_shots = Σ shots/90 of the 11
+├── λ_corners = f(crosses from the fullbacks + blocked shots)
+├── λ_cards = Σ fouls/90 of the holding mids × referee_card_rate
+├── λ_saves = opponent_shots × (1 - goalkeeper_save_rate)
+└── λ_goals_HT = λ_goals × 0.45
 
-Camada 3: CONTEXTUAL ADJUSTMENT
-├── Home advantage (dinâmico, calculado do banco)
-├── Referee strictness (cartões/jogo deste árbitro)
-├── Derby factor (+20% cartões, +10% escanteios)
-├── Form/momentum (EMA exponencial, últimos 5 jogos pesam mais)
-├── Regressão à média (k/(k+n) dinâmico)
-└── Weather (se disponível)
+Layer 3: CONTEXTUAL ADJUSTMENT
+├── Home advantage (dynamic, computed from the DB)
+├── Referee strictness (cards/match of this referee)
+├── Derby factor (+20% cards, +10% corners)
+├── Form/momentum (exponential EMA, last 5 matches weigh more)
+├── Regression to the mean (dynamic k/(k+n))
+└── Weather (if available)
 
-Camada 4: MONTE CARLO MULTI-DIMENSIONAL
-├── Simular 10K jogos
-│   ├── Gols home ~ Poisson(λ_gols_home)
-│   ├── Gols away ~ Poisson(λ_gols_away)
-│   ├── Corners home ~ Poisson(λ_corners_home)
-│   ├── Corners away ~ Poisson(λ_corners_away)
+Layer 4: MULTI-DIMENSIONAL MONTE CARLO
+├── Simulate 10K matches
+│   ├── Home goals ~ Poisson(λ_goals_home)
+│   ├── Away goals ~ Poisson(λ_goals_away)
+│   ├── Home corners ~ Poisson(λ_corners_home)
+│   ├── Away corners ~ Poisson(λ_corners_away)
 │   ├── Cards ~ ZIP(λ_cards × referee_factor)
 │   ├── Shots ~ Poisson(λ_shots)
-│   └── HT goals ~ Poisson(λ_gols × 0.45)
-└── Cada simulação produz um "jogo completo"
+│   └── HT goals ~ Poisson(λ_goals × 0.45)
+└── Each simulation produces a "complete match"
 
-Camada 5: MARKET DERIVATION (do jogo simulado)
+Layer 5: MARKET DERIVATION (from the simulated match)
 ├── 1X2, Correct Score, Asian Handicap
-├── Over/Under gols (0.5 a 5.5)
-├── BTTS, Chance Dupla, Empate sem aposta
-├── Over/Under escanteios (4.5 a 15.5)
-├── Over/Under cartões (0.5 a 8.5)
+├── Over/Under goals (0.5 to 5.5)
+├── BTTS, Double Chance, Draw No Bet
+├── Over/Under corners (4.5 to 15.5)
+├── Over/Under cards (0.5 to 8.5)
 ├── HT result, HT/FT, HT goals
-├── Margem de vitória
-├── Gols por time (casa/fora)
-├── Primeiro gol
-└── Player props (marcador, chutes, faltas)
+├── Winning margin
+├── Goals per team (home/away)
+├── First goal
+└── Player props (scorer, shots, fouls)
 ```
 
-### 4. ML vs Poisson: Qual usar?
+### 4. ML vs Poisson: Which to Use?
 
-| Approach | Prós | Contras | Quando usar |
-|----------|------|---------|-------------|
-| **Poisson puro** | Interpretável, rápido, score matrix | Ignora features ricas | Baseline |
-| **ML → Poisson** | Features ricas → λ melhor | Precisa de dados | **RECOMENDADO** |
-| **XGBoost direto** | Melhor accuracy em 1X2 | Sem score matrix, sem multi-market | Só 1X2 |
-| **Neural Network** | Captura não-linearidades | Caixa preta, precisa muitos dados | Se tiver 10K+ jogos |
-| **Bayesian Hierarchical** | Incerteza quantificada, player-level | Complexo, lento | Se quiser intervalos de confiança |
+| Approach | Pros | Cons | When to use |
+|----------|------|------|-------------|
+| **Pure Poisson** | Interpretable, fast, score matrix | Ignores rich features | Baseline |
+| **ML → Poisson** | Rich features → better λ | Requires data | **RECOMMENDED** |
+| **XGBoost direct** | Better 1X2 accuracy | No score matrix, no multi-market | 1X2 only |
+| **Neural Network** | Captures non-linearities | Black box, needs lots of data | If you have 10K+ matches |
+| **Bayesian Hierarchical** | Quantified uncertainty, player-level | Complex, slow | If you want confidence intervals |
 
-**Recomendação: ML → Poisson (Inflated)**
-- XGBoost/Random Forest prediz λ pra cada métrica (gols, corners, cards, shots)
-- Alimenta Poisson multidimensional
-- Monte Carlo simula jogo completo
-- Todos os mercados derivados
+**Recommendation: ML → Poisson (Inflated)**
 
-### 5. O que os melhores usam que nós não usamos
+- XGBoost/Random Forest predicts λ for each metric (goals, corners, cards, shots)
+- Feeds multi-dimensional Poisson
+- Monte Carlo simulates the complete match
+- All markets derived
 
-| Feature | Starlizard | Academics | Nós (hoje) | Nós (v1.0.0) |
+### 5. What the Best Use That We Don't
+
+| Feature | Starlizard | Academics | Us (today) | Us (v1.0.0) |
 |---------|:---:|:---:|:---:|:---:|
-| xG time | ✅ | ✅ | ✅ | ✅ |
-| xG jogador | ✅ | ✅ | ❌ | ✅ |
-| Escalação | ✅ | ❌ | ❌ | ✅ |
-| Árbitro | ✅ | parcial | ❌ | ✅ |
-| Escanteios | ✅ | ✅ | ❌ | ✅ |
-| Cartões | ✅ | ✅ | ❌ | ✅ |
-| PPDA/pressing | ✅ | ✅ | parcial | ✅ |
-| Clima | ✅ | parcial | ❌ | ❌ |
-| Moral/momentum | ✅ | ❌ | parcial | ✅ |
-| EMA form | ✅ | ✅ | ✅ | ✅ |
-| Network analysis | ❌ | ✅ | temos | avaliar |
-| ML pra λ | provável | ✅ | ❌ | **NEXT** |
+| Team xG | Yes | Yes | Yes | Yes |
+| Player xG | Yes | Yes | No | Yes |
+| Lineup | Yes | No | No | Yes |
+| Referee | Yes | partial | No | Yes |
+| Corners | Yes | Yes | No | Yes |
+| Cards | Yes | Yes | No | Yes |
+| PPDA/pressing | Yes | Yes | partial | Yes |
+| Weather | Yes | partial | No | No |
+| Morale/momentum | Yes | No | partial | Yes |
+| EMA form | Yes | Yes | Yes | Yes |
+| Network analysis | No | Yes | have | evaluate |
+| ML for λ | probable | Yes | No | **NEXT** |
 
 ## Implications for Football Moneyball
 
-### Evolução recomendada
+### Recommended evolution
 
-1. **Agora (v1.0.0 P0):** Já feito — mercados derivados do Monte Carlo simples
-2. **Próximo (v1.0.0 P1):** Player-aware λ + novos Poisson (corners, cards, shots)
-3. **Depois (v1.1.0):** ML → Poisson (XGBoost prediz λ usando todas as features)
-4. **Futuro (v1.2.0):** Bayesian Hierarchical com player-level effects + incerteza
+1. **Now (v1.0.0 P0):** Already done — markets derived from the simple Monte Carlo
+2. **Next (v1.0.0 P1):** Player-aware λ + new Poisson (corners, cards, shots)
+3. **Later (v1.1.0):** ML → Poisson (XGBoost predicts λ using all features)
+4. **Future (v1.2.0):** Bayesian Hierarchical with player-level effects + uncertainty
 
-### O salto mais impactante: player-aware λ
+### The most impactful leap: player-aware λ
 
-O gap entre nosso modelo (47% accuracy) e os syndicates (~55-60% estimado) está em:
-1. **Escalação** — quem joga muda tudo
-2. **Árbitro** — muda λ de cartões em 50%+
-3. **ML pra λ** — XGBoost captura interações não-lineares entre features
+The gap between our model (47% accuracy) and the syndicates (~55-60% estimated) lies in:
+
+1. **Lineup** — who plays changes everything
+2. **Referee** — changes the cards λ by 50%+
+3. **ML for λ** — XGBoost captures non-linear interactions between features
 
 ## Sources
 

@@ -1,10 +1,10 @@
-"""Modulo de modelagem de arbitros (referee strictness).
+"""Referee modeling module (referee strictness).
 
-Sofascore expoe totais de carreira: yellowCards, redCards, yellowRedCards,
-games. Calculamos `cards_per_game` direto (nao precisamos empirical Bayes
-shrinkage quando temos muita amostra).
+Sofascore exposes career totals: yellowCards, redCards, yellowRedCards,
+games. We compute `cards_per_game` directly (we do not need empirical Bayes
+shrinkage when we have plenty of samples).
 
-Logica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -14,30 +14,30 @@ def referee_strictness_factor(
     referee_cards_per_game: float,
     league_avg_cards_per_game: float,
 ) -> float:
-    """Fator multiplicativo pra λ de cartoes.
+    """Multiplicative factor for the cards lambda.
 
-    1.0 = juiz na media da liga
-    1.5 = juiz 50% mais rigoroso
-    0.7 = juiz 30% mais leniente
+    1.0 = referee at the league average
+    1.5 = referee 50% stricter
+    0.7 = referee 30% more lenient
 
     Parameters
     ----------
     referee_cards_per_game : float
-        Media de cartoes por jogo desse arbitro.
+        Average cards per match for this referee.
     league_avg_cards_per_game : float
-        Media de cartoes por jogo na liga.
+        Average cards per match in the league.
 
     Returns
     -------
     float
-        Fator multiplicativo clamped em [0.5, 2.0].
+        Multiplicative factor clamped to [0.5, 2.0].
     """
     if league_avg_cards_per_game <= 0:
         return 1.0
     if referee_cards_per_game <= 0:
         return 1.0
     factor = referee_cards_per_game / league_avg_cards_per_game
-    # Clamp pra evitar extremos
+    # Clamp to avoid extremes
     return max(0.5, min(factor, 2.0))
 
 
@@ -47,7 +47,7 @@ def cards_per_game_from_totals(
     red_total: int,
     matches: int,
 ) -> float:
-    """Calcula cards_per_game a partir dos totais de carreira."""
+    """Compute cards_per_game from career totals."""
     if matches <= 0:
         return 0.0
     total_cards = yellow_total + yellowred_total + red_total

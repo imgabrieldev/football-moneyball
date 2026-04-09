@@ -1,7 +1,7 @@
-"""Use case: backtesting do modelo de previsao com dados historicos.
+"""Use case: backtesting of the model of previsao with data historicos.
 
-v0.5.0 — usa predict_match() com parametros dinamicos.
-Para cada partida, usa apenas dados ANTERIORES (sem lookahead).
+v0.5.0 — usa predict_match() with parameters dinamicos.
+For each match, usa only data ANTERIORES (without lookahead).
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ from football_moneyball.domain.bankroll import calculate_stake
 
 
 class Backtest:
-    """Backtesting do modelo com partidas ja disputadas.
+    """Backtesting of the model with matches ja disputadas.
 
     Parameters
     ----------
     repo : MatchRepository
-        Repositorio com dados historicos.
+        Repositorio with data historicos.
     """
 
     def __init__(self, repo) -> None:
@@ -37,28 +37,28 @@ class Backtest:
         kelly_fraction: float = 0.25,
         min_matches_history: int = 3,
     ) -> dict[str, Any]:
-        """Executa backtesting completo.
+        """Runs backtesting complete.
 
-        Para cada partida em ordem cronologica:
-        1. Filtra dados para match_id < atual (sem lookahead)
-        2. Roda predict_match() com dados pre-jogo
-        3. Simula apostas com Kelly fracionario
-        4. Compara com resultado real
+        For each match in ordem cronologica:
+        1. Filtra data for match_id < atual (without lookahead)
+        2. Roda predict_match() with data pre-jogo
+        3. Simula bets with Kelly fracionario
+        4. Comfor with resultado real
 
         Returns
         -------
         dict
-            ROI, hit rate, Brier score, detalhes de cada aposta.
+            ROI, hit rate, Brier score, detalhes of each bet.
         """
-        # Buscar todos os dados
+        # Buscar todos os data
         all_data = self.repo.get_all_match_data(competition, season)
         if all_data.empty:
-            return {"error": "Sem dados para backtesting."}
+            return {"error": "Without data for backtesting."}
 
-        # Lista de match_ids unicos em ordem
+        # Lista of match_ids unicos in ordem
         match_ids = sorted(all_data["match_id"].unique())
 
-        # Resultados reais por partida
+        # Resultados reais by match
         match_results = {}
         for mid in match_ids:
             md = all_data[all_data["match_id"] == mid]
@@ -91,20 +91,20 @@ class Backtest:
             home_goals = result["home_goals"]
             away_goals = result["away_goals"]
 
-            # Dados PRE-JOGO: apenas partidas anteriores
+            # Data PRE-JOGO: only earlier matches
             prior_data = all_data[all_data["match_id"] < mid]
             n_prior_matches = len(prior_data["match_id"].unique())
 
-            if n_prior_matches < min_matches_history * 10:  # ~3 rodadas completas
+            if n_prior_matches < min_matches_history * 10:  # ~3 rodadas completes
                 continue
 
-            # Verificar que ambos os times tem historico
+            # Verificar that ambos os times tem history
             home_prior = prior_data[prior_data["team"] == home]
             away_prior = prior_data[prior_data["team"] == away]
             if home_prior.empty or away_prior.empty:
                 continue
 
-            # Prever com pipeline v0.5.0
+            # Prever with pipeline v0.5.0
             pred = predict_match(
                 home_team=home,
                 away_team=away,
@@ -150,7 +150,7 @@ class Backtest:
                 "brier": brier,
             })
 
-            # Simular apostas com odds sinteticas (margem 10% + noise)
+            # Simular bets with odds sinteticas (margem 10% + noise)
             synthetic_odds = self._generate_synthetic_odds(pred, margin=0.10)
             value_bets_found = find_value_bets(pred, synthetic_odds, min_edge)
 
@@ -182,11 +182,11 @@ class Backtest:
                 bankroll_history.append(bankroll)
 
         if not predictions:
-            return {"error": "Nenhuma partida analisada.", "matches_analyzed": 0}
+            return {"error": "Nenhuma match analisada.", "matches_analyzed": 0}
 
         if not bets:
             return {
-                "error": "Nenhuma aposta simulada.",
+                "error": "Nenhuma bet simulada.",
                 "predictions": predictions,
                 "matches_analyzed": len(predictions),
                 "avg_brier": round(np.mean([p["brier"] for p in predictions]), 4),
@@ -229,7 +229,7 @@ class Backtest:
         }
 
     def _generate_synthetic_odds(self, pred: dict, margin: float = 0.10) -> list[dict]:
-        """Odds sinteticas com margem + noise."""
+        """Odds sinteticas with margem + noise."""
         rng = np.random.default_rng()
 
         def prob_to_odds(p: float) -> float:
@@ -252,7 +252,7 @@ class Backtest:
         }]
 
     def _bet_won(self, vb: dict, actual: str, total: int, btts: bool) -> bool:
-        """Determina se uma aposta foi vencedora."""
+        """Determina if a bet was winnera."""
         if vb["market"] == "h2h":
             return vb["outcome"] == actual
         elif vb["market"] == "totals":

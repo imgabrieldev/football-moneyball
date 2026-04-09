@@ -1,4 +1,4 @@
-"""Testes para domain/value_detector.py — deteccao de value bets."""
+"""Tests for domain/value_detector.py — value bet detection."""
 
 import pytest
 
@@ -29,7 +29,7 @@ class TestOddsToImpliedProb:
 
 class TestRemoveVig:
     def test_removes_margin(self):
-        # Odds: 1.80, 3.50, 4.50 → implied: 0.556, 0.286, 0.222 → sum=1.064
+        # Odds: 1.80, 3.50, 4.50 -> implied: 0.556, 0.286, 0.222 -> sum=1.064
         probs = [0.556, 0.286, 0.222]
         clean = remove_vig(probs)
         assert abs(sum(clean) - 1.0) < 0.01
@@ -56,12 +56,12 @@ class TestCalculateEdge:
 
 class TestExpectedValue:
     def test_positive_ev(self):
-        # prob=0.6, odds=2.0 → EV = 0.6*2 - 1 = 0.2
+        # prob=0.6, odds=2.0 -> EV = 0.6*2 - 1 = 0.2
         ev = expected_value(0.6, 2.0)
         assert abs(ev - 0.2) < 0.001
 
     def test_negative_ev(self):
-        # prob=0.4, odds=2.0 → EV = 0.4*2 - 1 = -0.2
+        # prob=0.4, odds=2.0 -> EV = 0.4*2 - 1 = -0.2
         ev = expected_value(0.4, 2.0)
         assert abs(ev - (-0.2)) < 0.001
 
@@ -84,7 +84,7 @@ class TestFindValueBets:
             ],
         }]
         vbets = find_value_bets(predictions, odds_data, min_edge=0.03)
-        # Home: model 60% vs implied 55.6% → edge 4.4% → should be found
+        # Home: model 60% vs implied 55.6% -> edge 4.4% -> should be found
         assert len(vbets) >= 1
         assert any(vb["outcome"] == "Home" for vb in vbets)
 
@@ -102,7 +102,7 @@ class TestFindValueBets:
                 {"market": "h2h", "outcome": "Home", "odds": 1.80},
             ],
         }]
-        # Edge = 56% - 55.6% = 0.4% → below 5% threshold
+        # Edge = 56% - 55.6% = 0.4% -> below 5% threshold
         vbets = find_value_bets(predictions, odds_data, min_edge=0.05)
         assert len(vbets) == 0
 

@@ -7,116 +7,123 @@ tags:
   - gaps
 ---
 
-# Research — Features que Ignoramos no Modelo
+# Research — Features We Ignore in the Model
 
 > Research date: 2026-04-04
-> Motivado por: análise SPFC 4-1 Cruzeiro (modelo previu 55% mas com xG subestimado)
+> Motivated by: SPFC 4-1 Cruzeiro analysis (model predicted 55% but with underestimated xG)
 
 ## Context
 
-Nosso modelo v1.6.0 tem 40 features mas ainda subestima/erra casos onde o **estilo de jogo** e **eficiência de finalização** importam. Exemplo:
+Our v1.6.0 model has 40 features but still underestimates/misses cases where **playing style** and **finishing efficiency** matter. Example:
 
 **SPFC 4-1 Cruzeiro (04/04/2026):**
-- SPFC: 37% posse, 11 chutes, 1 SoT → **4 gols**
-- Cruzeiro: 63% posse, 13 chutes, 6 SoT → **1 gol**
-- SPFC xG 2.01 vs Cruzeiro xG 1.45 (diferença pequena mas placar 4-1)
-- **Goleiro SPFC salvou +0.83 gols**, goleiro Cruzeiro deixou -1.29
 
-Nosso modelo não capturou essa eficiência brutal de SPFC no contra-ataque.
+- SPFC: 37% possession, 11 shots, 1 SoT → **4 goals**
+- Cruzeiro: 63% possession, 13 shots, 6 SoT → **1 goal**
+- SPFC xG 2.01 vs Cruzeiro xG 1.45 (small difference but final score 4-1)
+- **SPFC keeper saved +0.83 goals**, Cruzeiro keeper let in -1.29
+- Our model did not capture SPFC's brutal counter-attack efficiency.
 
-## Findings — Features faltando
+## Findings — Missing features
 
-### Tier 1: Disponíveis no Sofascore (sem scraping novo)
+### Tier 1: Available on Sofascore (no new scraping needed)
 
-| Feature | O que mede | Por quê importa |
+| Feature | What it measures | Why it matters |
 |---|---|---|
-| **Posse de bola histórica** | % médio de posse nos últimos jogos | Identifica estilo (direto vs possession) |
-| **Big chances scored/missed** | Finalização de oportunidades claras | Eficiência > volume de chutes |
-| **Touches in penalty area** | Presença no terço final | Ameaça real vs posse estéril |
-| **Final third entries** | Frequência de ataques | Capacidade de criação |
-| **Long balls %** | Proporção de bolas longas | Direto vs elaborado |
-| **Aerial duels won %** | Dominância aérea | Decisivo em set pieces |
-| **Pass accuracy %** | Precisão técnica | Controle de jogo |
-| **Dispossessed count** | Perdas de posse sob pressão | Resistência sob pressing |
-| **Goals prevented (PSxG)** | Performance do goleiro | Goalkeeper impact real |
+| **Historical possession** | Average possession % over the last matches | Identifies style (direct vs possession) |
+| **Big chances scored/missed** | Finishing of clear-cut chances | Efficiency > shot volume |
+| **Touches in penalty area** | Presence in the final third | Real threat vs sterile possession |
+| **Final third entries** | Attack frequency | Creative capability |
+| **Long balls %** | Proportion of long balls | Direct vs elaborated |
+| **Aerial duels won %** | Aerial dominance | Decisive on set pieces |
+| **Pass accuracy %** | Technical precision | Game control |
+| **Dispossessed count** | Possession losses under pressure | Resilience under pressing |
+| **Goals prevented (PSxG)** | Goalkeeper performance | Real goalkeeper impact |
 
-**Onde buscar:** `event/{id}/statistics` (já validado — retorna todos esses campos)
+**Where to fetch:** `event/{id}/statistics` (already validated — returns all these fields)
 
-### Tier 2: Derivados do que já temos
+### Tier 2: Derived from what we already have
 
-| Feature | Como calcular |
+| Feature | How to compute |
 |---|---|
-| **Shot conversion rate** | `goals / shots` (eficiência de finalização) |
-| **SoT conversion** | `goals / shots_on_target` (precisão) |
+| **Shot conversion rate** | `goals / shots` (finishing efficiency) |
+| **SoT conversion** | `goals / shots_on_target` (precision) |
 | **Big chance efficiency** | `big_chances_scored / big_chances` |
-| **Possession-adjusted xG** | `xG / possession_%` (ameaça por unidade de posse) |
-| **Goal diff vs xG diff** | `(GF-GA) - (xGF-xGA)` (sorte/forma) |
+| **Possession-adjusted xG** | `xG / possession_%` (threat per unit of possession) |
+| **Goal diff vs xG diff** | `(GF-GA) - (xGF-xGA)` (luck/form) |
 | **Counter-attack indicator** | `low_possession + high_big_chances + wins` |
 
 ### Tier 3: Playing Style Archetypes
 
-Baseado em research Opta/StatsBomb:
+Based on Opta/StatsBomb research:
 
-- **Possession-based**: >55% posse, >85% pass accuracy, <30% long balls
-- **Direct/Counter**: <45% posse, >35% long balls, rápido em transição
-- **Balanced**: 45-55% posse, mixed metrics
-- **Press-heavy**: muitas recuperações no campo adversário
+- **Possession-based**: >55% possession, >85% pass accuracy, <30% long balls
+- **Direct/Counter**: <45% possession, >35% long balls, fast in transition
+- **Balanced**: 45-55% possession, mixed metrics
+- **Press-heavy**: many recoveries in the opposing half
 
-**Classificação**: pode ser feita via K-Means clustering nas features Tier 1.
+**Classification**: can be done via K-Means clustering on the Tier 1 features.
 
 ## Research Papers
 
 ### Playing Style & Win Probability (PMC 2024)
-- **Possession style** tem win probability **maior** que direct style em build-up
-- **Counter-attacks** têm **40% mais sucesso** que positional attacks em transição
-- Sequências de counter-attack: ~10/jogo, 7.49% converte gol
+
+- **Possession style** has **higher** win probability than direct style in build-up
+- **Counter-attacks** have **40% more success** than positional attacks in transition
+- Counter-attack sequences: ~10/match, 7.49% convert to a goal
 
 ### Post-Shot xG (PSxG)
-- **xG** mede qualidade do chute ANTES (posição, ângulo)
-- **PSxG** mede qualidade DEPOIS (trajetória, força, canto)
-- **Goals prevented** = `PSxG_allowed - goals_allowed` → performance do goleiro
-- Sofascore expõe **goals_prevented** direto (nome do campo: `goalsPrevented`)
+
+- **xG** measures shot quality BEFORE (position, angle)
+- **PSxG** measures shot quality AFTER (trajectory, force, corner)
+- **Goals prevented** = `PSxG_allowed - goals_allowed` → goalkeeper performance
+- Sofascore exposes **goals_prevented** directly (field name: `goalsPrevented`)
 
 ### Corner Kick Efficiency
-- Corners convertem gol em apenas **2.2%**
-- MAS esses gols **decidem 76% dos jogos** onde acontecem
-- Out-swinging corners mais efetivos (7.1% gol)
+
+- Corners convert to goals only **2.2%** of the time
+- BUT those goals **decide 76% of matches** in which they happen
+- Out-swinging corners are more effective (7.1% goal rate)
 
 ### Counter-attack Detection (arxiv 2024)
-- ~10 counter-attacks por jogo
-- 5 eventos por sequência
-- 40% dos counter-attacks terminam em chute
-- **Contra-ataques iniciados por defensores**: success rate 7.49%
+
+- ~10 counter-attacks per match
+- 5 events per sequence
+- 40% of counter-attacks end in a shot
+- **Counter-attacks initiated by defenders**: success rate 7.49%
 
 ## Implications for Football Moneyball
 
 ### v1.7.0 — Playing Style Features (shipping now)
 
-Expandir match_stats com 12 novos campos (v1.7.0 feito):
-- home/away_xg (Sofascore calcula)
+Expand match_stats with 12 new fields (v1.7.0 done):
+
+- home/away_xg (computed by Sofascore)
 - big_chances + big_chances_scored
 - touches_box, final_third_entries
 - long_balls_pct, aerial_won_pct
 - goals_prevented, passes, pass_accuracy, dispossessed
 
-### v1.8.0 — Derived Style Features (planejado)
+### v1.8.0 — Derived Style Features (planned)
 
-Calcular em `context_features.py`:
-- team_possession_avg (últimos N)
+Compute in `context_features.py`:
+
+- team_possession_avg (last N)
 - team_directness (% long balls)
 - team_finishing_efficiency (goals/big_chances)
-- team_gk_quality (goals_prevented médio)
-- team_counter_attack_style (flag baseado em posse < 45% + aerial > 55%)
+- team_gk_quality (average goals_prevented)
+- team_counter_attack_style (flag based on possession < 45% + aerial > 55%)
 
 ### v1.9.0 — Playing Style Clustering
 
-K-Means com 6 features de estilo → cada time recebe label:
+K-Means with 6 style features → each team gets a label:
+
 - "possession-dominant"
 - "counter-attacker"
 - "press-heavy"
 - "direct-play"
 
-Feature: **style_matchup** (ex: possession vs counter = favor ao counter).
+Feature: **style_matchup** (e.g. possession vs counter = favors the counter).
 
 ## Sources
 

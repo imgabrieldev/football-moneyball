@@ -1,9 +1,9 @@
-"""Wrapper de GradientBoostingRegressor pra predizer λ.
+"""GradientBoostingRegressor wrapper to predict lambda.
 
-Cada instance predicts um target (goals, corners, cards).
-Usa time-series CV no treino. Persist via joblib.
+Each instance predicts one target (goals, corners, cards).
+Uses time-series CV in training. Persisted via joblib.
 
-Logica pura (numpy + sklearn). Zero deps de infra.
+Pure logic (numpy + sklearn). Zero infra deps.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import numpy as np
 
 
 class LambdaPredictor:
-    """Prediz λ (expected value) pra uma metrica via GBR."""
+    """Predicts lambda (expected value) for a metric via GBR."""
 
     def __init__(self, target: str = "goals") -> None:
         self.target = target
@@ -20,32 +20,32 @@ class LambdaPredictor:
         self.metadata: dict = {}
 
     def train(self, X: np.ndarray, y: np.ndarray) -> dict:
-        """Treina GBR com Time-Series CV.
+        """Train GBR with Time-Series CV.
 
         Parameters
         ----------
         X : np.ndarray
-            Matriz de features (n_samples, n_features).
+            Feature matrix (n_samples, n_features).
         y : np.ndarray
             Targets (n_samples,).
 
         Returns
         -------
         dict
-            Metadados: target, n_samples, n_features, cv_mae_mean, cv_mae_std.
+            Metadata: target, n_samples, n_features, cv_mae_mean, cv_mae_std.
         """
         from sklearn.ensemble import GradientBoostingRegressor
         from sklearn.metrics import mean_absolute_error
         from sklearn.model_selection import TimeSeriesSplit
 
         if len(X) < 10:
-            raise ValueError(f"Dataset muito pequeno: {len(X)} amostras")
+            raise ValueError(f"Dataset too small: {len(X)} samples")
 
-        # Hyperparams ajustados pra small-sample regime (< 200 samples)
-        # Shallow trees + high regularization previnem overfitting com 24 features
+        # Hyperparams tuned for the small-sample regime (< 200 samples)
+        # Shallow trees + high regularization prevent overfitting with 24 features
         n_samples = len(X)
         if n_samples < 200:
-            # Small data: menos complexidade
+            # Small data: less complexity
             self.model = GradientBoostingRegressor(
                 n_estimators=100,
                 max_depth=3,
@@ -89,31 +89,31 @@ class LambdaPredictor:
         return self.metadata
 
     def predict(self, features: np.ndarray) -> float:
-        """Prediz λ pra um unico input. Clamp em [0.1, 15].
+        """Predict lambda for a single input. Clamped to [0.1, 15].
 
         Parameters
         ----------
         features : np.ndarray
-            Array 1-D (n_features,).
+            1-D array (n_features,).
 
         Returns
         -------
         float
-            λ predito, minimo 0.1.
+            Predicted lambda, minimum 0.1.
         """
         if self.model is None:
-            raise ValueError("Modelo nao treinado. Chame train() primeiro.")
+            raise ValueError("Model not trained. Call train() first.")
         lam = float(self.model.predict(features.reshape(1, -1))[0])
         return max(0.1, min(lam, 15.0))
 
     def save(self, path: str) -> None:
-        """Salva model + metadata em arquivo pickle."""
+        """Save model + metadata to a pickle file."""
         import joblib
         joblib.dump({"model": self.model, "metadata": self.metadata}, path)
 
     @classmethod
     def load(cls, path: str) -> "LambdaPredictor":
-        """Carrega LambdaPredictor de pickle."""
+        """Load LambdaPredictor from pickle."""
         import joblib
         data = joblib.load(path)
         target = data.get("metadata", {}).get("target", "goals")

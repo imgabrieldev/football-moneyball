@@ -1,6 +1,6 @@
-"""FastAPI — API REST do Football Moneyball.
+"""FastAPI — Football Moneyball REST API.
 
-Endpoints read-only pra servir dados ao frontend.
+Read-only endpoints to serve data to the frontend.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ app.add_middleware(
 
 
 def get_repo():
-    """Dependency injection do repository."""
+    """Dependency injection for the repository."""
     repo = get_repository()
     try:
         yield repo
@@ -46,7 +46,7 @@ def list_matches(
     season: str = "2026",
     repo=Depends(get_repo),
 ):
-    """Lista partidas da temporada."""
+    """List season matches."""
     from sqlalchemy import text
     result = repo._session.execute(text(
         "SELECT match_id, match_date, home_team, away_team, home_score, away_score "
@@ -68,42 +68,42 @@ def list_matches(
 
 
 def _interpret_prediction(pred: dict) -> dict:
-    """Adiciona interpretacao textual a uma previsao."""
+    """Add a textual interpretation to a prediction."""
     home = pred.get("home_team", "?")
     away = pred.get("away_team", "?")
     hp = pred.get("home_win_prob", 0) or 0
     dp = pred.get("draw_prob", 0) or 0
     ap = pred.get("away_win_prob", 0) or 0
 
-    # Favorito
+    # Favorite
     if hp > ap + 0.15:
         fav = home
-        conf = "forte" if hp > 0.60 else "leve"
-        pred["interpretation"] = f"{fav} {conf} favorito em casa"
+        conf = "strong" if hp > 0.60 else "slight"
+        pred["interpretation"] = f"{fav} {conf} favorite at home"
     elif ap > hp + 0.15:
         fav = away
-        conf = "forte" if ap > 0.60 else "leve"
-        pred["interpretation"] = f"{fav} {conf} favorito fora"
+        conf = "strong" if ap > 0.60 else "slight"
+        pred["interpretation"] = f"{fav} {conf} favorite away"
     elif dp > 0.30:
-        pred["interpretation"] = "Jogo equilibrado, empate provável"
+        pred["interpretation"] = "Balanced match, draw likely"
     else:
-        pred["interpretation"] = "Jogo equilibrado e aberto"
+        pred["interpretation"] = "Balanced and open match"
 
-    # Confiança
+    # Confidence
     max_prob = max(hp, dp, ap)
     if max_prob > 0.65:
-        pred["confidence"] = "alta"
+        pred["confidence"] = "high"
     elif max_prob > 0.45:
-        pred["confidence"] = "media"
+        pred["confidence"] = "medium"
     else:
-        pred["confidence"] = "baixa"
+        pred["confidence"] = "low"
 
-    # Gols
+    # Goals
     over = pred.get("over_25", 0) or 0
     if over > 0.65:
-        pred["goals_hint"] = "Jogo com muitos gols esperado"
+        pred["goals_hint"] = "High-scoring match expected"
     elif over < 0.35:
-        pred["goals_hint"] = "Jogo fechado, poucos gols"
+        pred["goals_hint"] = "Tight match, few goals"
     else:
         pred["goals_hint"] = ""
 
@@ -112,14 +112,14 @@ def _interpret_prediction(pred: dict) -> dict:
 
 @app.get("/api/predictions")
 def get_predictions(repo=Depends(get_repo)):
-    """Retorna previsoes pre-computadas com interpretacao e bets recomendadas."""
+    """Return pre-computed predictions with interpretation and recommended bets."""
     from football_moneyball.domain.markets import derive_all_markets
     predictions = repo.get_predictions()
     predictions = [_interpret_prediction(p) for p in predictions]
-    # Enriquecer com todos os mercados derivados + context (v1.6.0)
+    # Enrich with all derived markets + context (v1.6.0)
     for pred in predictions:
         pred["markets"] = derive_all_markets(pred)
-        # v1.6.0: enrich com context (coach, injuries, standings)
+        # v1.6.0: enrich with context (coach, injuries, standings)
         try:
             home = pred.get("home_team", "")
             away = pred.get("away_team", "")
@@ -139,7 +139,7 @@ def get_predictions(repo=Depends(get_repo)):
         except Exception:
             pred["context"] = None
 
-    # Enriquecer com value bets associadas (deduplicadas, melhor odd por mercado)
+    # Enrich with associated value bets (deduped, best odds per market)
     try:
         from football_moneyball.config import get_odds_provider
         from football_moneyball.use_cases.find_value_bets import FindValueBets
@@ -148,13 +148,13 @@ def get_predictions(repo=Depends(get_repo)):
         vb_result = FindValueBets(odds_provider, repo).execute(bankroll=1000, min_edge=0.05)
         all_bets = vb_result.get("value_bets", [])
 
-        # Filtrar Betfair only
+        # Filter Betfair only
         betfair_bets = [b for b in all_bets if 'betfair' in b.get("bookmaker", "").lower()]
-        # Fallback: se Betfair não tem, usar melhor odd geral
+        # Fallback: if no Betfair, use best odds overall
         if not betfair_bets:
             betfair_bets = all_bets
 
-        # Dedup: melhor edge por match+market (só 1 lado, não Over E Under)
+        # Dedup: best edge per match+market (only 1 side, not Over AND Under)
         seen = {}
         for b in betfair_bets:
             key = f"{b.get('match','')}-{b.get('market','')}"
@@ -162,17 +162,17 @@ def get_predictions(repo=Depends(get_repo)):
                 seen[key] = b
         deduped = list(seen.values())
 
-        # Associar bets a predictions — SÓ bets coerentes com a previsão
+        # Associate bets with predictions — ONLY bets coherent with the prediction
         for pred in predictions:
             match_name = f"{pred.get('home_team','')} vs {pred.get('away_team','')}"
             match_bets = [b for b in deduped if b.get("match", "") == match_name]
 
-            # Filtrar: só bets alinhadas com o que o modelo prevê
+            # Filter: only bets aligned with what the model predicts
             coherent = []
             for b in match_bets:
                 if b["market"] == "h2h":
-                    # 1X2: recomendar só se coerente com maior prob do modelo
-                    # outcome pode ser "Home"/"Away"/"Draw" OU o nome do time
+                    # 1X2: recommend only if coherent with model's highest prob
+                    # outcome may be "Home"/"Away"/"Draw" OR the team name
                     hp = pred.get("home_win_prob", 0)
                     dp = pred.get("draw_prob", 0)
                     ap = pred.get("away_win_prob", 0)
@@ -198,28 +198,28 @@ def get_predictions(repo=Depends(get_repo)):
                 else:
                     coherent.append(b)
 
-            # Traduzir outcome "Home"/"Away" → nome do time
+            # Translate outcome "Home"/"Away" -> team name
             home_name = pred.get("home_team", "")
             away_name = pred.get("away_team", "")
             def _label(outcome: str) -> str:
                 if outcome == "Over":
-                    return "Mais de 2.5 gols"
+                    return "Over 2.5 goals"
                 if outcome == "Under":
-                    return "Menos de 2.5 gols"
+                    return "Under 2.5 goals"
                 if outcome == "Draw":
-                    return "Empate"
+                    return "Draw"
                 if outcome == "Home":
-                    return f"Vitória {home_name}"
+                    return f"{home_name} win"
                 if outcome == "Away":
-                    return f"Vitória {away_name}"
+                    return f"{away_name} win"
                 if outcome in ("Yes",):
-                    return "Ambas marcam"
+                    return "Both teams to score"
                 if outcome in ("No",):
-                    return "Algum time não marca"
-                return f"Vitória {outcome}"
+                    return "At least one team not to score"
+                return f"{outcome} win"
 
             def _model_prob_for(outcome: str) -> float:
-                """Traduz outcome pra probabilidade correspondente do modelo."""
+                """Translate outcome to the corresponding model probability."""
                 if outcome == "Over":
                     return float(pred.get("over_25", 0) or 0)
                 if outcome == "Under":
@@ -252,17 +252,17 @@ def get_predictions(repo=Depends(get_repo)):
     except Exception:
         pass
 
-    # Adicionar sugestões do modelo pra TODAS as linhas (sem odds reais, só probabilidade)
+    # Add model suggestions for ALL lines (without real odds, just probability)
     for pred in predictions:
         if "recommended_bets" not in pred:
             pred["recommended_bets"] = []
 
         markets = pred.get("markets", {})
 
-        # Melhor aposta por mercado baseada na probabilidade do modelo
+        # Best bet per market based on model probability
         suggestions = []
 
-        # 1X2: favorito
+        # 1X2: favorite
         match_odds = markets.get("match_odds", [])
         if match_odds:
             best = max(match_odds, key=lambda x: x.get("prob", 0))
@@ -276,12 +276,12 @@ def get_predictions(repo=Depends(get_repo)):
                     "source": "model",
                 })
 
-        # Over/Under: linha mais confiante
+        # Over/Under: most confident line
         for ou in markets.get("over_under", []):
             line = ou["line"]
             if ou["over_prob"] > 0.65:
                 suggestions.append({
-                    "label": f"Mais de {line} gols",
+                    "label": f"Over {line} goals",
                     "market": "totals",
                     "outcome": "Over",
                     "model_prob": ou["over_prob"],
@@ -290,7 +290,7 @@ def get_predictions(repo=Depends(get_repo)):
                 })
             elif ou["under_prob"] > 0.65:
                 suggestions.append({
-                    "label": f"Menos de {line} gols",
+                    "label": f"Under {line} goals",
                     "market": "totals",
                     "outcome": "Under",
                     "model_prob": ou["under_prob"],
@@ -298,19 +298,19 @@ def get_predictions(repo=Depends(get_repo)):
                     "source": "model",
                 })
 
-        # BTTS se confiante
+        # BTTS if confident
         btts = markets.get("btts", {})
         if btts.get("yes_prob", 0) > 0.65:
-            suggestions.append({"label": "Ambas marcam", "market": "btts", "outcome": "Yes", "model_prob": btts["yes_prob"], "fair_odds": btts["yes_odds"], "source": "model"})
+            suggestions.append({"label": "Both teams to score", "market": "btts", "outcome": "Yes", "model_prob": btts["yes_prob"], "fair_odds": btts["yes_odds"], "source": "model"})
         elif btts.get("no_prob", 0) > 0.65:
-            suggestions.append({"label": "Algum time não marca", "market": "btts", "outcome": "No", "model_prob": btts["no_prob"], "fair_odds": btts["no_odds"], "source": "model"})
+            suggestions.append({"label": "At least one team not to score", "market": "btts", "outcome": "No", "model_prob": btts["no_prob"], "fair_odds": btts["no_odds"], "source": "model"})
 
         # Correct score: top 1
         cs = markets.get("correct_score", [])
         if cs and cs[0]["prob"] > 0.10:
-            suggestions.append({"label": f"Placar exato {cs[0]['score']}", "market": "correct_score", "outcome": cs[0]["score"], "model_prob": cs[0]["prob"], "fair_odds": cs[0]["fair_odds"], "source": "model"})
+            suggestions.append({"label": f"Correct score {cs[0]['score']}", "market": "correct_score", "outcome": cs[0]["score"], "model_prob": cs[0]["prob"], "fair_odds": cs[0]["fair_odds"], "source": "model"})
 
-        # Mesclar: bets com edge real primeiro, depois sugestões do modelo
+        # Merge: bets with real edge first, then model suggestions
         existing_labels = {b["label"] for b in pred.get("recommended_bets", [])}
         for s in suggestions:
             if s["label"] not in existing_labels:
@@ -319,7 +319,7 @@ def get_predictions(repo=Depends(get_repo)):
                     "market": s["market"],
                     "outcome": s["outcome"],
                     "odds": s["fair_odds"],
-                    "bookmaker": "modelo",
+                    "bookmaker": "model",
                     "edge": None,
                     "stake": None,
                     "model_prob": s["model_prob"],
@@ -335,7 +335,7 @@ def recompute_predictions(
     season: str = "2026",
     repo=Depends(get_repo),
 ):
-    """Recomputa todas as previsoes (pode demorar ~30s)."""
+    """Recompute all predictions (may take ~30s)."""
     from football_moneyball.use_cases.predict_all import PredictAll
     import threading
 
@@ -353,7 +353,7 @@ def recompute_predictions(
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
-    return {"status": "computing", "message": "Previsoes sendo recomputadas em background. Atualize em ~30s."}
+    return {"status": "computing", "message": "Predictions being recomputed in the background. Refresh in ~30s."}
 
 
 @app.get("/api/players")
@@ -363,7 +363,7 @@ def get_players(
     team: str | None = None,
     repo=Depends(get_repo),
 ):
-    """Lista jogadores com metricas agregadas."""
+    """List players with aggregated metrics."""
     from sqlalchemy import text
     params = {"comp": competition, "season": season}
     where = "WHERE m.competition = :comp AND m.season = :season"
@@ -416,7 +416,7 @@ def get_value_bets(
     bookmaker: str | None = "betfair",
     repo=Depends(get_repo),
 ):
-    """Retorna value bets deduplicadas (Betfair-only por padrao)."""
+    """Return deduped value bets (Betfair-only by default)."""
     from football_moneyball.config import get_odds_provider
     from football_moneyball.use_cases.find_value_bets import FindValueBets
     try:
@@ -428,7 +428,7 @@ def get_value_bets(
 
         bets = result.get("value_bets", [])
 
-        # Deduplicar: 1 linha por match+market+outcome (melhor odd)
+        # Dedup: 1 row per match+market+outcome (best odds)
         seen = {}
         for b in bets:
             key = f"{b.get('match','')}-{b.get('market','')}-{b.get('outcome','')}"
@@ -446,7 +446,7 @@ def get_value_bets(
 
 @app.get("/api/track-record")
 def get_track_record(repo=Depends(get_repo)):
-    """Resumo do track record."""
+    """Track record summary."""
     from football_moneyball.domain.track_record import calculate_track_record
     preds = repo.get_prediction_history()
     return calculate_track_record(preds)
@@ -458,46 +458,46 @@ def get_track_record_predictions(
     status: str | None = None,
     repo=Depends(get_repo),
 ):
-    """Retorna historico de previsoes com bets associadas (deduplicadas)."""
+    """Return prediction history with associated bets (deduped)."""
     preds = repo.get_prediction_history(round_num=round, status=status)
     bets = repo.get_value_bet_history()
 
-    # Associar bets a predictions por match_key + dedup por market+outcome (melhor odd)
+    # Associate bets with predictions by match_key + dedup by market+outcome (best odds)
     bets_by_match: dict[int, list] = {}
     for b in bets:
         mk = b.get("match_key", 0)
         bets_by_match.setdefault(mk, []).append(b)
 
-    # Build match_key → pred lookup pra traduzir Home/Away → nome do time
+    # Build match_key -> pred lookup to translate Home/Away -> team name
     pred_by_match: dict[int, dict] = {p.get("match_key", 0): p for p in preds}
 
     def _translate(bet: dict, pred: dict) -> dict:
         outcome = bet.get("outcome", "")
         if outcome == "Home":
-            bet["outcome_label"] = f"Vitória {pred.get('home_team', '')}"
+            bet["outcome_label"] = f"{pred.get('home_team', '')} win"
         elif outcome == "Away":
-            bet["outcome_label"] = f"Vitória {pred.get('away_team', '')}"
+            bet["outcome_label"] = f"{pred.get('away_team', '')} win"
         elif outcome == "Draw":
-            bet["outcome_label"] = "Empate"
+            bet["outcome_label"] = "Draw"
         elif outcome == "Over":
-            bet["outcome_label"] = "Mais de 2.5 gols"
+            bet["outcome_label"] = "Over 2.5 goals"
         elif outcome == "Under":
-            bet["outcome_label"] = "Menos de 2.5 gols"
+            bet["outcome_label"] = "Under 2.5 goals"
         else:
-            bet["outcome_label"] = f"Vitória {outcome}" if outcome else ""
+            bet["outcome_label"] = f"{outcome} win" if outcome else ""
         return bet
 
     for p in preds:
         mk = p.get("match_key", 0)
         raw_bets = bets_by_match.get(mk, [])
-        # Dedup: 1 por market+outcome (melhor odd, depois menor kelly_stake)
+        # Dedup: 1 per market+outcome (best odds, then smallest kelly_stake)
         seen: dict[str, dict] = {}
         for b in raw_bets:
             key = f"{b.get('market','')}-{b.get('outcome','')}"
             if key not in seen or (b.get("best_odds", 0) or 0) > (seen[key].get("best_odds", 0) or 0):
                 seen[key] = b
         deduped = [_translate(b, p) for b in seen.values()]
-        # Ordenar por edge desc
+        # Sort by edge desc
         deduped.sort(key=lambda x: -(x.get("edge", 0) or 0))
         p["bets"] = deduped
 
@@ -506,13 +506,13 @@ def get_track_record_predictions(
 
 @app.get("/api/track-record/value-bets")
 def get_track_record_value_bets(repo=Depends(get_repo)):
-    """Retorna historico de value bets."""
+    """Return value bet history."""
     return repo.get_value_bet_history()
 
 
 @app.post("/api/resolve")
 def trigger_resolve(repo=Depends(get_repo)):
-    """Resolve previsoes pendentes com resultados reais."""
+    """Resolve pending predictions with actual results."""
     from football_moneyball.use_cases.resolve_predictions import ResolvePredictions
     return ResolvePredictions(repo).execute()
 
@@ -521,7 +521,7 @@ def trigger_resolve(repo=Depends(get_repo)):
 def get_match_analysis_by_teams(
     home_team: str, away_team: str, repo=Depends(get_repo),
 ):
-    """Analise pos-jogo via nome dos times (fuzzy match)."""
+    """Post-match analysis by team names (fuzzy match)."""
     from sqlalchemy import text
     # Find match by team names (either direction — handle home/away swaps)
     row = repo._session.execute(text("""
@@ -537,15 +537,15 @@ def get_match_analysis_by_teams(
         "a_norm": away_team.replace("São", "Sao").replace("é", "e").replace("í", "i"),
     }).fetchone()
     if not row:
-        return {"error": "Partida nao encontrada"}
+        return {"error": "Match not found"}
     return get_match_analysis(int(row.match_id), repo)
 
 
 @app.get("/api/match-analysis/{match_id}")
 def get_match_analysis(match_id: int, repo=Depends(get_repo)):
-    """Analise pos-jogo: previsoes vs stats reais de match_stats + prediction_history.
+    """Post-match analysis: predictions vs actual stats from match_stats + prediction_history.
 
-    v1.7.0 — compara o que o modelo previu com o que aconteceu.
+    v1.7.0 — compares what the model predicted with what actually happened.
     """
     from sqlalchemy import text
 
@@ -555,7 +555,7 @@ def get_match_analysis(match_id: int, repo=Depends(get_repo)):
         FROM matches WHERE match_id = :mid
     """), {"mid": match_id}).fetchone()
     if not match or match.home_score is None:
-        return {"error": "Partida nao encontrada ou sem resultado"}
+        return {"error": "Match not found or no result"}
 
     # Real match stats
     stats = repo._session.execute(text("""
@@ -636,11 +636,11 @@ def get_verify(
     season: str = "2026",
     repo=Depends(get_repo),
 ):
-    """Verifica previsoes vs resultados reais (de prediction_history resolvido)."""
+    """Verify predictions against actual results (from resolved prediction_history)."""
     preds = repo.get_prediction_history(status="resolved")
     if not preds:
         return {
-            "error": "Nenhuma previsao resolvida. Rode 'moneyball resolve' apos jogos terminarem.",
+            "error": "No resolved predictions. Run 'moneyball resolve' after matches finish.",
             "total_matches": 0,
         }
 
@@ -662,12 +662,12 @@ def get_verify(
         predicted = max(probs, key=probs.get)
         predicted_label = {
             "home": p.get("home_team", "?"),
-            "draw": "Empate",
+            "draw": "Draw",
             "away": p.get("away_team", "?"),
         }[predicted]
         actual_label = {
             "home": p.get("home_team", "?"),
-            "draw": "Empate",
+            "draw": "Draw",
             "away": p.get("away_team", "?"),
         }.get(actual, actual)
 
@@ -706,7 +706,7 @@ def get_backtest(
     bankroll: float = 1000.0,
     repo=Depends(get_repo),
 ):
-    """Roda backtesting."""
+    """Run backtesting."""
     from football_moneyball.use_cases.backtest import Backtest
     result = Backtest(repo).execute(competition=competition, season=season, initial_bankroll=bankroll)
     # Remove large lists for API response

@@ -9,148 +9,148 @@ tags:
 
 # Pitch — v1.15.0: Context Features Pipeline (xG Form + Coach Profile + Rest Days)
 
-## Problema
+## Problem
 
-O modelo v1.14.2 tem **40.7% accuracy 1X2** (Brier 0.2358) contra ~52% do mercado (Brier ~0.20). Times volateis como Corinthians (20%), Palmeiras (11%), Mirassol (0%) puxam a media pra baixo. O CatBoost ja tem 28 features (Pi-Rating, form EMA, xG avg, rest days, match stats rolling), mas falta **contexto situacional** que o mercado precifica e nos nao:
+The v1.14.2 model has **40.7% 1X2 accuracy** (Brier 0.2358) versus ~52% for the market (Brier ~0.20). Volatile teams like Corinthians (20%), Palmeiras (11%), Mirassol (0%) drag the average down. CatBoost already has 28 features (Pi-Rating, form EMA, xG avg, rest days, rolling match stats), but it lacks **situational context** that the market prices in and we don't:
 
-1. **Form baseado em gols, nao xG** — xG-based form domina 8/10 melhores configs em benchmarks
-2. **Tecnico como flag binario** — temos `team_coaches` com 49 rows mas nao usamos como feature. No Brasileirao 2025 houve 22 trocas de tecnico em 38 rodadas
-3. **Rest days basico** — temos `home_rest_days`/`away_rest_days` mas sem fixture congestion multi-competicao
-4. **Zero features de standings** — gap de pontos, posicao relativa, momento na tabela
+1. **Form based on goals, not xG** — xG-based form dominates 8/10 of the best configs in benchmarks
+2. **Coach as a binary flag** — we have `team_coaches` with 49 rows but don't use it as a feature. In Brasileirão 2025 there were 22 coach changes over 38 matchdays
+3. **Basic rest days** — we have `home_rest_days`/`away_rest_days` but no multi-competition fixture congestion
+4. **Zero standings features** — points gap, relative position, table momentum
 
-O gap de ~15% no Brier pro mercado vem principalmente de features contextuais que os apostadores e casas sharp usam mas nosso modelo ignora.
+The ~15% Brier gap to the market comes mainly from contextual features that bettors and sharp books use but our model ignores.
 
-Ref: [[../research/volatile-teams-features|Research: Features para Times Volateis]]
+Ref: [[../research/volatile-teams-features|Research: Features for Volatile Teams]]
 
-## Solucao
+## Solution
 
-Adicionar **~15 novas features contextuais** ao CatBoost, aproveitando dados **ja disponiveis no banco** (match_stats, team_coaches, league_standings). Sem scraping novo, sem mudanca de infra.
+Add **~15 new contextual features** to CatBoost, leveraging data **already available in the database** (match_stats, team_coaches, league_standings). No new scraping, no infra change.
 
-### 3 eixos:
+### 3 axes:
 
-1. **xG Form** — substituir goal-based form por xG-based form (rolling xG For/Against EMA)
-2. **Coach Profile** — tenure, win rate, troca recente, bucket de adaptacao
-3. **Standings + Congestion** — posicao na tabela, gap de pontos, rest days refinado
+1. **xG Form** — replace goal-based form with xG-based form (rolling xG For/Against EMA)
+2. **Coach Profile** — tenure, win rate, recent change, adaptation bucket
+3. **Standings + Congestion** — table position, points gap, refined rest days
 
-## Arquitetura
+## Architecture
 
-### Modulos afetados
+### Affected modules
 
-| Modulo | Mudanca |
+| Module | Change |
 |--------|---------|
-| `domain/catboost_predictor.py` | Expandir `CATBOOST_FEATURE_NAMES` (+15 features), atualizar `build_training_dataset()` |
-| `domain/features.py` (**novo**) | Modulo centralizado de feature engineering: `compute_xg_form()`, `compute_coach_features()`, `compute_standings_features()` |
-| `use_cases/train_catboost.py` | Passar dados de coach e standings pro `build_training_dataset()` |
-| `use_cases/predict_all.py` | Extrair features de context na hora da predicao |
-| `adapters/postgres_repository.py` | Novos queries: `get_coach_for_team()`, `get_standings_at_date()` |
+| `domain/catboost_predictor.py` | Expand `CATBOOST_FEATURE_NAMES` (+15 features), update `build_training_dataset()` |
+| `domain/features.py` (**new**) | Centralized feature engineering module: `compute_xg_form()`, `compute_coach_features()`, `compute_standings_features()` |
+| `use_cases/train_catboost.py` | Pass coach and standings data to `build_training_dataset()` |
+| `use_cases/predict_all.py` | Extract context features at prediction time |
+| `adapters/postgres_repository.py` | New queries: `get_coach_for_team()`, `get_standings_at_date()` |
 
-### Novas Features (15)
+### New Features (15)
 
 #### xG Form (4 features)
 ```
-home_xg_form_ema    — EMA de xG For nos ultimos 10 jogos (alpha=0.15)
+home_xg_form_ema    — EMA of xG For over the last 10 matches (alpha=0.15)
 away_xg_form_ema    — idem away
-home_xg_diff_ema    — EMA de (xG For - xG Against) ultimos 10 jogos
+home_xg_diff_ema    — EMA of (xG For - xG Against) last 10 matches
 away_xg_diff_ema    — idem away
 ```
-Substitui parcialmente `home_xg_avg`/`away_xg_avg` que sao medias simples. O EMA reage mais rapido a mudancas de forma.
+Partially replaces `home_xg_avg`/`away_xg_avg` which are simple averages. EMA reacts faster to form changes.
 
 #### Coach Profile (6 features)
 ```
-home_coach_tenure_days   — dias desde nomeacao do tecnico home
+home_coach_tenure_days   — days since home coach appointment
 away_coach_tenure_days   — idem away
-home_coach_win_rate      — % vitorias do tecnico neste time
+home_coach_win_rate      — % wins of the coach at this team
 away_coach_win_rate      — idem away
-home_coach_changed_30d   — flag: tecnico trocou nos ultimos 30 dias (1/0)
+home_coach_changed_30d   — flag: coach changed in the last 30 days (1/0)
 away_coach_changed_30d   — idem away
 ```
-Derivados da tabela `team_coaches` (49 rows ja no DB). Win rate calculado das matches com o tecnico atual.
+Derived from `team_coaches` table (49 rows already in DB). Win rate computed from matches under the current coach.
 
 #### Standings & Congestion (5 features)
 ```
-home_league_position     — posicao na tabela
+home_league_position     — table position
 away_league_position     — idem away
-position_gap             — |pos_home - pos_away| (times proximos empatam mais)
-home_points_last_5       — pontos nos ultimos 5 jogos (momentum)
+position_gap             — |pos_home - pos_away| (close-ranked teams draw more)
+home_points_last_5       — points in the last 5 matches (momentum)
 away_points_last_5       — idem away
 ```
-Derivados de `league_standings` (20 rows) + calculo retroativo dos matches.
+Derived from `league_standings` (20 rows) + retroactive computation from matches.
 
 ### Schema
 
-**Nenhuma mudanca de schema.** Todos os dados necessarios ja existem nas tabelas:
-- `match_stats` (1616 rows) — xG por partida
-- `team_coaches` (49 rows) — tecnico por time com datas
-- `league_standings` (20 rows) — posicao atual
-- `matches` — resultados pra calcular pontos rolling
+**No schema change.** All required data already exists in tables:
+- `match_stats` (1616 rows) — xG per match
+- `team_coaches` (49 rows) — coach per team with dates
+- `league_standings` (20 rows) — current position
+- `matches` — results to compute rolling points
 
 ### Infra (K8s)
 
-**Nenhuma mudanca.** Mesmos CronJobs, mesmo container. So rebuild da imagem apos merge.
+**No change.** Same CronJobs, same container. Just rebuild the image after merge.
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] Criar `domain/features.py` com funcoes puras de feature engineering
-- [ ] Implementar `compute_xg_form()` — EMA de xG For/Against
-- [ ] Implementar `compute_coach_features()` — tenure, win rate, flag troca
-- [ ] Implementar `compute_standings_features()` — posicao, gap, momentum
-- [ ] Expandir `CATBOOST_FEATURE_NAMES` de 28 pra ~43 features
-- [ ] Atualizar `build_training_dataset()` pra incluir novas features (leak-proof)
-- [ ] Atualizar `predict_all.py` pra extrair context features na inferencia
-- [ ] Adicionar queries de coach e standings no repository
-- [ ] Retreinar CatBoost e comparar metricas (RPS, Brier, accuracy)
-- [ ] Rodar backtest com novas features vs baseline v1.14.2
-- [ ] Testes unitarios pra cada funcao de features.py
+- [ ] Create `domain/features.py` with pure feature engineering functions
+- [ ] Implement `compute_xg_form()` — EMA of xG For/Against
+- [ ] Implement `compute_coach_features()` — tenure, win rate, change flag
+- [ ] Implement `compute_standings_features()` — position, gap, momentum
+- [ ] Expand `CATBOOST_FEATURE_NAMES` from 28 to ~43 features
+- [ ] Update `build_training_dataset()` to include new features (leak-proof)
+- [ ] Update `predict_all.py` to extract context features at inference
+- [ ] Add coach and standings queries in the repository
+- [ ] Retrain CatBoost and compare metrics (RPS, Brier, accuracy)
+- [ ] Run backtest with new features vs v1.14.2 baseline
+- [ ] Unit tests for each function in features.py
 
-### Fora do Escopo
+### Out of Scope
 
-- Perfil tatico do tecnico (8 metricas Analytics FC) — Tier 2, pitch separado
-- Historico de carreira completo do tecnico (Transfermarkt) — Tier 3
+- Coach tactical profile (8 Analytics FC metrics) — Tier 2, separate pitch
+- Full coach career history (Transfermarkt) — Tier 3
 - Key player absence score — Tier 2
 - Ensemble meta-learner — Tier 3
 - Edge-based optimization (custom loss) — Tier 3
-- Mudancas no Poisson/Dixon-Coles — estes usam pipeline separado
+- Changes to Poisson/Dixon-Coles — these use a separate pipeline
 - Draw-specific features (derby flag, style matchup) — Tier 2
-- Travel distance — precisa de dataset de coordenadas das cidades
+- Travel distance — needs a city coordinates dataset
 
-## Research Necessaria
+## Research Needed
 
 - [x] State-of-the-art features ([[../research/volatile-teams-features|volatile-teams-features]])
 - [x] Coach profiling frameworks (Analytics FC, Dartmouth)
 - [x] xG vs goals form comparison (beatthebookie)
-- [ ] Verificar se `team_coaches.games_coached/wins/draws/losses` estao populados ou NULL
-- [ ] Verificar cobertura de `league_standings` por rodada (so tem snapshot atual?)
+- [ ] Verify whether `team_coaches.games_coached/wins/draws/losses` are populated or NULL
+- [ ] Verify coverage of `league_standings` per matchday (is there only a current snapshot?)
 
-## Estrategia de Testes
+## Testing Strategy
 
-### Unitarios (`tests/test_features.py`)
-- `test_compute_xg_form_ema_with_known_values` — verifica EMA com sequencia conhecida
-- `test_compute_xg_form_ema_empty_history` — retorna default (league avg)
+### Unit (`tests/test_features.py`)
+- `test_compute_xg_form_ema_with_known_values` — verify EMA with known sequence
+- `test_compute_xg_form_ema_empty_history` — returns default (league avg)
 - `test_compute_coach_features_new_coach` — tenure < 30d, flag=1
-- `test_compute_coach_features_no_coach_data` — defaults graceful
-- `test_compute_standings_features_with_gap` — posicao e gap corretos
-- `test_compute_standings_features_missing` — defaults quando nao tem standings
+- `test_compute_coach_features_no_coach_data` — graceful defaults
+- `test_compute_standings_features_with_gap` — correct position and gap
+- `test_compute_standings_features_missing` — defaults when no standings
 
-### Integracao
-- Retreinar CatBoost com features novas e comparar RPS/Brier/accuracy vs v1.14.2
-- Backtest completo: ROI e hit rate com novas features
-- Verificar que `predict-all` produz predicoes validas com features expandidas
+### Integration
+- Retrain CatBoost with new features and compare RPS/Brier/accuracy vs v1.14.2
+- Full backtest: ROI and hit rate with new features
+- Verify that `predict-all` produces valid predictions with expanded features
 
 ### Manual
-- `moneyball train-catboost` — treinar e verificar feature importances
-- `moneyball predict-all` — prever rodada e comparar com v1.14.2
-- `moneyball backtest` — comparar ROI
+- `moneyball train-catboost` — train and check feature importances
+- `moneyball predict-all` — predict matchday and compare with v1.14.2
+- `moneyball backtest` — compare ROI
 
-## Criterios de Sucesso
+## Success Criteria
 
-- [ ] **Brier < 0.220** (melhoria de ~7% vs 0.2358 atual)
-- [ ] **1X2 accuracy > 45%** (vs 40.7% atual)
-- [ ] **Times volateis > 30%** accuracy (Corinthians, Palmeiras, Mirassol — vs ~15% atual)
-- [ ] **RPS < 0.205** (competitivo com benchmarks academicos)
-- [ ] Feature importances mostram coach features com contribuicao > 0
-- [ ] Zero regressao nos times ja previsiveis (Flamengo, Fluminense)
-- [ ] Backtest ROI Betfair nao piora (>= 0%)
-- [ ] Testes unitarios passando
-- [ ] Nenhuma mudanca de schema ou infra
+- [ ] **Brier < 0.220** (~7% improvement vs 0.2358 current)
+- [ ] **1X2 accuracy > 45%** (vs 40.7% current)
+- [ ] **Volatile teams > 30%** accuracy (Corinthians, Palmeiras, Mirassol — vs ~15% current)
+- [ ] **RPS < 0.205** (competitive with academic benchmarks)
+- [ ] Feature importances show coach features with contribution > 0
+- [ ] Zero regression in already-predictable teams (Flamengo, Fluminense)
+- [ ] Betfair backtest ROI does not get worse (>= 0%)
+- [ ] Unit tests passing
+- [ ] No schema or infra changes

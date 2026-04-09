@@ -1,6 +1,6 @@
-"""Constantes do dominio Football Moneyball.
+"""Football Moneyball domain constants.
 
-Centraliza todas as constantes usadas por multiplos modulos do projeto.
+Centralizes all constants used by multiple modules of the project.
 """
 
 from __future__ import annotations
@@ -150,26 +150,26 @@ SHOT_AFTER_TURNOVER_WINDOW: float = 15.0
 # ===========================================================================
 
 METRIC_CATEGORIES: dict[str, list[str]] = {
-    "Ataque": [
+    "Attack": [
         "goals", "shots", "shots_on_target", "xg",
         "dribbles_attempted", "dribbles_completed",
         "big_chances", "big_chances_missed",
     ],
-    "Criacao": [
+    "Creation": [
         "assists", "xa", "key_passes", "through_balls", "crosses",
         "progressive_passes", "progressive_carries",
         "progressive_receptions", "switches_of_play",
     ],
-    "Defesa": [
+    "Defense": [
         "tackles", "interceptions",
         "blocks", "clearances", "aerials_won", "aerials_lost",
         "pressures", "pressure_regains",
         "ground_duels_won", "ground_duels_total", "tackle_success_rate",
     ],
-    "Valor de Posse": [
+    "Possession Value": [
         "xt_generated", "vaep_generated",
     ],
-    "Posse": [
+    "Possession": [
         "passes", "passes_completed", "pass_pct",
         "touches", "carries", "dispossessed",
         "fouls_committed", "fouls_won",
@@ -194,36 +194,36 @@ ALL_METRIC_COLS: list[str] = [
 ]
 
 METRIC_LABELS: dict[str, str] = {
-    "minutes_played": "Minutos Jogados",
-    "goals": "Gols",
-    "assists": "Assistencias",
-    "shots": "Finalizacoes",
-    "shots_on_target": "Finalizacoes no Alvo",
-    "xg": "Gols Esperados (xG)",
-    "xa": "Assistencias Esperadas (xA)",
-    "passes": "Passes Tentados",
-    "passes_completed": "Passes Completados",
-    "pass_pct": "Precisao de Passe (%)",
-    "progressive_passes": "Passes Progressivos",
-    "progressive_carries": "Conducoes Progressivas",
-    "key_passes": "Passes-Chave",
-    "through_balls": "Bolas Enfiadas",
-    "crosses": "Cruzamentos",
-    "tackles": "Desarmes",
-    "interceptions": "Interceptacoes",
-    "blocks": "Bloqueios",
-    "clearances": "Cortes",
-    "aerials_won": "Duelos Aereos Ganhos",
-    "aerials_lost": "Duelos Aereos Perdidos",
-    "fouls_committed": "Faltas Cometidas",
-    "fouls_won": "Faltas Sofridas",
-    "dribbles_attempted": "Dribles Tentados",
-    "dribbles_completed": "Dribles Completados",
-    "touches": "Toques na Bola",
-    "carries": "Conducoes",
-    "dispossessed": "Desapossado",
-    "pressures": "Pressoes",
-    "pressure_regains": "Recuperacoes por Pressao",
+    "minutes_played": "Minutes Played",
+    "goals": "Goals",
+    "assists": "Assists",
+    "shots": "Shots",
+    "shots_on_target": "Shots on Target",
+    "xg": "Expected Goals (xG)",
+    "xa": "Expected Assists (xA)",
+    "passes": "Passes Attempted",
+    "passes_completed": "Passes Completed",
+    "pass_pct": "Pass Accuracy (%)",
+    "progressive_passes": "Progressive Passes",
+    "progressive_carries": "Progressive Carries",
+    "key_passes": "Key Passes",
+    "through_balls": "Through Balls",
+    "crosses": "Crosses",
+    "tackles": "Tackles",
+    "interceptions": "Interceptions",
+    "blocks": "Blocks",
+    "clearances": "Clearances",
+    "aerials_won": "Aerial Duels Won",
+    "aerials_lost": "Aerial Duels Lost",
+    "fouls_committed": "Fouls Committed",
+    "fouls_won": "Fouls Won",
+    "dribbles_attempted": "Dribbles Attempted",
+    "dribbles_completed": "Dribbles Completed",
+    "touches": "Touches",
+    "carries": "Carries",
+    "dispossessed": "Dispossessed",
+    "pressures": "Pressures",
+    "pressure_regains": "Pressure Regains",
 }
 
 

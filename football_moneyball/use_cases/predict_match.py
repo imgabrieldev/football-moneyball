@@ -1,7 +1,7 @@
-"""Use case: previsao de resultado de uma partida.
+"""Use case: previsao of resultado of a match.
 
-Pipeline v0.5.0 — parametros dinamicos calculados de todas as partidas
-da temporada, zero constantes hardcoded.
+Pipeline v0.5.0 — parameters dinamicos calculados of todas as matches
+of the season, zero constantes hardcoded.
 """
 
 from __future__ import annotations
@@ -14,16 +14,16 @@ from football_moneyball.domain.match_predictor import predict_match
 
 
 class PredictMatch:
-    """Preve o resultado de uma partida via pipeline avancado.
+    """Preve o resultado of a match via pipeline avancado.
 
-    Busca todos os dados da temporada no banco, calcula parametros
-    dinamicos (league averages, team strengths, regression), e roda
+    Busca todos os data of the season in the banco, calcula parameters
+    dinamicos (league averages, team strengths, regression), and roda
     Monte Carlo.
 
     Parameters
     ----------
     repo : MatchRepository
-        Repositorio para buscar historico.
+        Repositorio for buscar history.
     """
 
     def __init__(self, repo) -> None:
@@ -38,33 +38,33 @@ class PredictMatch:
         competition: str | None = "Brasileirão Série A",
         season: str | None = "2026",
     ) -> dict[str, Any]:
-        """Executa previsao com pipeline completo.
+        """Runs previsao with pipeline complete.
 
         Parameters
         ----------
         match_id : int
-            ID da partida.
+            ID of the match.
         home_team, away_team : str
-            Nomes dos times.
+            Nomes of the times.
         n_simulations : int
             Simulacoes Monte Carlo.
 
         Returns
         -------
         dict
-            Probabilidades + metadados do pipeline.
+            Probabilidades + metadados of the pipeline.
         """
-        # Buscar TODOS os dados da temporada
+        # Buscar TODOS os data of the season
         all_match_data = self.repo.get_all_match_data(competition, season)
 
         if all_match_data.empty:
-            return {"error": "Sem dados historicos no banco.", "home_team": home_team, "away_team": away_team}
+            return {"error": "Without data historicos in the banco.", "home_team": home_team, "away_team": away_team}
 
-        # Shot quality (xG por chute dos ultimos jogos)
+        # Shot quality (xG by shot of the last jogos)
         home_shots = self.repo.get_team_shots(home_team, n_matches=6)
         away_shots = self.repo.get_team_shots(away_team, n_matches=6)
 
-        # Pipeline completo — tudo calculado dinamicamente
+        # Pipeline complete — tudo calculado dinamicamente
         prediction = predict_match(
             home_team=home_team,
             away_team=away_team,

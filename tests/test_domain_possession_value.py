@@ -1,7 +1,7 @@
-"""Testes para football_moneyball.domain.possession_value — modelo xT hexagonal.
+"""Tests for football_moneyball.domain.possession_value — hexagonal xT model.
 
-Estes testes ja eram puros (ExpectedThreat e aggregate_player_xt nao dependem
-de I/O), entao a migracao e apenas troca de import paths.
+These tests were already pure (ExpectedThreat and aggregate_player_xt have no I/O
+dependencies), so the migration is simply swapping import paths.
 """
 
 import numpy as np
@@ -13,7 +13,7 @@ from football_moneyball.domain.possession_value import ExpectedThreat, aggregate
 
 class TestExpectedThreat:
     def _make_simple_events(self) -> list[pd.DataFrame]:
-        """Cria eventos sinteticos para treinar xT em grid pequeno."""
+        """Build synthetic events to train xT on a small grid."""
         rows = []
         # Shots near goal (high xT zone)
         for i in range(100):

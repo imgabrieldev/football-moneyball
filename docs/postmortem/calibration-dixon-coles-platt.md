@@ -7,57 +7,57 @@ tags:
   - platt
 ---
 
-# Pitch — Calibração (Dixon-Coles + Platt Scaling)
+# Pitch — Calibration (Dixon-Coles + Platt Scaling)
 
-## Problema
+## Problem
 
-Re-predição leak-proof de 59 jogos 2026 expôs duas falhas estruturais:
+Leak-proof re-prediction of 59 2026 matches exposed two structural flaws:
 
-1. **Zero empates previstos** — em 59 jogos, modelo deu 0 picks de Draw. Poisson independente estrutural­mente subestima placares 0-0, 1-1, etc.
-2. **Overconfident** — picks com ≥60% de confiança acertam só 48% (quase random). Modelo não está calibrado.
+1. **Zero predicted draws** — across 59 matches, the model produced 0 Draw picks. Independent Poisson structurally underestimates low scorelines 0-0, 1-1, etc.
+2. **Overconfident** — picks with ≥60% confidence only hit 48% (near random). The model isn't calibrated.
 
-Acc 1x2 geral: **47.5%** (abaixo do baseline 2024→2026 de 51%). Max confidence picks bombando (ex: RB Bragantino 92% vs Botafogo → perdeu 1x2).
+Overall 1x2 acc: **47.5%** (below the 2024→2026 baseline of 51%). Max-confidence picks bombing (e.g., RB Bragantino 92% vs Botafogo → lost 1x2).
 
-## Solução
+## Solution
 
-Duas correções da literatura, aplicadas em série:
+Two corrections from the literature, applied in series:
 
 ### 1. Dixon-Coles correction (1997)
 
-Aplica fator τ(x,y) aos 4 placares baixos que Poisson erra:
+Apply factor τ(x,y) to the 4 low scorelines Poisson gets wrong:
 
 ```
 τ(0,0) = 1 - λh·λa·ρ
 τ(0,1) = 1 + λh·ρ
 τ(1,0) = 1 + λa·ρ
 τ(1,1) = 1 - ρ
-τ(x,y) = 1 caso contrário
+τ(x,y) = 1 otherwise
 ```
 
-ρ ∈ [-0.2, 0] tunado pra bater draw rate histórica. Fit via MLE em 2024+2026 data (~470 jogos).
+ρ ∈ [-0.2, 0] tuned to match historical draw rate. Fit via MLE on 2024+2026 data (~470 matches).
 
 ### 2. Platt Scaling
 
-Pós-processa probs do ensemble. Treina 3 regressões logísticas binárias (Home/Draw/Away one-vs-rest):
+Post-processes ensemble probs. Trains 3 binary logistic regressions (Home/Draw/Away one-vs-rest):
 
 ```
 p_cal = sigmoid(a · logit(p_raw) + b)
 ```
 
-Parâmetros (a, b) fitados nos 2024 predictions (leak-proof train) vs outcomes reais.
+Parameters (a, b) fitted on 2024 predictions (leak-proof train) vs actual outcomes.
 
-## Arquitetura
+## Architecture
 
-### Módulos afetados
+### Affected modules
 
-- `football_moneyball/domain/match_predictor.py` — novo `simulate_match_dixon_coles()`
-- `football_moneyball/domain/calibration.py` (NOVO) — `fit_platt`, `apply_platt`, `fit_dixon_coles_rho`
-- `football_moneyball/use_cases/train_ml_models.py` — adiciona fit de Platt + ρ, salva em `/data/models/calibration.pkl`
-- `football_moneyball/use_cases/predict_all.py` — aplica calibração após ensemble
+- `football_moneyball/domain/match_predictor.py` — new `simulate_match_dixon_coles()`
+- `football_moneyball/domain/calibration.py` (NEW) — `fit_platt`, `apply_platt`, `fit_dixon_coles_rho`
+- `football_moneyball/use_cases/train_ml_models.py` — adds Platt + ρ fit, saves to `/data/models/calibration.pkl`
+- `football_moneyball/use_cases/predict_all.py` — applies calibration after ensemble
 
 ### Schema
 
-Nenhuma mudança no PostgreSQL. Parâmetros vão em `/data/models/calibration.pkl`:
+No changes in PostgreSQL. Parameters go in `/data/models/calibration.pkl`:
 
 ```python
 {
@@ -68,26 +68,26 @@ Nenhuma mudança no PostgreSQL. Parâmetros vão em `/data/models/calibration.pk
 }
 ```
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] `simulate_match_dixon_coles()` (substitui Poisson independente)
-- [ ] `fit_dixon_coles_rho()` — MLE em 2024+2026
-- [ ] Platt scaling 3-class (Home/Draw/Away one-vs-rest)
-- [ ] `train-models` salva calibração junto com ML models
-- [ ] `predict_all` aplica calibração
-- [ ] Re-backtest validar ganhos
+- [ ] `simulate_match_dixon_coles()` (replaces independent Poisson)
+- [ ] `fit_dixon_coles_rho()` — MLE on 2024+2026
+- [ ] 3-class Platt scaling (Home/Draw/Away one-vs-rest)
+- [ ] `train-models` saves calibration alongside ML models
+- [ ] `predict_all` applies calibration
+- [ ] Re-backtest to validate gains
 
-### Fora do Escopo
+### Out of Scope
 
-- Isotonic regression (mais dados necessários)
-- Calibração de multi-markets (over/under, BTTS) — fica v1.10
+- Isotonic regression (more data needed)
+- Multi-market calibration (over/under, BTTS) — goes in v1.10
 - Bayesian hierarchical
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] Draw picks: 0 → ≥15% dos picks (alvo: 25-30%)
+- [ ] Draw picks: 0 → ≥15% of picks (target: 25-30%)
 - [ ] Brier 1x2: 0.21 → <0.19
-- [ ] Accuracy 1x2 high-confidence (≥60%): 48% → ≥55%
-- [ ] ρ fitado ∈ [-0.25, 0] (sanity check)
+- [ ] High-confidence 1x2 accuracy (≥60%): 48% → ≥55%
+- [ ] Fitted ρ ∈ [-0.25, 0] (sanity check)

@@ -1,4 +1,4 @@
-"""Testes para domain/match_predictor.py — v0.5.0 pipeline dinamico."""
+"""Tests for domain/match_predictor.py — v0.5.0 dynamic pipeline."""
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ from football_moneyball.domain.match_predictor import (
 
 
 def _make_league_data(n_matches=20) -> pd.DataFrame:
-    """Cria dataset sintetico de liga."""
+    """Build synthetic league dataset."""
     rng = np.random.RandomState(42)
     rows = []
     teams = ["A", "B", "C", "D"]
@@ -99,16 +99,16 @@ class TestXgQuality:
 
 class TestRegressionToMean:
     def test_overperformer_reduced(self):
-        # Time com 20 gols mas 10 xG em 10 jogos → overperformer
+        # Team with 20 goals but 10 xG in 10 games -> overperformer
         xg = 1.5
         adjusted = apply_regression_to_mean(xg, team_goals=20, team_xg_total=10.0, matches_played=10)
-        assert adjusted < xg  # puxado pra baixo
+        assert adjusted < xg  # pulled down
 
     def test_underperformer_boosted(self):
-        # Time com 5 gols mas 15 xG → underperformer
+        # Team with 5 goals but 15 xG -> underperformer
         xg = 1.5
         adjusted = apply_regression_to_mean(xg, team_goals=5, team_xg_total=15.0, matches_played=10)
-        assert adjusted > xg  # puxado pra cima
+        assert adjusted > xg  # pulled up
 
     def test_aligned_unchanged(self):
         xg = 1.5
@@ -117,9 +117,9 @@ class TestRegressionToMean:
 
     def test_more_games_less_regression(self):
         xg = 1.5
-        r5 = apply_regression_to_mean(xg, 20, 10.0, 5)   # 5 jogos
-        r30 = apply_regression_to_mean(xg, 60, 30.0, 30)  # 30 jogos, mesma over/game
-        # Com mais jogos, regressao eh menor
+        r5 = apply_regression_to_mean(xg, 20, 10.0, 5)   # 5 games
+        r30 = apply_regression_to_mean(xg, 60, 30.0, 30)  # 30 games, same over/game
+        # With more games, regression is smaller
         assert abs(r30 - xg) < abs(r5 - xg)
 
     def test_minimum_floor(self):
@@ -136,7 +136,7 @@ class TestPredictMatch:
         assert abs(total - 1.0) < 0.02
 
     def test_no_hardcoded_constants(self):
-        # Verificar que pipeline metadata mostra parametros calculados
+        # Verify that pipeline metadata shows computed parameters
         data = _make_league_data(30)
         result = predict_match("A", "B", data, seed=42)
         assert "pipeline" in result

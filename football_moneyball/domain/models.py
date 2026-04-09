@@ -1,6 +1,6 @@
-"""Modelos de dominio do Football Moneyball.
+"""Football Moneyball domain models.
 
-Dataclasses puras sem dependencia de ORM ou frameworks externos.
+Pure dataclasses with no dependency on ORM or external frameworks.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 
 @dataclass
 class MatchInfo:
-    """Metadados de uma partida de futebol."""
+    """Metadata of a football match."""
 
     match_id: int
     competition: str = ""
@@ -33,7 +33,7 @@ class MatchInfo:
 
 @dataclass
 class PlayerMatchMetrics:
-    """Metricas individuais de um jogador em uma partida."""
+    """Individual metrics of a player in a match."""
 
     match_id: int
     player_id: int
@@ -99,7 +99,7 @@ class PlayerMatchMetrics:
 
 @dataclass
 class PassEdge:
-    """Aresta da rede de passes entre dois jogadores em uma partida."""
+    """Edge of the pass network between two players in a match."""
 
     passer_id: int
     receiver_id: int
@@ -115,7 +115,7 @@ class PassEdge:
 
 @dataclass
 class PlayerEmbedding:
-    """Embedding vetorial de estilo de jogo de um jogador por temporada."""
+    """Vector embedding of a player's playing style per season."""
 
     player_id: int
     season: str
@@ -134,7 +134,7 @@ class PlayerEmbedding:
 
 @dataclass
 class Stint:
-    """Periodo continuo de jogo com a mesma formacao de jogadores em campo."""
+    """Continuous period of play with the same set of players on the pitch."""
 
     match_id: int
     stint_number: int
@@ -153,7 +153,7 @@ class Stint:
 
 @dataclass
 class ActionValue:
-    """Valor de acao (xT e VAEP) de um evento em uma partida."""
+    """Action value (xT and VAEP) of an event in a match."""
 
     event_index: int
     player_id: int | None = None
@@ -176,7 +176,7 @@ class ActionValue:
 
 @dataclass
 class PressingProfile:
-    """Metricas de pressing de um time em uma partida."""
+    """Pressing metrics of a team in a match."""
 
     team: str
     ppda: float = 0.0

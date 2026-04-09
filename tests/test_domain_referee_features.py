@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.referee_features."""
+"""Tests for football_moneyball.domain.referee_features."""
 
 from football_moneyball.domain.referee_features import (
     LEAGUE_AVG_CARDS_PER_GAME,

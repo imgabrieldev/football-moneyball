@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.market_features."""
+"""Tests for football_moneyball.domain.market_features."""
 
 from football_moneyball.domain.market_features import (
     blend_with_market,
@@ -19,7 +19,7 @@ class TestDevigOdds:
         assert d["p_home"] > d["p_away"]
 
     def test_invalid_odds_returns_uniform(self):
-        d = devig_odds(1.0, 3.0, 3.0)  # odds<=1 = inválida
+        d = devig_odds(1.0, 3.0, 3.0)  # odds<=1 = invalid
         assert d["p_home"] == 1 / 3
         assert d["p_draw"] == 1 / 3
         assert d["p_away"] == 1 / 3
@@ -62,7 +62,7 @@ class TestConsensusDevig:
     def test_single_bookmaker(self):
         odds = [{"odds_home": 2.0, "odds_draw": 3.0, "odds_away": 4.0}]
         d = consensus_devig(odds)
-        # p_h ~0.46, p_d ~0.31, p_a ~0.23 após devig
+        # p_h ~0.46, p_d ~0.31, p_a ~0.23 after devig
         assert d["p_home"] > d["p_draw"] > d["p_away"]
         assert abs(d["p_home"] + d["p_draw"] + d["p_away"] - 1.0) < 1e-9
 

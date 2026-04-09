@@ -1,9 +1,9 @@
-"""Monte Carlo multi-dimensional — simula gols + corners + cards + shots + HT.
+"""Multi-dimensional Monte Carlo — simulates goals + corners + cards + shots + HT.
 
-Cada simulacao = 1 jogo completo com todas as metricas amostradas de Poisson
-independente. De cada simulacao derivamos ~50+ mercados diferentes.
+Each simulation = 1 complete match with all metrics sampled from independent
+Poisson. From each simulation we derive ~50+ different markets.
 
-Logica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -18,28 +18,28 @@ def simulate_full_match(
     seed: int | None = None,
     dixon_coles_rho: float | None = -0.10,
 ) -> pd.DataFrame:
-    """Simula N jogos completos (gols com correcao Dixon-Coles).
+    """Simulate N full matches (goals with Dixon-Coles correction).
 
     Parameters
     ----------
     lambdas : dict
-        Chaves esperadas:
+        Expected keys:
         home_goals, away_goals,
         home_corners, away_corners,
         home_cards, away_cards,
         home_shots, away_shots,
         home_ht_goals, away_ht_goals.
     n_simulations : int
-        Numero de simulacoes.
+        Number of simulations.
     seed : int, optional
     dixon_coles_rho : float | None
-        Correcao Dixon-Coles aplicada apenas aos gols (negativo = mais empates).
-        None desativa (reverte pra Poisson independente).
+        Dixon-Coles correction applied only to goals (negative = more draws).
+        None disables it (reverts to independent Poisson).
 
     Returns
     -------
     pd.DataFrame
-        Uma linha por simulacao, colunas: home_goals, away_goals,
+        One row per simulation, columns: home_goals, away_goals,
         home_corners, away_corners, total_corners, home_cards, away_cards,
         total_cards, home_shots, away_shots, ht_home, ht_away.
     """
@@ -81,7 +81,7 @@ def simulate_full_match(
 
 
 def derive_markets_from_sims(sim_df: pd.DataFrame) -> dict:
-    """Deriva mercados multi-dimensionais do DataFrame de simulacoes.
+    """Derive multi-dimensional markets from the simulation DataFrame.
 
     Returns
     -------
@@ -128,7 +128,7 @@ def derive_markets_from_sims(sim_df: pd.DataFrame) -> dict:
         "away_away": round(float((ht_away_w & away_wins).sum() / n), 4),
     }
 
-    # Margem de vitoria
+    # Margin of victory
     margin_diff = sim_df.home_goals - sim_df.away_goals
     margins = {}
     for d in [-3, -2, -1, 0, 1, 2, 3]:

@@ -1,10 +1,10 @@
-"""Modulo de dominio para modelos de valor de posse (Possession Value).
+"""Modulo of dominio for models of value of posse (Possession Value).
 
 Implementa Expected Threat (xT) via Markov chain iterativo sobre grid 16x12,
-seguindo a metodologia de Karun Singh (2018). Valora cada acao no campo pelo
-delta de ameaca entre posicao inicial e final.
+seguindo a methodology of Karun Singh (2018). Values each action in the pitch pelo
+delta of threat between posicao inicial and final.
 
-Logica pura sobre DataFrames e arrays numpy — sem dependencias de I/O externo.
+Logica pura sobre DataFrames and arrays numpy — without dependencias of I/O externo.
 """
 
 from __future__ import annotations
@@ -27,18 +27,18 @@ from football_moneyball.domain.constants import (
 # ---------------------------------------------------------------------------
 
 class ExpectedThreat:
-    """Modelo Expected Threat (xT) via Markov chain iterativo.
+    """Model Expected Threat (xT) via Markov chain iterativo.
 
-    Divide o campo em grid l x w e calcula o valor de ameaca de cada zona
-    considerando probabilidade de chutar, probabilidade de gol ao chutar
-    e probabilidade de transicao para outras zonas.
+    Divide o pitch in grid l x w and calcula o value of threat of each zona
+    considerando probability of chutar, probability of goal ao chutar
+    and probability of transicao for theutras zonas.
 
     Parameters
     ----------
     l : int
-        Celulas no eixo x (default 16).
+        Celulas in the eixo x (default 16).
     w : int
-        Celulas no eixo y (default 12).
+        Celulas in the eixo y (default 12).
     """
 
     def __init__(self, l: int = XT_GRID_L, w: int = XT_GRID_W) -> None:
@@ -51,26 +51,26 @@ class ExpectedThreat:
         self._transition: np.ndarray | None = None
 
     def _loc_to_cell(self, x: float, y: float) -> tuple[int, int]:
-        """Converte coordenadas StatsBomb (120x80) para indices do grid."""
+        """Converte coordenadas StatsBomb (120x80) for indices of the grid."""
         cx = min(int(x / PITCH_LENGTH * self.l), self.l - 1)
         cy = min(int(y / PITCH_WIDTH * self.w), self.w - 1)
         return max(cx, 0), max(cy, 0)
 
     def fit(self, events_list: list[pd.DataFrame]) -> "ExpectedThreat":
-        """Treina o modelo xT a partir de eventos de multiplas partidas.
+        """Treina o model xT from eventos of multiplas matches.
 
-        Calcula as probabilidades de chutar, mover, gol e a matriz de
-        transicao a partir dos eventos fornecidos.
+        Compute the probabilitys of chutar, mover, goal is the matriz de
+        transicao from the eventos fornecidos.
 
         Parameters
         ----------
         events_list : list[pd.DataFrame]
-            Lista de DataFrames de eventos (retornados por sb.events()).
+            Lista of DataFrames of eventos (retornados by sb.events()).
 
         Returns
         -------
         ExpectedThreat
-            Self (para encadeamento).
+            Self (for encadeamento).
         """
         all_events = pd.concat(events_list, ignore_index=True)
 
@@ -154,7 +154,7 @@ class ExpectedThreat:
         return self
 
     def get_value(self, x: float, y: float) -> float:
-        """Retorna o valor xT de uma posicao no campo.
+        """Returns the value xT of a posicao in the pitch.
 
         Parameters
         ----------
@@ -164,31 +164,31 @@ class ExpectedThreat:
         Returns
         -------
         float
-            Valor xT da zona correspondente.
+            Valor xT of the zona correspondente.
         """
         if self.xt_grid is None:
-            raise RuntimeError("Modelo nao treinado. Chame fit() primeiro.")
+            raise RuntimeError("Model nao trained. Chame fit() first.")
         cx, cy = self._loc_to_cell(x, y)
         return float(self.xt_grid[cx, cy])
 
     def rate_actions(self, events: pd.DataFrame) -> pd.Series:
-        """Calcula o delta xT de cada acao em uma partida.
+        """Computes the delta xT of each action in a match.
 
-        Retorna xT(destino) - xT(origem) para passes e carries bem-sucedidos.
-        Outras acoes recebem NaN.
+        Returns xT(destino) - xT(origem) for passes and carries bem-sucedidos.
+        Outras actions recebem NaN.
 
         Parameters
         ----------
         events : pd.DataFrame
-            Eventos de uma partida (retornados por sb.events()).
+            Eventos of a match (retornados by sb.events()).
 
         Returns
         -------
         pd.Series
-            Serie com valores xT alinhada ao indice do DataFrame.
+            Serie with values xT alinhada ao index of the DataFrame.
         """
         if self.xt_grid is None:
-            raise RuntimeError("Modelo nao treinado. Chame fit() primeiro.")
+            raise RuntimeError("Model nao trained. Chame fit() first.")
 
         xt_values = pd.Series(np.nan, index=events.index)
 
@@ -223,18 +223,18 @@ class ExpectedThreat:
 # ---------------------------------------------------------------------------
 
 def aggregate_player_xt(action_values: pd.DataFrame) -> pd.DataFrame:
-    """Agrega xT total gerado por cada jogador.
+    """Aggregates xT total gerado by each player.
 
     Parameters
     ----------
     action_values : pd.DataFrame
-        DataFrame retornado por compute_match_xt() (ou equivalente),
-        com colunas player_id, player_name, team, xt_value.
+        DataFrame retornado by compute_match_xt() (or equivalente),
+        with colunas player_id, player_name, team, xt_value.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame com player_id, player_name, team, xt_generated.
+        DataFrame with player_id, player_name, team, xt_generated.
     """
     if action_values.empty:
         return pd.DataFrame()

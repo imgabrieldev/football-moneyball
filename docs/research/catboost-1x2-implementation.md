@@ -10,7 +10,7 @@ tags:
 # Research — CatBoost 1x2 + Pi-Rating Implementation Details
 
 > Research date: 2026-04-05
-> Trigger: Modelo Poisson sempre pick home (10/10). CatBoost + Pi-rating atingiu RPS 0.1925 em benchmark.
+> Trigger: Poisson model always picks home (10/10). CatBoost + Pi-rating reached RPS 0.1925 on benchmark.
 
 ## 1. CatBoost Hyperparameters (winning solutions)
 
@@ -18,41 +18,41 @@ Hubáček et al. (IJCAI 2019, Soccer Prediction Challenge):
 
 ```python
 CatBoostClassifier(
-    loss_function='MultiClass',      # softmax → probs calibradas
+    loss_function='MultiClass',      # softmax → calibrated probs
     iterations=1000,
     depth=6,                         # shallow, sweet spot 4-7
     learning_rate=0.03,              # low LR + many iterations
-    l2_leaf_reg=3,                   # regularização leve
+    l2_leaf_reg=3,                   # light regularization
     early_stopping_rounds=50,
     cat_features=['home_team', 'away_team'],  # native categorical
     class_weights=[1, 1.3, 1],       # upweight draws!
 )
 ```
 
-CatBoost > XGBoost > LightGBM pra futebol (native categorical, ordered boosting). Não precisa one-hot pra times.
+CatBoost > XGBoost > LightGBM for football (native categorical, ordered boosting). No one-hot needed for teams.
 
-**Calibração**: CatBoost MultiClass já bem calibrado via softmax. **Pular Platt/isotonic** — tipicamente piora.
+**Calibration**: CatBoost MultiClass is already well calibrated via softmax. **Skip Platt/isotonic** — it typically makes things worse.
 
-## 2. Features (por importância)
+## 2. Features (by importance)
 
-| # | Feature | Computação | Importância |
+| # | Feature | Computation | Importance |
 |---|---|---|---|
-| 1 | **Market odds** | Pinnacle devigged (power method) | Maior feature individual |
-| 2 | **Pi-Rating diff** | R_home_i - R_away_j | Substitui Elo |
-| 3 | **EMA form** | `form_t = 0.1 * result + 0.9 * form_{t-1}` (~10 matches) | Alta |
-| 4 | **Goal diff EMA** | `gd_t = 0.15 * gd + 0.85 * gd_{t-1}` | Alta |
-| 5 | **Attack/Defense rating** | Iterativo: `att_i = avg(scored / def_opp)`, 5 iter | Média |
-| 6 | **xG / xGA** | Dos dados existentes | Média |
-| 7 | **H2H last 5** | Win%, avg goals | Média-baixa |
-| 8 | **Rest days** | Dias desde último jogo | Baixa |
-| 9 | **Home win % (season)** | Rolling, min 3 matches | Baixa |
+| 1 | **Market odds** | Pinnacle devigged (power method) | Largest single feature |
+| 2 | **Pi-Rating diff** | R_home_i - R_away_j | Replaces Elo |
+| 3 | **EMA form** | `form_t = 0.1 * result + 0.9 * form_{t-1}` (~10 matches) | High |
+| 4 | **Goal diff EMA** | `gd_t = 0.15 * gd + 0.85 * gd_{t-1}` | High |
+| 5 | **Attack/Defense rating** | Iterative: `att_i = avg(scored / def_opp)`, 5 iter | Medium |
+| 6 | **xG / xGA** | From existing data | Medium |
+| 7 | **H2H last 5** | Win%, avg goals | Medium-low |
+| 8 | **Rest days** | Days since last match | Low |
+| 9 | **Home win % (season)** | Rolling, min 3 matches | Low |
 
-**Sem odds**: features 2-9 carregam ~80% do poder preditivo.
-**Com odds**: feature 1 domina. Risco de model collapse → mitigar com residual modeling.
+**Without odds**: features 2-9 carry ~80% of the predictive power.
+**With odds**: feature 1 dominates. Risk of model collapse → mitigate with residual modeling.
 
 ## 3. Pi-Rating (Constantinou & Fenton 2013)
 
-### Formula de update
+### Update formula
 
 ```python
 goal_diff = min(max(home_goals - away_goals, -3), 3)  # cap ±3
@@ -63,32 +63,36 @@ R_home[home_team] += γ * error
 R_away[away_team] -= γ * error
 ```
 
-### Parâmetros
-- **γ (learning rate)**: 0.035 (original EPL). Brasileirão: 0.04-0.05 (mais paridade)
-- **Rating inicial**: 0.0 (todos os times)
-- **Times promovidos**: recebem média dos rebaixados da temporada anterior
-- **Goal diff cap**: ±3 (5-0 conta como 3-0)
-- **Convergência**: ~2 temporadas de dados históricos
+### Parameters
 
-### Ratings → Probabilidades
+- **γ (learning rate)**: 0.035 (original EPL). Brasileirão: 0.04-0.05 (more parity)
+- **Initial rating**: 0.0 (all teams)
+- **Promoted teams**: receive the average of the relegated teams from the previous season
+- **Goal diff cap**: ±3 (a 5-0 counts as 3-0)
+- **Convergence**: ~2 seasons of historical data
+
+### Ratings → Probabilities
+
 ```python
 λ_home = 1.36 * exp(α * rating_diff)
 λ_away = 1.07 * exp(-α * rating_diff)
-# Depois Poisson/Dixon-Coles pra P(H,D,A)
+# Then Poisson/Dixon-Coles for P(H,D,A)
 ```
 
-Ou usar diretamente como feature no CatBoost (melhor).
+Or use directly as a feature in CatBoost (better).
 
 ### Benchmark
-- **Brier 0.2065 na EPL** (2001-2012)
-- Superou Elo standalone e Poisson básico
 
-## 4. Odds como Features
+- **Brier 0.2065 on EPL** (2001-2012)
+- Outperformed standalone Elo and basic Poisson
+
+## 4. Odds as Features
 
 ### Devig (power method)
+
 ```python
 def devig_power(probs):
-    """Power method: resolve sum(p_i^k) = 1."""
+    """Power method: solves sum(p_i^k) = 1."""
     from scipy.optimize import brentq
     def f(k): return sum(p**k for p in probs) - 1
     k = brentq(f, 0.5, 2.0)
@@ -96,21 +100,23 @@ def devig_power(probs):
     return [p/sum(fair) for p in fair]
 ```
 
-### Hierarquia de sharpness
-Pinnacle > Betfair Exchange > SBO > bet365 > resto
+### Sharpness hierarchy
 
-### Prevenir model collapse
-1. **Residual modeling**: target = `outcome - market_prob` (forçar edge finding)
-2. **Feature ablation**: treinar com e sem odds, medir lift
-3. **L2 regularization** no CatBoost
-4. **Two-stage**: odds como baseline, modelo corrige
+Pinnacle > Betfair Exchange > SBO > bet365 > the rest
 
-### Temporal: usar odds **pré-match** (24h antes), não closing line.
+### Preventing model collapse
 
-## 5. Cross-Validation Temporal
+1. **Residual modeling**: target = `outcome - market_prob` (forces edge finding)
+2. **Feature ablation**: train with and without odds, measure lift
+3. **L2 regularization** in CatBoost
+4. **Two-stage**: odds as baseline, model corrects
+
+### Temporal: use **pre-match** odds (24h before), not closing line.
+
+## 5. Temporal Cross-Validation
 
 ```python
-# Expanding window — ÚNICA abordagem válida
+# Expanding window — the ONLY valid approach
 splits = []
 for season in [2023, 2024, 2025]:
     train = df[df['season'] < season]
@@ -119,19 +125,19 @@ for season in [2023, 2024, 2025]:
         splits.append((train.index, test.index))
 ```
 
-**Nunca** random k-fold (leak de forma futura pro training).
+**Never** use random k-fold (leaks future form into training).
 
-## 6. Performance Esperada (nosso dataset)
+## 6. Expected Performance (our dataset)
 
-| Cenário | RPS | Accuracy |
+| Scenario | RPS | Accuracy |
 |---|---|---|
-| Sempre home (baseline) | ~0.26 | ~47% |
-| **CatBoost sem odds** | 0.210-0.220 | 48-52% |
-| **CatBoost com odds** | 0.195-0.205 | 50-54% |
+| Always home (baseline) | ~0.26 | ~47% |
+| **CatBoost without odds** | 0.210-0.220 | 48-52% |
+| **CatBoost with odds** | 0.195-0.205 | 50-54% |
 | Bookmaker consensus | ~0.195 | ~53% |
 | **Target** | **<0.205** | **>50%** |
 
-## 7. Arquitetura Proposta
+## 7. Proposed Architecture
 
 ```
 [Pi-Rating] ──┐
@@ -142,7 +148,7 @@ for season in [2023, 2024, 2025]:
 [Odds devig]──┘    temporal CV, no post-hoc calibration
 ```
 
-Poisson mantido pra multi-market (corners, cards, correct score, HT/FT).
+Poisson retained for multi-market (corners, cards, correct score, HT/FT).
 
 ## Sources
 

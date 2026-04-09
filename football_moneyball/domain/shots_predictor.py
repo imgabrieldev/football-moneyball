@@ -1,6 +1,6 @@
-"""Modulo de previsao de chutes via Poisson.
+"""Shots prediction module via Poisson.
 
-Mesmo padrao de corners: λ_shots = avg_shots_team × opp_factor.
+Same pattern as corners: lambda_shots = avg_shots_team x opp_factor.
 """
 
 from __future__ import annotations
@@ -13,21 +13,21 @@ def predict_shots(
     away_shots_against: float,
     league_shots_per_team: float = 10.0,
 ) -> tuple[float, float]:
-    """Retorna (λ_home_shots, λ_away_shots).
+    """Return (lambda_home_shots, lambda_away_shots).
 
     Parameters
     ----------
     home_shots_avg, away_shots_avg : float
-        Media shots feitos.
+        Average shots taken.
     home_shots_against, away_shots_against : float
-        Media shots sofridos.
+        Average shots conceded.
     league_shots_per_team : float
-        Media da liga (~10/time).
+        League average (~10/team).
 
     Returns
     -------
     tuple[float, float]
-        (λ_home, λ_away) com minimo de 3.0.
+        (lambda_home, lambda_away) with a minimum of 3.0.
     """
     if league_shots_per_team <= 0:
         league_shots_per_team = 10.0

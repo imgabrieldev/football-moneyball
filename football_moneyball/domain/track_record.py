@@ -1,7 +1,7 @@
-"""Logica pura de track record — resolve previsoes e calcula metricas de acuracia.
+"""Pure track record logic — resolves predictions and computes accuracy metrics.
 
-Modulo de dominio: nao importa SQLAlchemy, requests, ou qualquer infra.
-Apenas opera sobre dicts e listas Python nativas.
+Domain module: does not import SQLAlchemy, requests, or any infra.
+Only operates on native Python dicts and lists.
 """
 
 from __future__ import annotations
@@ -14,28 +14,28 @@ def resolve_prediction(
     actual_home_goals: int,
     actual_away_goals: int,
 ) -> dict:
-    """Preenche campos de resolucao de uma previsao.
+    """Populate the resolution fields of a prediction.
 
-    Recebe a previsao (dict com probabilidades do modelo) e o placar real,
-    retorna dict com campos preenchidos: actual_outcome, correct_1x2,
+    Receives the prediction (dict with model probabilities) and the actual score,
+    returns a dict with filled fields: actual_outcome, correct_1x2,
     correct_over_under, brier_score, status='resolved'.
 
     Parameters
     ----------
     pred : dict
-        Previsao original com home_win_prob, draw_prob, away_win_prob,
+        Original prediction with home_win_prob, draw_prob, away_win_prob,
         over_25_prob.
     actual_home_goals : int
-        Gols do mandante.
+        Home team goals.
     actual_away_goals : int
-        Gols do visitante.
+        Away team goals.
 
     Returns
     -------
     dict
-        Campos de resolucao para atualizar no registro.
+        Resolution fields to update in the record.
     """
-    # Resultado real
+    # Actual result
     if actual_home_goals > actual_away_goals:
         actual_outcome = "home"
     elif actual_home_goals < actual_away_goals:
@@ -43,7 +43,7 @@ def resolve_prediction(
     else:
         actual_outcome = "draw"
 
-    # Resultado previsto (maior probabilidade)
+    # Predicted outcome (highest probability)
     home_prob = float(pred.get("home_win_prob", 0) or 0)
     draw_prob = float(pred.get("draw_prob", 0) or 0)
     away_prob = float(pred.get("away_win_prob", 0) or 0)
@@ -60,7 +60,7 @@ def resolve_prediction(
     predicted_over = over_prob > 0.5
     correct_over_under = predicted_over == actual_over
 
-    # Brier score (para 1X2 — multiclass)
+    # Brier score (for 1X2 — multiclass)
     actual_vec = [
         1.0 if actual_outcome == "home" else 0.0,
         1.0 if actual_outcome == "draw" else 0.0,
@@ -85,21 +85,21 @@ def resolve_value_bet(
     actual_outcome: str,
     actual_total_goals: int,
 ) -> dict:
-    """Resolve uma value bet com base no resultado real.
+    """Resolve a value bet based on the actual result.
 
     Parameters
     ----------
     bet : dict
-        Value bet com market, outcome, best_odds, kelly_stake.
+        Value bet with market, outcome, best_odds, kelly_stake.
     actual_outcome : str
-        'home', 'draw', ou 'away'.
+        'home', 'draw', or 'away'.
     actual_total_goals : int
-        Total de gols da partida.
+        Total goals of the match.
 
     Returns
     -------
     dict
-        Campos de resolucao: won, profit.
+        Resolution fields: won, profit.
     """
     market = bet.get("market", "")
     bet_outcome = bet.get("outcome", "")
@@ -109,7 +109,7 @@ def resolve_value_bet(
     won = False
 
     if market == "h2h":
-        # Mapear outcome para home/draw/away
+        # Map outcome to home/draw/away
         outcome_lower = bet_outcome.lower()
         if outcome_lower == "draw":
             won = actual_outcome == "draw"
@@ -125,8 +125,8 @@ def resolve_value_bet(
         elif "under" in bet_outcome.lower():
             won = actual_total_goals <= 2.5
     elif market == "btts":
-        # Both teams to score — nao temos info suficiente aqui
-        # mas podemos checar se ambos marcaram
+        # Both teams to score — we do not have enough info here
+        # but we could check whether both teams scored
         pass
 
     profit = (odds - 1) * stake if won else -stake
@@ -138,17 +138,17 @@ def resolve_value_bet(
 
 
 def calculate_track_record(predictions: list[dict]) -> dict:
-    """Calcula resumo do track record a partir do historico de previsoes.
+    """Compute the track record summary from the prediction history.
 
     Parameters
     ----------
     predictions : list[dict]
-        Lista de previsoes (mix de resolvidas e pendentes).
+        List of predictions (mix of resolved and pending).
 
     Returns
     -------
     dict
-        Sumario com total, resolved, pending, accuracy_1x2,
+        Summary with total, resolved, pending, accuracy_1x2,
         accuracy_over_under, avg_brier, by_round, by_team.
     """
     total = len(predictions)

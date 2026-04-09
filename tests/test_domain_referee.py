@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.referee."""
+"""Tests for football_moneyball.domain.referee."""
 
 from football_moneyball.domain.referee import (
     cards_per_game_from_totals,
@@ -19,11 +19,11 @@ class TestRefereeStrictness:
         assert referee_strictness_factor(2.0, 4.0) == 0.5
 
     def test_clamp_upper(self):
-        # 12 vs 4 = 3.0 → clamped to 2.0
+        # 12 vs 4 = 3.0 -> clamped to 2.0
         assert referee_strictness_factor(12.0, 4.0) == 2.0
 
     def test_clamp_lower(self):
-        # 0.5 vs 4 = 0.125 → clamped to 0.5
+        # 0.5 vs 4 = 0.125 -> clamped to 0.5
         assert referee_strictness_factor(0.5, 4.0) == 0.5
 
     def test_zero_league(self):

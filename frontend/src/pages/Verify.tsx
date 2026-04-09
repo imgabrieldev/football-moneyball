@@ -8,14 +8,14 @@ export function Verify() {
     queryFn: () => api.verify(),
   });
 
-  if (isLoading) return <div className="text-gray-500">Verificando previsões...</div>;
+  if (isLoading) return <div className="text-gray-500">Verifying predictions...</div>;
   if (data?.error) return <div className="text-yellow-400">{data.error}</div>;
 
   const predictions = data?.predictions || [];
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Verificação — Modelo vs Realidade</h1>
+      <h1 className="text-2xl font-bold">Verification — Model vs Reality</h1>
 
       {/* Summary */}
       {data?.total_matches > 0 && (
@@ -25,7 +25,7 @@ export function Verify() {
             <div className={`text-2xl font-bold ${data.accuracy_1x2 > 40 ? 'text-green-400' : 'text-red-400'}`}>
               {data.accuracy_1x2}%
             </div>
-            <div className="text-xs text-gray-500">{data.correct_1x2}/{data.total_matches} corretos</div>
+            <div className="text-xs text-gray-500">{data.correct_1x2}/{data.total_matches} correct</div>
           </div>
           <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
             <div className="text-xs text-gray-500">Accuracy Over/Under</div>
@@ -39,7 +39,7 @@ export function Verify() {
             <div className={`text-2xl font-bold ${data.avg_brier_score < 0.25 ? 'text-green-400' : 'text-yellow-400'}`}>
               {data.avg_brier_score?.toFixed(4)}
             </div>
-            <div className="text-xs text-gray-500">{'<'} 0.25 = bom</div>
+            <div className="text-xs text-gray-500">{'<'} 0.25 = good</div>
           </div>
         </div>
       )}
@@ -50,10 +50,10 @@ export function Verify() {
           <table className="w-full text-sm">
             <thead className="text-gray-500 border-b border-gray-800">
               <tr>
-                <th className="p-3 text-left">Partida</th>
-                <th className="p-3 text-center">Placar</th>
-                <th className="p-3 text-center">Previsão</th>
-                <th className="p-3 text-center">Real</th>
+                <th className="p-3 text-left">Match</th>
+                <th className="p-3 text-center">Score</th>
+                <th className="p-3 text-center">Prediction</th>
+                <th className="p-3 text-center">Actual</th>
                 <th className="p-3 text-center">1X2</th>
                 <th className="p-3 text-right">P(H)</th>
                 <th className="p-3 text-right">P(D)</th>
@@ -88,7 +88,7 @@ export function Verify() {
 
       {predictions.length === 0 && (
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8 text-center text-gray-500">
-          Nenhuma partida verificável. Jogos ainda não aconteceram ou dados não foram ingeridos.
+          No verifiable matches. Games have not been played yet or data has not been ingested.
         </div>
       )}
     </div>

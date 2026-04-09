@@ -16,42 +16,42 @@ export function Players() {
   const teams = [...new Set((players || []).map((p: any) => p.team))].sort();
 
   const columns = [
-    { key: 'player_name', label: 'Jogador', align: 'left' },
-    { key: 'team', label: 'Time', align: 'left' },
-    { key: 'matches', label: 'J', align: 'right' },
+    { key: 'player_name', label: 'Player', align: 'left' },
+    { key: 'team', label: 'Team', align: 'left' },
+    { key: 'matches', label: 'M', align: 'right' },
     { key: 'minutes', label: 'Min', align: 'right' },
-    { key: 'goals', label: 'Gols', align: 'right' },
+    { key: 'goals', label: 'Goals', align: 'right' },
     { key: 'xg', label: 'xG', align: 'right' },
     { key: 'assists', label: 'Ast', align: 'right' },
     { key: 'xa', label: 'xA', align: 'right' },
-    { key: 'shots', label: 'Chut', align: 'right' },
+    { key: 'shots', label: 'Sh', align: 'right' },
     { key: 'passes', label: 'Pass', align: 'right' },
-    { key: 'tackles', label: 'Tckl', align: 'right' },
+    { key: 'tackles', label: 'Tkl', align: 'right' },
   ];
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Jogadores</h1>
+      <h1 className="text-2xl font-bold">Players</h1>
 
       <div className="flex gap-4 items-end">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Filtrar por time</label>
+          <label className="block text-xs text-gray-500 mb-1">Filter by team</label>
           <select
             value={team}
             onChange={(e) => setTeam(e.target.value)}
             className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm"
           >
-            <option value="">Todos</option>
+            <option value="">All</option>
             {teams.map((t: string) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
         </div>
-        <div className="text-sm text-gray-500">{sorted.length} jogadores</div>
+        <div className="text-sm text-gray-500">{sorted.length} players</div>
       </div>
 
       {isLoading ? (
-        <div className="text-gray-500">Carregando jogadores...</div>
+        <div className="text-gray-500">Loading players...</div>
       ) : (
         <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-auto">
           <table className="w-full text-sm">

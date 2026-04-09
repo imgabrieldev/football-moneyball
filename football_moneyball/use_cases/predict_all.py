@@ -1,4 +1,4 @@
-"""Use case: prever todos os jogos pendentes da rodada."""
+"""Use case: prever todos os jogos pendentes of the matchday."""
 
 from __future__ import annotations
 import os
@@ -20,7 +20,7 @@ from football_moneyball.domain.shots_predictor import predict_shots
 
 logger = logging.getLogger(__name__)
 
-# Minimo de jogadores por time pra acionar path player-aware
+# Minimo of players by time for acionar path player-aware
 MIN_PLAYERS_FOR_XI = 11
 
 # v1.3.0 — ML targets suportados
@@ -28,7 +28,7 @@ ML_TARGETS = ("goals", "corners", "cards")
 
 
 class PredictAll:
-    """Roda predictor pra todos os jogos que ainda nao aconteceram.
+    """Roda predictor for todos os jogos that still nao aconteceram.
 
     Parameters
     ----------
@@ -45,7 +45,7 @@ class PredictAll:
         self._pi_ratings: dict = {}  # lazy-loaded per season
 
     def _try_load_calibration(self) -> dict | None:
-        """Carrega calibracao (Dixon-Coles rho + Platt scaling) se existe."""
+        """Loads calibracao (Dixon-Coles rho + Platt scaling) if existe."""
         import pickle
         models_dir = os.getenv("MONEYBALL_MODELS_DIR", "football_moneyball/models")
         path = os.path.join(models_dir, "calibration.pkl")
@@ -64,7 +64,7 @@ class PredictAll:
             return None
 
     def _try_load_catboost(self):
-        """Carrega CatBoost 1x2 se existe."""
+        """Loads CatBoost 1x2 if existe."""
         models_dir = os.getenv("MONEYBALL_MODELS_DIR", "football_moneyball/models")
         path = os.path.join(models_dir, "catboost_1x2.cbm")
         if not os.path.exists(path):
@@ -80,7 +80,7 @@ class PredictAll:
             return None
 
     def _try_load_ml_models(self) -> dict:
-        """Carrega modelos ML se existem. Retorna {} se nao treinados."""
+        """Loads models ML if existem. Returns {} if nao trained."""
         from football_moneyball.domain.ml_lambda import LambdaPredictor
 
         models_dir = os.getenv("MONEYBALL_MODELS_DIR", "football_moneyball/models")
@@ -103,16 +103,16 @@ class PredictAll:
         competition: str = "Brasileirão Série A",
         season: str = "2026",
     ) -> dict[str, Any]:
-        """Preve todos os jogos com odds mas sem resultado.
+        """Preve todos os jogos with odds mas without resultado.
 
-        Usa dados historicos do banco + pipeline v0.5.0.
+        Usa data historicos of the banco + pipeline v0.5.0.
         """
         # All historical data for predictions
         all_data = self.repo.get_all_match_data(competition, season)
         if all_data.empty:
-            return {"error": "Sem dados historicos.", "predictions": []}
+            return {"error": "Without data historicos.", "predictions": []}
 
-        # Get upcoming odds — preferir provider (tem commence_time) ou cache PG
+        # Get upcoming odds — preferir provider (tem commence_time) or cache PG
         cached_odds = None
         if self.odds_provider:
             try:
@@ -122,7 +122,7 @@ class PredictAll:
         if not cached_odds:
             cached_odds = self.repo.get_cached_odds(max_age_hours=48)
         if not cached_odds:
-            return {"error": "Sem odds. Rode snapshot-odds primeiro.", "predictions": []}
+            return {"error": "Without odds. Rode snapshot-odds first.", "predictions": []}
 
         predictions = []
         seen_matchups: set[frozenset] = set()
@@ -130,7 +130,7 @@ class PredictAll:
             home = game.get("home_team", "")
             away = game.get("away_team", "")
 
-            # Se nomes vazios, extrair dos outcomes h2h
+            # If nomes vazios, extrair of the outcomes h2h
             if not home or not away:
                 team_names = set()
                 for bm in game.get("bookmakers", []):
@@ -145,7 +145,7 @@ class PredictAll:
             if not home or not away:
                 continue
 
-            # v1.14.2: Dedup fixtures — evita prever mesmo jogo com mando invertido
+            # v1.14.2: Dedup fixtures — evita prever same jogo with mando invertido
             matchup = frozenset([home.strip().lower(), away.strip().lower()])
             if matchup in seen_matchups:
                 logger.debug(f"Skipping duplicate fixture: {home} vs {away}")
@@ -153,11 +153,11 @@ class PredictAll:
             seen_matchups.add(matchup)
 
             try:
-                # v1.1.0: tentar path player-aware se tiver dados suficientes
+                # v1.1.0: tentar path player-aware if tiver data suficientes
                 home_aggs = self.repo.get_player_aggregates(home, season, last_n=5)
                 away_aggs = self.repo.get_player_aggregates(away, season, last_n=5)
 
-                # Parâmetros de score sampling do calibration.pkl
+                # Parameters of score sampling of the calibration.pkl
                 _rho = (
                     self._calibration.get("dixon_coles_rho", -0.10)
                     if self._calibration else -0.10
@@ -222,7 +222,7 @@ class PredictAll:
                 except Exception as e:
                     logger.debug(f"multi_markets failed for {home}-{away}: {e}")
 
-                # v1.4.0: Player props (marcador, assistencia, chutes individuais)
+                # v1.4.0: Player props (marcador, assistencia, shots individuais)
                 try:
                     props = self._compute_player_props(home, away, season)
                     if props:
@@ -230,19 +230,19 @@ class PredictAll:
                 except Exception as e:
                     logger.debug(f"player_props failed for {home}-{away}: {e}")
 
-                # v1.14.0: CatBoost 1x2 substitui Poisson probs se disponível
+                # v1.14.0: CatBoost 1x2 replaces Poisson probs if available
                 if self._catboost_1x2:
                     self._apply_catboost_1x2(pred, home, away, all_data, season)
                 else:
-                    # Fallback: calibração Poisson
+                    # Fallback: calibration Poisson
                     if self._calibration:
                         self._apply_calibration(pred)
                     self._apply_draw_floor(pred)
 
-                # v1.10.0/v1.13.0: Market blending (pós-calibração/CatBoost)
+                # v1.10.0/v1.13.0: Market blending (post-calibration/CatBoost)
                 self._apply_market_blending(pred, home, away)
 
-                # v1.14.2: Reaplicar floors/caps pós-blending (blend pode desfazer)
+                # v1.14.2: Re-apply floors/caps post-blending (blend can undo them)
                 self._apply_draw_floor(pred)
                 self._apply_confidence_cap(pred)
 
@@ -257,12 +257,12 @@ class PredictAll:
             except Exception as e:
                 logger.warning(f"Erro ao prever {home} vs {away}: {e}")
 
-        # Persistir previsoes no banco
+        # Persistir previsoes in the banco
         if predictions:
             self.repo.save_predictions(predictions)
             # Save to immutable history
             self.repo.save_prediction_history(predictions)
-            logger.info(f"{len(predictions)} previsoes salvas no banco")
+            logger.info(f"{len(predictions)} previsoes salvas in the banco")
 
         return {
             "predictions": predictions,
@@ -270,7 +270,7 @@ class PredictAll:
         }
 
     def _apply_calibration(self, pred: dict) -> None:
-        """Aplica calibração 1x2 (platt/isotonic/temperature) baseado no método persistido."""
+        """Apply calibration 1x2 (platt/isotonic/temperature) baseado in the method persistido."""
         import numpy as np
 
         if not self._calibration:
@@ -307,7 +307,7 @@ class PredictAll:
             temp = TemperatureScaler(**self._calibration["temperature"])
             cal = calibrate_1x2_temperature(raw, temp)
         else:
-            logger.warning(f"Método de calibração desconhecido: {method}. Skip.")
+            logger.warning(f"Method of calibration desconhecido: {method}. Skip.")
             return
 
         pred["home_win_prob"] = round(float(cal[0, 0]), 4)
@@ -320,7 +320,7 @@ class PredictAll:
         self, pred: dict, home: str, away: str,
         all_data, season: str,
     ) -> None:
-        """v1.14.0/v1.15.0: Substitui probs 1x2 do Poisson pelo CatBoost."""
+        """v1.14.0/v1.15.0: Substitui probs 1x2 of the Poisson by the CatBoost."""
         try:
             from football_moneyball.domain.catboost_predictor import (
                 build_match_features, predict_1x2, compute_form_ema, compute_gd_ema,
@@ -370,7 +370,7 @@ class PredictAll:
             home_xga_avg = float(np.mean(team_xga.get(home, [1.1])[-5:]))
             away_xga_avg = float(np.mean(team_xga.get(away, [1.3])[-5:]))
 
-            # Market odds (se já estiverem no pred via blending anterior)
+            # Market odds (if already estiverem in the pred via blending earlier)
             mkt = pred.get("market_implied", {})
             mh = mkt.get("home_win_prob", 0.40)
             md = mkt.get("draw_prob", 0.28)
@@ -494,27 +494,27 @@ class PredictAll:
             pred["draw_prob"] = round(result["draw_prob"], 4)
             pred["away_win_prob"] = round(result["away_win_prob"], 4)
             pred["model_version"] = "v1.15.0-catboost"
-            pred["calibrated"] = True  # CatBoost MultiClass já calibrado
+            pred["calibrated"] = True  # CatBoost MultiClass already calibrado
 
         except Exception as e:
             logger.warning(f"CatBoost 1x2 failed for {home}-{away}: {e}")
-            # Fallback: Poisson probs (já no pred)
+            # Fallback: Poisson probs (already in the pred)
             if self._calibration:
                 self._apply_calibration(pred)
             self._apply_draw_floor(pred)
 
     def _apply_draw_floor(self, pred: dict, min_draw: float = 0.26) -> None:
-        """v1.13.0/v1.14.2: Garante draw probability mínima baseada em taxa empírica.
+        """v1.13.0/v1.14.2: Enforce minimum draw probability based on empirical rate.
 
-        Brasileirão histórico: 25-26% draws. Modelo Poisson sistematicamente
-        subestima. Floor de 26% alinhado com taxa real.
+        Brasileirão history: 25-26% draws. Model Poisson sistematicamente
+        subestima. Floor of 26% alinhado with taxa real.
         """
         d = pred.get("draw_prob", 0.0)
         if d >= min_draw:
             return
         h = pred.get("home_win_prob", 0.33)
         a = pred.get("away_win_prob", 0.33)
-        # Boost draw, tirar proporcionalmente de H e A
+        # Boost draw, tirar proporcionalmente of H and A
         deficit = min_draw - d
         total_ha = h + a
         if total_ha <= 0:
@@ -524,10 +524,10 @@ class PredictAll:
         pred["away_win_prob"] = round(a - deficit * (a / total_ha), 4)
 
     def _apply_confidence_cap(self, pred: dict, max_prob: float = 0.75) -> None:
-        """v1.14.2: Limita probabilidade máxima pra evitar overconfidence.
+        """v1.14.2: Cap maximum probability to avoid overconfidence.
 
-        Brasileirão é volátil — probs acima de 75% sao irrealistas.
-        Redistribui excesso proporcionalmente entre os outros outcomes.
+        Brasileirão é volátil — probs acima of 75% sao irrealistas.
+        Redistribui excesso proporcionalmente between os outros outcomes.
         """
         for key in ("home_win_prob", "draw_prob", "away_win_prob"):
             p = pred.get(key, 0.0)
@@ -543,10 +543,10 @@ class PredictAll:
                 pred[k] = round(pred.get(k, 0.0) + excess * share, 4)
 
     def _apply_market_blending(self, pred: dict, home: str, away: str) -> None:
-        """v1.10.0/v1.13.0: Blenda probs do modelo com consensus devigged.
+        """v1.10.0/v1.13.0: Blenda probs of the model with consensus devigged.
 
-        Blend ratio alpha=0.35 (35% modelo, 65% mercado).
-        Research: mercado é mais calibrado que modelo (RPS 0.20 vs 0.24).
+        Blend ratio alpha=0.35 (35% model, 65% mercado).
+        Research: market is better calibrated than model (RPS 0.20 vs 0.24).
         """
         try:
             from football_moneyball.domain.market_features import (
@@ -554,12 +554,12 @@ class PredictAll:
                 consensus_devig,
             )
 
-            # Busca odds de casas confiáveis (Pinnacle + Betfair têm liquidez)
+            # Fetch odds from reliable bookmakers (Pinnacle + Betfair have liquidity)
             sharp_books = ["pinnacle", "betfair_ex_uk", "matchbook", "smarkets"]
             odds_list = self.repo.get_market_odds_consensus(
                 home, away, preferred_bookmakers=sharp_books,
             )
-            # Fallback: qualquer casa
+            # Fallback: qualquer home
             if not odds_list:
                 odds_list = self.repo.get_market_odds_consensus(home, away)
 
@@ -590,8 +590,8 @@ class PredictAll:
     def _compute_multi_markets(
         self, home: str, away: str, pred: dict, season: str,
     ) -> dict | None:
-        """Simula corners, cards, shots, HT. Usa ML se disponivel, senao analitico."""
-        # v1.5.0 — usa advanced aggregates para alimentar rich features
+        """Simula corners, cards, shots, HT. Usa ML if disponivel, senao analitico."""
+        # v1.5.0 — usa advanced aggregates for thelimentar rich features
         home_stats = self.repo.get_team_advanced_aggregates(home, season, last_n=5)
         away_stats = self.repo.get_team_advanced_aggregates(away, season, last_n=5)
         league = self.repo.get_league_stats_averages(season)
@@ -602,7 +602,7 @@ class PredictAll:
         league_corners_per_team = league["corners_per_match"] / 2
         league_shots_per_team = league["shots_per_match"] / 2
 
-        # v1.13.0: market probs como features pro ML
+        # v1.13.0: market probs as features pro ML
         _market_probs = pred.get("market_implied")
         if _market_probs:
             _market_probs = {
@@ -613,7 +613,7 @@ class PredictAll:
 
         ml_used = False
 
-        # v1.3.0 — ML corners se modelo carregado
+        # v1.3.0 — ML corners if model carregado
         if "corners" in self._ml_models:
             lam_home_corners, lam_away_corners = self._ml_predict_pair(
                 home_stats, away_stats, league, target="corners",
@@ -630,7 +630,7 @@ class PredictAll:
                 league_corners_per_team=league_corners_per_team,
             )
 
-        # v1.3.0 — ML cards se modelo carregado
+        # v1.3.0 — ML cards if model carregado
         if "cards" in self._ml_models:
             lam_home_cards, lam_away_cards = self._ml_predict_pair(
                 home_stats, away_stats, league, target="cards",
@@ -657,9 +657,9 @@ class PredictAll:
             league_shots_per_team=league_shots_per_team,
         )
 
-        # v1.3.0/v1.5.0 — ML goals ENSEMBLE com analytical (70% analytical + 30% ML)
+        # v1.3.0/v1.5.0 — ML goals ENSEMBLE with analytical (70% analytical + 30% ML)
         # Research: com < 200 samples, analytical Dixon-Coles bate ML puro.
-        # Ensemble weighted evita regressao enquanto permite ML adicionar sinal.
+        # Ensemble weighted evita regression enquanto permite ML adicionar sinal.
         lam_home_goals_analytical = pred.get("home_xg", 1.3)
         lam_away_goals_analytical = pred.get("away_xg", 1.1)
         if "goals" in self._ml_models:
@@ -669,8 +669,8 @@ class PredictAll:
                 commence_time=pred.get("commence_time", ""), season=season,
                 market_probs=_market_probs,
             )
-            # Ensemble: 60% analytical + 40% ML (v1.8.0 com 810 samples)
-            # Research: com 10+ samples/feature, ML bate analytical em accuracy
+            # Ensemble: 60% analytical + 40% ML (v1.8.0 with 810 samples)
+            # Research: with 10+ samples/feature, ML bate analytical in accuracy
             lam_home_goals = 0.6 * lam_home_goals_analytical + 0.4 * lam_home_ml
             lam_away_goals = 0.6 * lam_away_goals_analytical + 0.4 * lam_away_ml
             ml_used = True
@@ -699,7 +699,7 @@ class PredictAll:
     def _compute_player_props(
         self, home: str, away: str, season: str,
     ) -> dict | None:
-        """v1.4.0: calcula marcador/assistencia/chutes pra top jogadores."""
+        """v1.4.0: calcula marcador/assistencia/shots for top players."""
         from football_moneyball.domain.player_props import compute_team_player_props
 
         home_aggs = self.repo.get_player_aggregates(home, season, last_n=5)
@@ -714,7 +714,7 @@ class PredictAll:
         }
 
     def _ensure_elo_loaded(self, season: str) -> None:
-        """Carrega Elo ratings da temporada (lazy, 1x por instancia)."""
+        """Loads Elo ratings of the season (lazy, 1x by instancia)."""
         if self._elo_ratings:
             return
         from football_moneyball.domain.elo import final_elo_ratings
@@ -735,12 +735,12 @@ class PredictAll:
         commence_time: str = "",
         season: str = "2026",
     ) -> tuple[float, float]:
-        """Usa LambdaPredictor pra prever (λ_home, λ_away) com rich + context features."""
+        """Usa LambdaPredictor for prever (λ_home, λ_away) with rich + context features."""
         from football_moneyball.domain.feature_engineering import (
             build_context_aware_features, build_rich_team_features, FEATURE_DIM,
         )
 
-        # Elo ratings (current — usado como aprox pre-match nessa chamada)
+        # Elo ratings (current — used as aprox pre-match nessa call)
         self._ensure_elo_loaded(season)
         home_elo = self._elo_ratings.get(home_team, 1500.0)
         away_elo = self._elo_ratings.get(away_team, 1500.0)
@@ -781,7 +781,7 @@ class PredictAll:
             )
             h2h_home_feats = compute_h2h_features(h2h_history, home_team, away_team)
             h2h_away_feats = compute_h2h_features(h2h_history, away_team, home_team)
-            # Referee: sem match_id de futuro, usa None (defaults)
+            # Referee: without match_id of futuro, usa None (defaults)
             ref_feats = compute_referee_features(None)
         except Exception:
             pass
@@ -791,7 +791,7 @@ class PredictAll:
             "corners_per_team": league.get("corners_per_match", 10.0) / 2,
         }
 
-        # v1.13.0: Market-implied probs como features
+        # v1.13.0: Market-implied probs as features
         market_probs = kwargs.get("market_probs")
 
         X_home = build_context_aware_features(
@@ -813,7 +813,7 @@ class PredictAll:
             market_probs=market_probs,
         )
 
-        # Backward compat: se modelo foi treinado com menos features, truncar
+        # Backward compat: if model was trained with menos features, truncar
         model = self._ml_models[target]
         if model.model is not None and hasattr(model.model, "n_features_in_"):
             if model.model.n_features_in_ != FEATURE_DIM:
@@ -827,7 +827,7 @@ class PredictAll:
     def _build_team_context(
         self, team: str, opponent: str, commence_time: str, is_home: bool,
     ) -> dict:
-        """Monta dict de contexto pro time (coach + injuries + fixtures + position)."""
+        """Monta dict of contexto pro time (coach + injuries + fixtures + position)."""
         try:
             coach = self.repo.get_coach_change_info(team, commence_time)
         except Exception:

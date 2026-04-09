@@ -1,4 +1,4 @@
-"""Use case: treinar modelos ML (LambdaPredictor) pra gols, corners, cards."""
+"""Use case: train models ML (LambdaPredictor) for goals, corners, cards."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 class TrainMLModels:
-    """Orquestra treino de modelos GBR pra cada metrica.
+    """Orquestra training of models GBR for each metric.
 
     Parameters
     ----------
     repo : MatchRepository
     models_dir : str
-        Diretorio pra salvar pickles (default: football_moneyball/models).
+        Diretorio for salvar pickles (default: football_moneyball/models).
     """
 
     TARGETS = ["goals", "corners", "cards"]
@@ -29,18 +29,18 @@ class TrainMLModels:
         self.models_dir = models_dir
 
     def execute(self, season: str | None = "2026") -> dict[str, Any]:
-        """Treina 3 modelos e salva.
+        """Treina 3 models and salva.
 
         Parameters
         ----------
         season : str | None
-            Temporada pra treinar. None = todas as temporadas disponiveis.
+            Season for train. None = todas as temporadas disponiveis.
 
         Returns
         -------
         dict
-            Metricas por target: {target: {cv_mae_mean, n_samples, ...}}
-            Ou {"error": "..."} se insuficiente.
+            Metrics by target: {target: {cv_mae_mean, n_samples, ...}}
+            Ou {"error": "..."} if insuficiente.
         """
         from football_moneyball.domain.feature_engineering import (
             build_training_dataset,
@@ -53,8 +53,8 @@ class TrainMLModels:
         if matches_df.empty or len(matches_df) < 10:
             return {
                 "error": (
-                    f"Dados insuficientes ({len(matches_df)} partidas). "
-                    "Minimo 10 partidas com match_stats."
+                    f"Data insuficientes ({len(matches_df)} matches). "
+                    "Minimo 10 matches with match_stats."
                 ),
             }
 
@@ -91,7 +91,7 @@ class TrainMLModels:
         return results
 
     def _load_match_referees(self, matches_df) -> dict[int, dict]:
-        """Carrega mapping match_id -> referee_stats pros jogos do dataset."""
+        """Loads mapping match_id -> referee_stats pros jogos of the dataset."""
         mapping: dict[int, dict] = {}
         if matches_df.empty:
             return mapping

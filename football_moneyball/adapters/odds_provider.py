@@ -1,10 +1,10 @@
-"""Adapter The Odds API — busca odds de casas de apostas.
+"""The Odds API adapter - fetches odds from bookmakers.
 
-Persistencia via PostgreSQL (read-through/write-through).
-Sem dependencia de filesystem local.
+Persistence via PostgreSQL (read-through/write-through).
+No dependency on local filesystem.
 
-Configurar: export ODDS_API_KEY=sua_chave
-Cadastro gratis: https://the-odds-api.com
+Setup: export ODDS_API_KEY=your_key
+Free signup: https://the-odds-api.com
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ CACHE_TTL_HOURS = 24
 
 
 class TheOddsAPIProvider:
-    """Provedor de odds via The Odds API com cache no PostgreSQL."""
+    """Odds provider via The Odds API with cache on PostgreSQL."""
 
     def __init__(
         self,
@@ -37,11 +37,11 @@ class TheOddsAPIProvider:
         self.repo = repo
 
     def _has_api_key(self) -> bool:
-        """Verifica se tem API key configurada."""
+        """Checks whether an API key is configured."""
         return bool(self.api_key)
 
     def _get(self, path: str, params: dict | None = None) -> dict | list | None:
-        """Faz GET na API."""
+        """Performs a GET on the API."""
         params = params or {}
         params["apiKey"] = self.api_key
         r = requests.get(f"{BASE_URL}/{path}", params=params)
@@ -50,20 +50,20 @@ class TheOddsAPIProvider:
         remaining = r.headers.get("x-requests-remaining")
         used = r.headers.get("x-requests-used")
         if remaining:
-            logger.info(f"Odds API quota: {remaining} restantes ({used} usadas)")
+            logger.info(f"Odds API quota: {remaining} remaining ({used} used)")
 
         if r.status_code == 200:
             return r.json()
         elif r.status_code == 401:
-            raise ValueError("ODDS_API_KEY invalida.")
+            raise ValueError("Invalid ODDS_API_KEY.")
         elif r.status_code == 429:
-            raise ValueError("Quota da Odds API esgotada neste mes.")
+            raise ValueError("Odds API quota exhausted for this month.")
         else:
-            logger.warning(f"Odds API erro {r.status_code}: {r.text[:200]}")
+            logger.warning(f"Odds API error {r.status_code}: {r.text[:200]}")
             return None
 
     def get_sports(self) -> list[dict]:
-        """Lista esportes disponiveis."""
+        """Lists available sports."""
         data = self._get("sports")
         return data if isinstance(data, list) else []
 
@@ -73,12 +73,12 @@ class TheOddsAPIProvider:
         away_team: str,
         markets: list[str] | None = None,
     ) -> list[dict]:
-        """Busca odds de uma partida por nomes dos times.
+        """Fetches odds for a match by team names.
 
         Returns
         -------
         list[dict]
-            Odds no formato: [{"name": "bookmaker", "markets": [...]}]
+            Odds in the format: [{"name": "bookmaker", "markets": [...]}]
         """
         all_odds = self.get_upcoming_odds(markets=markets)
         home_lower = home_team.lower()
@@ -97,15 +97,15 @@ class TheOddsAPIProvider:
         sport: str | None = None,
         markets: list[str] | None = None,
     ) -> list[dict]:
-        """Busca odds de TODAS as proximas partidas.
+        """Fetches odds for ALL upcoming matches.
 
-        Se repo existir, tenta cache do PostgreSQL primeiro (TTL 24h).
-        Caso contrario, busca direto da API.
+        If a repo exists, tries the PostgreSQL cache first (TTL 24h).
+        Otherwise, fetches directly from the API.
 
         Returns
         -------
         list[dict]
-            Lista de partidas com odds normalizadas.
+            List of matches with normalized odds.
         """
         sport = sport or self.sport
         markets = markets or DEFAULT_MARKETS
@@ -114,12 +114,12 @@ class TheOddsAPIProvider:
         if self.repo is not None:
             cached = self.repo.get_cached_odds(max_age_hours=CACHE_TTL_HOURS)
             if cached is not None:
-                logger.info(f"Odds cache hit (PG): {len(cached)} jogos")
+                logger.info(f"Odds cache hit (PG): {len(cached)} games")
                 return cached
 
-        # Cache miss — fetch from API
+        # Cache miss - fetch from API
         if not self._has_api_key():
-            logger.warning("Sem ODDS_API_KEY e sem cache.")
+            logger.warning("No ODDS_API_KEY and no cache.")
             return []
 
         data = self._get(f"sports/{sport}/odds", {
@@ -136,12 +136,12 @@ class TheOddsAPIProvider:
         # Write-through: save to PG
         if self.repo is not None and results:
             self.repo.save_odds(results)
-            logger.info(f"Odds salvas no PG: {len(results)} jogos")
+            logger.info(f"Odds saved to PG: {len(results)} games")
 
         return results
 
     def _normalize_odds(self, data: list[dict]) -> list[dict]:
-        """Normaliza response da API para formato interno."""
+        """Normalizes the API response to the internal format."""
         results = []
         for game in data:
             normalized = {
@@ -180,17 +180,17 @@ class TheOddsAPIProvider:
         date: str = "",
         markets: list[str] | None = None,
     ) -> list[dict]:
-        """Busca odds historicas de uma data (ISO 8601).
+        """Fetches historical odds for a date (ISO 8601).
 
         Parameters
         ----------
         date : str
-            Data no formato ISO 8601 (ex: '2026-03-18T12:00:00Z').
+            Date in ISO 8601 format (e.g. '2026-03-18T12:00:00Z').
 
         Returns
         -------
         list[dict]
-            Odds daquela data.
+            Odds for that date.
         """
         sport = sport or self.sport
         markets = markets or DEFAULT_MARKETS

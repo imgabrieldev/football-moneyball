@@ -1,33 +1,33 @@
-"""Modulo de gestao de bankroll via Kelly Criterion.
+"""Bankroll management module via Kelly Criterion.
 
-Calcula stakes otimos para apostas com expectativa positiva,
-usando Kelly fracionario para reduzir variancia.
+Computes optimal stakes for positive-expectation bets,
+using fractional Kelly to reduce variance.
 """
 
 from __future__ import annotations
 
 
 def kelly_criterion(prob: float, odds: float) -> float:
-    """Calcula a fracao Kelly otima.
+    """Compute the optimal Kelly fraction.
 
     f* = (b * p - q) / b
 
-    Onde:
+    Where:
     - b = odds - 1 (net odds)
-    - p = probabilidade de ganhar
+    - p = probability of winning
     - q = 1 - p
 
     Parameters
     ----------
     prob : float
-        Probabilidade estimada de ganhar (0-1).
+        Estimated probability of winning (0-1).
     odds : float
-        Odds decimais.
+        Decimal odds.
 
     Returns
     -------
     float
-        Fracao do bankroll a apostar (0 se nao ha edge).
+        Fraction of the bankroll to bet (0 if there is no edge).
     """
     if odds <= 1.0 or prob <= 0 or prob >= 1:
         return 0.0
@@ -40,24 +40,24 @@ def kelly_criterion(prob: float, odds: float) -> float:
 
 
 def fractional_kelly(prob: float, odds: float, fraction: float = 0.25) -> float:
-    """Kelly fracionario — reduz variancia ao apostar uma fracao do Kelly.
+    """Fractional Kelly — reduces variance by betting a fraction of Kelly.
 
-    Na pratica, Kelly puro e muito agressivo. Usar 25% do Kelly
-    e o padrao da industria para reduzir risco de ruina.
+    In practice, full Kelly is too aggressive. Using 25% of Kelly
+    is the industry standard to reduce risk of ruin.
 
     Parameters
     ----------
     prob : float
-        Probabilidade estimada.
+        Estimated probability.
     odds : float
-        Odds decimais.
+        Decimal odds.
     fraction : float
-        Fracao do Kelly a usar (default 0.25 = 25%).
+        Kelly fraction to use (default 0.25 = 25%).
 
     Returns
     -------
     float
-        Fracao ajustada do bankroll.
+        Adjusted fraction of the bankroll.
     """
     return kelly_criterion(prob, odds) * fraction
 
@@ -69,25 +69,25 @@ def calculate_stake(
     kelly_fraction: float = 0.25,
     max_stake_pct: float = 0.05,
 ) -> float:
-    """Calcula o valor da aposta com limites de seguranca.
+    """Compute the bet amount with safety caps.
 
     Parameters
     ----------
     bankroll : float
-        Valor total do bankroll.
+        Total bankroll amount.
     prob : float
-        Probabilidade estimada.
+        Estimated probability.
     odds : float
-        Odds decimais.
+        Decimal odds.
     kelly_fraction : float
-        Fracao do Kelly a usar.
+        Kelly fraction to use.
     max_stake_pct : float
-        Stake maximo como % do bankroll (default 5%).
+        Maximum stake as % of the bankroll (default 5%).
 
     Returns
     -------
     float
-        Valor da aposta em unidades monetarias.
+        Bet amount in monetary units.
     """
     if bankroll <= 0:
         return 0.0
@@ -103,21 +103,21 @@ def calculate_stake(
 
 
 def calculate_ev_per_bet(prob: float, odds: float, stake: float) -> float:
-    """Calcula o valor esperado de uma aposta.
+    """Compute the expected value of a bet.
 
     Parameters
     ----------
     prob : float
-        Probabilidade estimada.
+        Estimated probability.
     odds : float
-        Odds decimais.
+        Decimal odds.
     stake : float
-        Valor apostado.
+        Amount bet.
 
     Returns
     -------
     float
-        Valor esperado (positivo = lucrativo).
+        Expected value (positive = profitable).
     """
     ev_per_unit = prob * odds - 1.0
     return round(ev_per_unit * stake, 2)

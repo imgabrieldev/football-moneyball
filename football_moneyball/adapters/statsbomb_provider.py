@@ -1,8 +1,8 @@
-"""Adapter StatsBomb — provedor de dados via statsbombpy.
+"""StatsBomb adapter - data provider via statsbombpy.
 
-Encapsula todas as chamadas a API do StatsBomb (dados abertos), expondo
-uma interface padronizada para obtencao de eventos, lineups, competicoes
-e metadados de partidas.
+Encapsulates all calls to the StatsBomb API (open data), exposing
+a standardized interface for fetching events, lineups, competitions
+and match metadata.
 """
 
 from __future__ import annotations
@@ -15,21 +15,21 @@ from statsbombpy import sb
 
 
 class StatsBombProvider:
-    """Provedor de dados usando StatsBomb open data."""
+    """Data provider using StatsBomb open data."""
 
     def get_match_events(self, match_id: int) -> pd.DataFrame:
-        """Retorna todos os eventos de uma partida."""
+        """Returns all events of a match."""
         return sb.events(match_id=match_id)
 
     def get_lineups(self, match_id: int) -> dict[str, pd.DataFrame]:
-        """Retorna os lineups de uma partida, indexados por time."""
+        """Returns the lineups of a match, indexed by team."""
         return sb.lineups(match_id=match_id)
 
     def get_competitions(self) -> pd.DataFrame:
-        """Retorna as competicoes disponiveis nos dados abertos.
+        """Returns the competitions available in the open data.
 
-        Filtra apenas competicoes com partidas disponiveis quando a coluna
-        'match_available' existe.
+        Filters only competitions with available matches when the
+        'match_available' column exists.
         """
         comps = sb.competitions()
         if "match_available" in comps.columns:
@@ -37,25 +37,25 @@ class StatsBombProvider:
         return comps
 
     def get_matches(self, competition_id: int, season_id: int) -> pd.DataFrame:
-        """Retorna todas as partidas de uma competicao/temporada."""
+        """Returns all matches for a competition/season."""
         return sb.matches(competition_id=competition_id, season_id=season_id)
 
     def get_match_info(self, match_id: int) -> dict[str, Any]:
-        """Retorna metadados de uma partida especifica.
+        """Returns metadata for a specific match.
 
-        Busca as informacoes da partida (competicao, temporada, times, placar)
-        a partir dos dados abertos do StatsBomb. Itera sobre todas as
-        competicoes ate encontrar a partida correspondente.
+        Fetches the match information (competition, season, teams, score)
+        from StatsBomb open data. Iterates over all competitions until
+        it finds the matching match.
 
         Parameters
         ----------
         match_id : int
-            Identificador da partida no StatsBomb.
+            Match identifier in StatsBomb.
 
         Returns
         -------
         dict
-            Dicionario com chaves: ``match_id``, ``competition``, ``season``,
+            Dictionary with keys: ``match_id``, ``competition``, ``season``,
             ``match_date``, ``home_team``, ``away_team``, ``home_score``,
             ``away_score``.
         """
@@ -86,6 +86,6 @@ class StatsBombProvider:
                 }
 
         warnings.warn(
-            f"Partida {match_id} nao encontrada nos dados abertos do StatsBomb."
+            f"Match {match_id} not found in StatsBomb open data."
         )
         return {"match_id": match_id}

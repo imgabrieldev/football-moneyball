@@ -1,24 +1,24 @@
-"""Modulo de deteccao de value bets.
+"""Value bet detection module.
 
-Compara probabilidades do modelo com odds de casas de apostas
-para identificar apostas com expectativa positiva.
+Compares model probabilities with bookmaker odds
+to identify bets with positive expectation.
 """
 
 from __future__ import annotations
 
 
 def odds_to_implied_prob(odds: float) -> float:
-    """Converte odds decimais para probabilidade implicita.
+    """Convert decimal odds into implied probability.
 
     Parameters
     ----------
     odds : float
-        Odds decimais (ex: 1.80).
+        Decimal odds (e.g. 1.80).
 
     Returns
     -------
     float
-        Probabilidade implicita (ex: 0.556).
+        Implied probability (e.g. 0.556).
     """
     if odds <= 0:
         return 0.0
@@ -26,19 +26,19 @@ def odds_to_implied_prob(odds: float) -> float:
 
 
 def remove_vig(probs: list[float]) -> list[float]:
-    """Remove a margem (vig/juice) das probabilidades implicitas.
+    """Remove the margin (vig/juice) from implied probabilities.
 
-    Normaliza as probabilidades para somarem 1.0.
+    Normalizes the probabilities to sum to 1.0.
 
     Parameters
     ----------
     probs : list[float]
-        Probabilidades implicitas (somam > 1.0 com vig).
+        Implied probabilities (sum > 1.0 with vig).
 
     Returns
     -------
     list[float]
-        Probabilidades reais normalizadas.
+        Normalized real probabilities.
     """
     total = sum(probs)
     if total <= 0:
@@ -47,37 +47,37 @@ def remove_vig(probs: list[float]) -> list[float]:
 
 
 def calculate_edge(model_prob: float, implied_prob: float) -> float:
-    """Calcula o edge (vantagem) do modelo sobre as odds.
+    """Compute the edge (advantage) of the model over the odds.
 
     Parameters
     ----------
     model_prob : float
-        Probabilidade estimada pelo modelo.
+        Probability estimated by the model.
     implied_prob : float
-        Probabilidade implicita das odds.
+        Implied probability from the odds.
 
     Returns
     -------
     float
-        Edge (positivo = value bet).
+        Edge (positive = value bet).
     """
     return round(model_prob - implied_prob, 4)
 
 
 def expected_value(model_prob: float, odds: float) -> float:
-    """Calcula o valor esperado de uma aposta.
+    """Compute the expected value of a bet.
 
     Parameters
     ----------
     model_prob : float
-        Probabilidade estimada.
+        Estimated probability.
     odds : float
-        Odds decimais.
+        Decimal odds.
 
     Returns
     -------
     float
-        EV por unidade apostada (positivo = lucrativo).
+        EV per unit staked (positive = profitable).
     """
     return round(model_prob * odds - 1.0, 4)
 
@@ -98,24 +98,24 @@ def find_value_bets(
     min_edge: float = 0.05,
     markets: list[str] | None = None,
 ) -> list[dict]:
-    """Identifica value bets comparando modelo com odds.
+    """Identify value bets by comparing the model with odds.
 
     Parameters
     ----------
     predictions : dict
-        Output de simulate_match() com probabilidades do modelo.
+        Output of simulate_match() with model probabilities.
     odds_data : list[dict]
-        Lista de bookmaker odds no formato:
+        List of bookmaker odds in the format:
         [{"name": "bet365", "markets": [{"market": "h2h", "outcome": "Home", "odds": 1.80, ...}]}]
     min_edge : float
-        Edge minimo para considerar value bet (default 3%).
+        Minimum edge to consider a value bet (default 3%).
     markets : list[str], optional
-        Mercados a considerar. None = todos.
+        Markets to consider. None = all.
 
     Returns
     -------
     list[dict]
-        Value bets encontradas com: market, outcome, model_prob,
+        Value bets found with: market, outcome, model_prob,
         best_odds, bookmaker, implied_prob, edge, ev.
     """
     if markets is None:
@@ -123,7 +123,7 @@ def find_value_bets(
 
     value_bets = []
 
-    # Traducao: "Home"/"Away" → nome dos times (odds API usa team names)
+    # Translation: "Home"/"Away" -> team names (odds API uses team names)
     home_team = predictions.get("home_team", "")
     away_team = predictions.get("away_team", "")
     outcome_aliases = {

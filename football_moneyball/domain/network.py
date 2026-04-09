@@ -1,8 +1,8 @@
-"""Modulo de dominio para analise de redes de passes.
+"""Modulo of dominio for thenalise of networks of passes.
 
-Constroi grafos de rede de passes utilizando networkx, calcula metricas
-de centralidade e identifica parcerias-chave entre jogadores.
-Logica pura sobre DataFrames e grafos — sem dependencias de I/O externo.
+Builds graphs of network of passes using networkx, calcula metrics
+of centralidade and identifies parcerias-chave between players.
+Logica pura sobre DataFrames and graphs — without dependencias of I/O externo.
 """
 
 from __future__ import annotations
@@ -14,43 +14,43 @@ import pandas as pd
 def build_pass_network(
     events: pd.DataFrame, team: str | None = None
 ) -> tuple[nx.DiGraph, pd.DataFrame]:
-    """Constroi um grafo direcionado de rede de passes a partir de eventos.
+    """Builds a graph direcionado of network of passes from eventos.
 
-    Recebe um DataFrame de eventos ja carregado e constroi o grafo
-    de rede de passes com nos (jogadores) e arestas (passes) ponderadas.
+    Receives a DataFrame of eventos already loaded and builds o graph
+    of network of passes with nos (players) and edges (passes) weighted.
 
-    Parametros
+    Parameters
     ----------
     events : pd.DataFrame
-        DataFrame de eventos StatsBomb (retornado por sb.events() ou
+        DataFrame of eventos StatsBomb (retornado by sb.events() ou
         equivalente).
     team : str, opcional
-        Nome do time para filtrar. Se None, inclui todos os times.
+        Nome of the time for filtrar. If None, inclui todos os times.
 
-    Retorna
+    Returns
     -------
     tuple[nx.DiGraph, pd.DataFrame]
-        Grafo direcionado com nos (jogadores) e arestas (passes) ponderadas,
-        e um DataFrame com as colunas: passer_id, receiver_id, passer_name,
+        Grafo direcionado with nos (players) and edges (passes) weighted,
+        and a DataFrame with the colunas: passer_id, receiver_id, passer_name,
         receiver_name, weight.
     """
-    # Filtrar apenas passes completados (pass_outcome NaN = sucesso)
+    # Filtrar only passes completedos (pass_outcome NaN = sucesso)
     passes = events[events["type"] == "Pass"].copy()
     passes = passes[passes["pass_outcome"].isna()]
 
     if team is not None:
         passes = passes[passes["team"] == team]
 
-    # Extrair passer e receiver
+    # Extrair passer and receiver
     passes["passer_id"] = passes["player_id"]
     passes["passer_name"] = passes["player"]
     passes["receiver_id"] = passes["pass_recipient_id"]
     passes["receiver_name"] = passes["pass_recipient"]
 
-    # Remover linhas sem receptor identificado
+    # Remover linhas without receptor identificado
     passes = passes.dropna(subset=["receiver_id"])
 
-    # Contar passes entre cada par (passer, receiver)
+    # Count passes between each par (passer, receiver)
     edges_df = (
         passes.groupby(
             ["passer_id", "receiver_id", "passer_name", "receiver_name"]
@@ -59,12 +59,12 @@ def build_pass_network(
         .reset_index(name="weight")
     )
 
-    # Calcular posicoes medias dos jogadores a partir das localizacoes dos eventos
+    # Calcular posicoes means of the players from the localizacoes of the eventos
     player_events = events[events["player_id"].notna()].copy()
     if team is not None:
         player_events = player_events[player_events["team"] == team]
 
-    # Extrair coordenadas x e y da coluna location
+    # Extrair coordenadas x and y of the column location
     player_events = player_events[player_events["location"].notna()].copy()
     player_events["loc_x"] = player_events["location"].apply(
         lambda loc: loc[0] if isinstance(loc, list) and len(loc) >= 2 else None
@@ -79,10 +79,10 @@ def build_pass_network(
         .reset_index()
     )
 
-    # Construir o grafo direcionado
+    # Construir o graph direcionado
     G = nx.DiGraph()
 
-    # Adicionar nos com atributos
+    # Adicionar in the with atributos
     for _, row in avg_positions.iterrows():
         G.add_node(
             row["player_id"],
@@ -92,7 +92,7 @@ def build_pass_network(
             avg_y=row["avg_y"],
         )
 
-    # Adicionar arestas com peso
+    # Adicionar edges with weight
     for _, row in edges_df.iterrows():
         G.add_edge(
             row["passer_id"],
@@ -106,17 +106,17 @@ def build_pass_network(
 
 
 def compute_network_metrics(G: nx.DiGraph) -> pd.DataFrame:
-    """Calcula metricas de centralidade por no do grafo de passes.
+    """Compute metrics of centralidade by in the of the graph of passes.
 
-    Parametros
+    Parameters
     ----------
     G : nx.DiGraph
-        Grafo direcionado de rede de passes.
+        Grafo direcionado of network of passes.
 
-    Retorna
+    Returns
     -------
     pd.DataFrame
-        DataFrame com player_id, player_name e as metricas:
+        DataFrame with player_id, player_name and as metrics:
         degree_centrality, betweenness_centrality, eigenvector_centrality,
         closeness_centrality, pagerank, in_degree, out_degree.
     """
@@ -132,7 +132,7 @@ def compute_network_metrics(G: nx.DiGraph) -> pd.DataFrame:
     except nx.PowerIterationFailedConvergence:
         eigenvector_cent = {node: 0.0 for node in G.nodes()}
 
-    # Graus ponderados (in e out)
+    # Graus weighted (in and out)
     in_degree = dict(G.in_degree(weight="weight"))
     out_degree = dict(G.out_degree(weight="weight"))
 
@@ -157,19 +157,19 @@ def compute_network_metrics(G: nx.DiGraph) -> pd.DataFrame:
 
 
 def compute_edge_features(G: nx.DiGraph) -> dict:
-    """Calcula features por aresta para armazenamento em JSONB.
+    """Compute features by edge for thermazenamento in JSONB.
 
-    Para cada aresta calcula:
-    - normalized_weight: peso normalizado pelo total de passes.
-    - is_reciprocal: se existe aresta reversa.
-    - pair_pass_share: soma dos pesos do par sobre o total de passes.
+    For each edge calcula:
+    - normalized_weight: weight normalizado by the total of passes.
+    - is_reciprocal: if existe edge reversa.
+    - pair_pass_share: sum of the weights of the par sobre o total of passes.
 
-    Parametros
+    Parameters
     ----------
     G : nx.DiGraph
-        Grafo direcionado de rede de passes.
+        Grafo direcionado of network of passes.
 
-    Retorna
+    Returns
     -------
     dict
         Dicionario {(passer_id, receiver_id): features_dict}.
@@ -200,20 +200,20 @@ def compute_edge_features(G: nx.DiGraph) -> dict:
 def identify_key_partnerships(
     G: nx.DiGraph, top_n: int = 5
 ) -> list[dict]:
-    """Identifica as parcerias de passe mais fortes no grafo.
+    """Identifies as parcerias of passe mais fortes in the graph.
 
-    Parametros
+    Parameters
     ----------
     G : nx.DiGraph
-        Grafo direcionado de rede de passes.
+        Grafo direcionado of network of passes.
     top_n : int
-        Numero de parcerias a retornar (padrao: 5).
+        Numero of parcerias a retornar (default: 5).
 
-    Retorna
+    Returns
     -------
     list[dict]
-        Lista de dicionarios com passer, receiver, weight e
-        normalized_weight, ordenados por peso decrescente.
+        Lista of dicionarios with passer, receiver, weight e
+        normalized_weight, ordenados by weight decrescente.
     """
     total_passes = sum(data["weight"] for _, _, data in G.edges(data=True))
 

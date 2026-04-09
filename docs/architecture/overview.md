@@ -5,61 +5,61 @@ tags:
   - hexagonal
 ---
 
-# Arquitetura — Football Moneyball
+# Architecture — Football Moneyball
 
-## Visão Geral
+## Overview
 
-CLI + API REST de analytics e betting value finder pro futebol (foco Brasileirão). Combina StatsBomb Open Data + Sofascore + The Odds API, persistência em PostgreSQL + pgvector, modelos probabilísticos (Dixon-Coles, Bivariate Poisson, CatBoost 1x2, Pi-Rating) e detecção de value bets via Kelly.
+CLI + REST API for football analytics and betting value finding (focused on Brasileirão). Combines StatsBomb Open Data + Sofascore + The Odds API, persistence in PostgreSQL + pgvector, probabilistic models (Dixon-Coles, Bivariate Poisson, CatBoost 1x2, Pi-Rating), and value bet detection via Kelly.
 
-Arquitetura hexagonal (ports & adapters) — domínio puro sem dependências de infra.
+Hexagonal architecture (ports & adapters) — pure domain with no infra dependencies.
 
 ## Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Linguagem | Python 3.12+ |
+| Language | Python 3.12+ |
 | CLI | Typer + Rich |
-| API REST | FastAPI + uvicorn |
-| Frontend | React + Vite + Tailwind (diretório `frontend/`) |
-| Banco | PostgreSQL 16 + pgvector |
+| REST API | FastAPI + uvicorn |
+| Frontend | React + Vite + Tailwind (`frontend/` directory) |
+| Database | PostgreSQL 16 + pgvector |
 | ORM | SQLAlchemy 2.x |
 | ML | scikit-learn, CatBoost (lazy import), NumPy, pandas |
-| Grafos | networkx |
+| Graphs | networkx |
 | Viz | matplotlib + mplsoccer |
-| Dados — eventos | statsbombpy (StatsBomb Open Data) |
-| Dados — ligas BR | Sofascore API |
-| Dados — odds | The Odds API + Betfair Exchange (betfairlightweight) |
-| Infra | Minikube + Kustomize (sem Helm) |
-| Observabilidade | `print`/Rich (sem OTel) |
+| Data — events | statsbombpy (StatsBomb Open Data) |
+| Data — BR leagues | Sofascore API |
+| Data — odds | The Odds API + Betfair Exchange (betfairlightweight) |
+| Infra | Minikube + Kustomize (no Helm) |
+| Observability | `print`/Rich (no OTel) |
 
-## Camadas
+## Layers
 
 ```
 ┌─────────────────────────────────────────────────┐
 │  Adapters IN                                    │
-│  ├─ cli.py          (Typer, 22+ comandos)       │
-│  └─ api.py          (FastAPI, endpoints REST)   │
+│  ├─ cli.py          (Typer, 22+ commands)       │
+│  └─ api.py          (FastAPI, REST endpoints)   │
 └──────────────────┬──────────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────────┐
-│  Use Cases (18 módulos em use_cases/)           │
-│  Orquestram domain + ports                      │
+│  Use Cases (18 modules in use_cases/)           │
+│  Orchestrate domain + ports                     │
 └──────────────────┬──────────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────────┐
-│  Domain (37 módulos em domain/)                 │
-│  Lógica pura — numpy/pandas/sklearn/scipy       │
-│  ZERO deps de infra                             │
+│  Domain (37 modules in domain/)                 │
+│  Pure logic — numpy/pandas/sklearn/scipy        │
+│  ZERO infra deps                                │
 └──────────────────┬──────────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────────┐
-│  Ports (Protocol classes em ports/)             │
-│  ├─ DataProvider      (eventos, lineups)        │
-│  ├─ OddsProvider      (odds de casas)           │
-│  ├─ MatchRepository   (persistência)            │
+│  Ports (Protocol classes in ports/)             │
+│  ├─ DataProvider      (events, lineups)         │
+│  ├─ OddsProvider      (bookmaker odds)          │
+│  ├─ MatchRepository   (persistence)             │
 │  └─ Visualizer        (plots)                   │
 └──────────────────┬──────────────────────────────┘
                    │
@@ -75,77 +75,77 @@ Arquitetura hexagonal (ports & adapters) — domínio puro sem dependências de 
 └─────────────────────────────────────────────────┘
 ```
 
-`config.py` implementa DI: `get_provider()`, `get_repository()`, `get_odds_provider()` — instancia adapters concretos e injeta nos use cases.
+`config.py` implements DI: `get_provider()`, `get_repository()`, `get_odds_provider()` — instantiates concrete adapters and injects them into the use cases.
 
-## Módulos
+## Modules
 
-### `domain/` — Lógica pura
+### `domain/` — Pure logic
 
-Agrupada por domínio:
+Grouped by domain:
 
-| Grupo | Módulos | Responsabilidade |
+| Group | Modules | Responsibility |
 |---|---|---|
-| **Modelos base** | `models.py`, `constants.py` | Dataclasses (MatchInfo, PlayerMatchMetrics), thresholds, grid sizes |
-| **Métricas StatsBomb** | `metrics.py`, `pressing.py`, `possession_value.py`, `network.py`, `embeddings.py`, `rapm.py` | ~45 métricas, PPDA, xT (Markov), grafo de passes, PCA+cluster, Ridge RAPM |
-| **Predição 1x2** | `match_predictor.py`, `catboost_predictor.py`, `pi_rating.py`, `elo.py`, `ml_lambda.py`, `player_lambda.py` | Poisson/Dixon-Coles, CatBoost MultiClass, Pi-Rating (Constantinou), Elo, lambda adjustment |
+| **Base models** | `models.py`, `constants.py` | Dataclasses (MatchInfo, PlayerMatchMetrics), thresholds, grid sizes |
+| **StatsBomb metrics** | `metrics.py`, `pressing.py`, `possession_value.py`, `network.py`, `embeddings.py`, `rapm.py` | ~45 metrics, PPDA, xT (Markov), pass graph, PCA+cluster, Ridge RAPM |
+| **1x2 Prediction** | `match_predictor.py`, `catboost_predictor.py`, `pi_rating.py`, `elo.py`, `ml_lambda.py`, `player_lambda.py` | Poisson/Dixon-Coles, CatBoost MultiClass, Pi-Rating (Constantinou), Elo, lambda adjustment |
 | **Multi-market** | `markets.py`, `multi_monte_carlo.py`, `corners_predictor.py`, `cards_predictor.py`, `shots_predictor.py`, `player_props.py` | 1x2, correct score, Asian handicap, O/U, BTTS, corners, cards, shots, player props |
-| **Features contextuais** | `feature_engineering.py`, `features.py`, `context_features.py`, `h2h_features.py`, `market_features.py`, `referee_features.py`, `referee.py` | EMA form, coach profile, rest days, H2H, odds features, árbitro |
-| **Calibração** | `calibration.py` | Dixon-Coles τ, Platt, Isotonic, Temperature, Brier, ECE |
+| **Contextual features** | `feature_engineering.py`, `features.py`, `context_features.py`, `h2h_features.py`, `market_features.py`, `referee_features.py`, `referee.py` | EMA form, coach profile, rest days, H2H, odds features, referee |
+| **Calibration** | `calibration.py` | Dixon-Coles τ, Platt, Isotonic, Temperature, Brier, ECE |
 | **Betting** | `value_detector.py`, `bankroll.py` | Edge detection, Kelly sizing |
-| **Lineups** | `lineup_prediction.py` | Previsão de escalação |
-| **Track record** | `track_record.py` | Histórico imutável de predições resolvidas |
+| **Lineups** | `lineup_prediction.py` | Lineup prediction |
+| **Track record** | `track_record.py` | Immutable history of resolved predictions |
 
-**Regra invariante:** domain não importa `statsbombpy`, `sqlalchemy`, `requests`, `matplotlib`, `fastapi`, `typer`. Só `numpy`, `pandas`, `scipy`, `scikit-learn`, `networkx`. CatBoost é importado dentro das funções (lazy) pra manter top-level limpo.
+**Invariant rule:** domain does not import `statsbombpy`, `sqlalchemy`, `requests`, `matplotlib`, `fastapi`, `typer`. Only `numpy`, `pandas`, `scipy`, `scikit-learn`, `networkx`. CatBoost is imported inside functions (lazy) to keep the top level clean.
 
 ### `ports/` — Interfaces
 
-Protocol classes (PEP 544) — zero implementação:
+Protocol classes (PEP 544) — zero implementation:
 
 - `DataProvider` — `get_events`, `get_lineups`, `list_competitions`, `list_matches`
 - `OddsProvider` — `get_upcoming_odds`, `get_match_odds`, `get_historical_odds`
 - `MatchRepository` — save/query matches, metrics, embeddings, stints, predictions, value bets
 - `Visualizer` — `plot_*` (radar, heatmap, network, RAPM)
 
-### `adapters/` — Implementações
+### `adapters/` — Implementations
 
-| Arquivo | Port implementado | Observações |
+| File | Port implemented | Notes |
 |---|---|---|
-| `statsbomb_provider.py` | DataProvider | Open data grátis via `statsbombpy` |
-| `sofascore_provider.py` | DataProvider | Brasileirão (scraping leve) |
-| `odds_provider.py` | OddsProvider | The Odds API (free tier) + cache PG |
+| `statsbomb_provider.py` | DataProvider | Free open data via `statsbombpy` |
+| `sofascore_provider.py` | DataProvider | Brasileirão (light scraping) |
+| `odds_provider.py` | OddsProvider | The Odds API (free tier) + PG cache |
 | `postgres_repository.py` | MatchRepository | SQLAlchemy + pgvector, upsert helpers, similarity queries |
-| `orm.py` | — | 20 classes Base SQLAlchemy (ver [#banco-de-dados](#banco-de-dados)) |
+| `orm.py` | — | 20 SQLAlchemy Base classes (see [#database](#database)) |
 | `matplotlib_viz.py` | Visualizer | Dark theme, mplsoccer pitch |
 
-### `use_cases/` — Orquestração
+### `use_cases/` — Orchestration
 
-| Arquivo | CLI command | Responsabilidade |
+| File | CLI command | Responsibility |
 |---|---|---|
-| `analyze_match.py` | `analyze-match` | Extrai métricas de uma partida |
-| `analyze_season.py` | `analyze-season` | Temporada + embeddings + RAPM |
-| `compare_players.py` | `compare-players` | Comparação lado a lado |
-| `find_similar.py` | `find-similar`, `recommend` | Busca vetorial pgvector |
-| `generate_report.py` | `scout-report` | Scout report markdown |
-| `ingest_matches.py` | `ingest` | Ingest batch multi-provider |
+| `analyze_match.py` | `analyze-match` | Extracts metrics for a match |
+| `analyze_season.py` | `analyze-season` | Season + embeddings + RAPM |
+| `compare_players.py` | `compare-players` | Side-by-side comparison |
+| `find_similar.py` | `find-similar`, `recommend` | pgvector vector search |
+| `generate_report.py` | `scout-report` | Markdown scout report |
+| `ingest_matches.py` | `ingest` | Multi-provider batch ingest |
 | `ingest_context.py` | `ingest-context` | Coach, injuries, standings |
-| `ingest_lineups.py` | `ingest-lineups` | Escalações |
-| `train_ml_models.py` | `train-models` | Treinos sklearn legados |
+| `ingest_lineups.py` | `ingest-lineups` | Lineups |
+| `train_ml_models.py` | `train-models` | Legacy sklearn training |
 | `train_catboost.py` | `train-catboost` | CatBoost 1x2 end-to-end |
 | `fit_calibration.py` | `fit-calibration` | Platt/Isotonic/Temperature auto-select |
-| `predict_match.py` | `predict` | Previsão de uma partida |
-| `predict_all.py` | `predict-all` | Previsão + salva em PG |
+| `predict_match.py` | `predict` | Single match prediction |
+| `predict_all.py` | `predict-all` | Predict + save to PG |
 | `find_value_bets.py` | `value-bets` | Edge detection + Kelly |
-| `snapshot_odds.py` | `snapshot-odds` | Snapshot de odds pra backtest |
-| `backtest.py` | `backtest` | Walk-forward sobre histórico |
-| `verify_predictions.py` | `verify` | Comparação predição × resultado |
-| `resolve_predictions.py` | `resolve`, `track-record` | Marca predições como resolvidas, track record imutável |
+| `snapshot_odds.py` | `snapshot-odds` | Odds snapshot for backtest |
+| `backtest.py` | `backtest` | Walk-forward over history |
+| `verify_predictions.py` | `verify` | Prediction vs. result comparison |
+| `resolve_predictions.py` | `resolve`, `track-record` | Marks predictions as resolved, immutable track record |
 
 ### `cli.py` + `api.py` — Adapters IN
 
-- [cli.py](football_moneyball/cli.py) — camada fina Typer, cada comando delega pra um use case. 1.6k linhas.
-- [api.py](football_moneyball/api.py) — FastAPI read-only pro frontend: `/api/matches`, `/api/predictions`, `/api/value-bets`, `/api/players`, `/health`. Injeção do repo via `Depends`.
+- [cli.py](football_moneyball/cli.py) — thin Typer layer, each command delegates to a use case. 1.6k lines.
+- [api.py](football_moneyball/api.py) — read-only FastAPI for the frontend: `/api/matches`, `/api/predictions`, `/api/value-bets`, `/api/players`, `/health`. Repo injected via `Depends`.
 
-## Fluxo de Dados
+## Data Flow
 
 ```
 StatsBomb ─┐
@@ -171,38 +171,38 @@ Odds API  ─┘                                 │
                    PG (value_bets)   PG (prediction_history)  frontend/
 ```
 
-## Banco de Dados
+## Database
 
-20 tabelas. Schema duplicado em dois lugares que **devem permanecer em sync**:
+20 tables. Schema duplicated in two places that **must stay in sync**:
 
 1. [football_moneyball/adapters/orm.py](football_moneyball/adapters/orm.py) — SQLAlchemy Base
-2. [k8s/configmap.yaml](k8s/configmap.yaml) — init.sql executado na inicialização do container
+2. [k8s/configmap.yaml](k8s/configmap.yaml) — init.sql executed on container startup
 
-### Tabelas
+### Tables
 
-| Grupo | Tabelas |
+| Group | Tables |
 |---|---|
 | **Core analytics** | `matches`, `player_match_metrics`, `pass_networks`, `player_embeddings`, `stints`, `action_values`, `pressing_metrics` |
-| **Predição** | `match_predictions`, `prediction_history`, `match_stats` |
+| **Prediction** | `match_predictions`, `prediction_history`, `match_stats` |
 | **Betting** | `match_odds`, `value_bets`, `value_bet_history`, `backtest_results` |
-| **Contexto** | `referee_stats`, `team_coaches`, `player_injuries`, `league_standings`, `match_lineups` |
+| **Context** | `referee_stats`, `team_coaches`, `player_injuries`, `league_standings`, `match_lineups` |
 
 ### pgvector
 
-- `player_embeddings.embedding vector(16)` — arquetipos por posição
-- Índice HNSW com `vector_cosine_ops`
-- Operadores usados: `<=>` (cosine), `<->` (L2)
-- Busca por similaridade delegada ao PG (não calcula no Python)
+- `player_embeddings.embedding vector(16)` — archetypes by position
+- HNSW index with `vector_cosine_ops`
+- Operators used: `<=>` (cosine), `<->` (L2)
+- Similarity search delegated to PG (not computed in Python)
 
 ## Infra (Kubernetes)
 
-Namespace `football-moneyball` via Kustomize puro:
+Namespace `football-moneyball` via pure Kustomize:
 
 ```
 k8s/
 ├── namespace.yaml              # football-moneyball
 ├── configmap.yaml              # init.sql (schema + pgvector extension)
-├── configmap-app.yaml          # config do app
+├── configmap-app.yaml          # app config
 ├── secret.yaml                 # POSTGRES_USER/PASSWORD/DB
 ├── pvc.yaml                    # 1Gi storage
 ├── deployment.yaml             # PostgreSQL (pgvector/pgvector:pg16)
@@ -211,15 +211,15 @@ k8s/
 ├── app-service.yaml            # app ClusterIP:8000
 ├── frontend-deployment.yaml    # React + nginx
 ├── frontend-service.yaml       # frontend ClusterIP:80
-├── cronjob-ingest.yaml         # ingest diário (StatsBomb + Sofascore)
-├── cronjob-odds.yaml           # snapshot de odds (6h)
-├── cronjob-predict.yaml        # predict-all antes das rodadas
-└── kustomization.yaml          # aglutina tudo
+├── cronjob-ingest.yaml         # daily ingest (StatsBomb + Sofascore)
+├── cronjob-odds.yaml           # odds snapshot (6h)
+├── cronjob-predict.yaml        # predict-all before matchdays
+└── kustomization.yaml          # ties everything together
 ```
 
-CLI roda local apontando pro PG via `kubectl port-forward`. `DATABASE_URL` default: `postgresql://moneyball:moneyball@localhost:5432/moneyball`.
+The CLI runs locally and points at PG via `kubectl port-forward`. Default `DATABASE_URL`: `postgresql://moneyball:moneyball@localhost:5432/moneyball`.
 
-## Fluxo de Predição (end-to-end)
+## Prediction Flow (end-to-end)
 
 ```
 1. cronjob-ingest
@@ -227,38 +227,38 @@ CLI roda local apontando pro PG via `kubectl port-forward`. `DATABASE_URL` defau
    └─ ingest_context → coach, injuries, standings → PG
    └─ ingest_lineups → PG
 
-2. train-catboost (manual / periódico)
+2. train-catboost (manual / periodic)
    └─ feature engineering (Pi-Rating + EMA + xG + odds + context)
    └─ temporal CV (expanding window)
    └─ CatBoost MultiClass → catboost_1x2.cbm
 
-3. fit-calibration (manual / após train)
+3. fit-calibration (manual / after train)
    └─ Platt / Isotonic / Temperature auto-select via CV
-   └─ pickle com bundle de calibração
+   └─ pickle with calibration bundle
 
 4. cronjob-predict
    └─ predict_all → CatBoost 1x2 + Poisson multi-market
-   └─ Dixon-Coles correction em placares baixos
-   └─ Calibração aplicada
+   └─ Dixon-Coles correction on low scores
+   └─ Calibration applied
    └─ PG (match_predictions)
 
 5. cronjob-odds + find-value-bets
-   └─ snapshot de odds (The Odds API / Betfair)
-   └─ compara predicted_prob × fair_odds
+   └─ odds snapshot (The Odds API / Betfair)
+   └─ compares predicted_prob vs. fair_odds
    └─ edge filter + Kelly sizing → value_bets
 
 6. frontend + api.py
-   └─ React lê via /api/matches, /api/predictions, /api/value-bets
+   └─ React reads via /api/matches, /api/predictions, /api/value-bets
 ```
 
-## Convenções
+## Conventions
 
-- **Código:** inglês
-- **Docstrings:** português (brasileiro)
-- **CLI output:** português (brasileiro)
-- **Commits:** português ou inglês, descritivos
-- **Métricas:** normalizadas por 90 minutos onde aplicável
-- **StatsBomb:** coordenadas 120×80, gol em x=120
-- **Domain puro:** zero import de statsbombpy/sqlalchemy/matplotlib/typer/fastapi
-- **Schema sync:** ORM e init.sql devem mudar juntos
-- **Tests:** unitários em domain = zero mocks, use cases mockam adapters via port
+- **Code:** English
+- **Docstrings:** Portuguese (Brazilian)
+- **CLI output:** Portuguese (Brazilian)
+- **Commits:** Portuguese or English, descriptive
+- **Metrics:** normalized per 90 minutes where applicable
+- **StatsBomb:** 120×80 coordinates, goal at x=120
+- **Pure domain:** zero imports of statsbombpy/sqlalchemy/matplotlib/typer/fastapi
+- **Schema sync:** ORM and init.sql must change together
+- **Tests:** domain unit tests = zero mocks, use cases mock adapters through the port

@@ -1,4 +1,4 @@
-"""Testes para domain/bankroll.py — Kelly Criterion."""
+"""Tests for domain/bankroll.py — Kelly Criterion."""
 
 import pytest
 

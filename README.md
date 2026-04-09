@@ -2,7 +2,7 @@
 
 # Football Moneyball
 
-### Motor de analytics, previsão probabilística e caça a value bets no futebol brasileiro
+### Analytics engine, probabilistic predictor, and value bet finder for Brazilian football
 
 <br>
 
@@ -17,49 +17,49 @@
 
 <br>
 
-**CLI + API REST** que combina StatsBomb Open Data, Sofascore e odds de mercado (The Odds API / Betfair Exchange) para extrair ~45 métricas de jogadores, prever resultados de partidas do Brasileirão via **CatBoost + Pi-Rating + Dixon-Coles** e identificar apostas com edge positivo usando **Kelly sizing**.
+**CLI + REST API** that combines StatsBomb Open Data, Sofascore, and market odds (The Odds API / Betfair Exchange) to extract ~45 player metrics, predict Brasileirão match outcomes via **CatBoost + Pi-Rating + Dixon-Coles**, and identify bets with positive edge using **Kelly sizing**.
 
-[Arquitetura](#arquitetura) · [Stack](#stack) · [Quickstart](#quickstart) · [CLI](#cli) · [Status](#status)
+[Architecture](#architecture) · [Stack](#stack) · [Quickstart](#quickstart) · [CLI](#cli) · [Status](#status)
 
 </div>
 
 ---
 
-## Sobre
+## About
 
-`football-moneyball` é um projeto end-to-end de analytics de futebol construído com **arquitetura hexagonal** (ports & adapters). O domínio é 100% puro — zero dependências de infra — e testável sem mocks. Foi desenvolvido iterativamente em 15+ versões, cobrindo desde ingestão multi-provider até calibração bayesiana de probabilidades e detecção de value bets em todos os mercados da Betfair (1x2, Asian Handicap, Correct Score, BTTS, Over/Under, Corners, Cards).
+`football-moneyball` is an end-to-end football analytics project built with **hexagonal architecture** (ports & adapters). The domain layer is 100% pure — zero infrastructure dependencies — and testable without mocks. It was developed iteratively across 15+ versions, covering everything from multi-provider ingestion to Bayesian probability calibration and value bet detection across every Betfair market (1x2, Asian Handicap, Correct Score, BTTS, Over/Under, Corners, Cards).
 
-Combina duas filosofias:
+The project blends two philosophies:
 
-- **Analytics** — métricas StatsBomb, xT (Expected Threat), PPDA, grafo de passes, RAPM, embeddings de jogadores via PCA + pgvector
-- **Prediction & Betting** — CatBoost 1x2, Dixon-Coles, Bivariate Poisson, Pi-Rating, calibração Platt/Isotonic/Temperature, Kelly fracionário
+- **Analytics** — StatsBomb metrics, xT (Expected Threat), PPDA, pass networks, RAPM, player embeddings via PCA + pgvector
+- **Prediction & Betting** — CatBoost 1x2, Dixon-Coles, Bivariate Poisson, Pi-Rating, Platt/Isotonic/Temperature calibration, fractional Kelly
 
 ---
 
 ## Highlights
 
-| Camada | Destaques |
+| Layer | Highlights |
 |---|---|
-| **Modelo preditivo** | CatBoost MultiClass end-to-end com 43 features (Pi-Rating diff, EMA form, xG rolling, coach profile, standings, market-devig) e temporal CV |
-| **Multi-market** | Monte Carlo Dixon-Coles simulando 10k placares por partida → extrai 1x2, Correct Score, Asian Handicap, O/U, BTTS, Corners, Cards, Player Props |
-| **Calibração** | Auto-seleção entre Platt, Isotonic e Temperature scaling via CV time-split — reduziu ECE de 0.060 para 0.028 |
-| **Value detection** | Edge filter + Kelly fracionário sobre odds Betfair com dedup simétrico e draw floor de 26% |
-| **Analytics** | xT (Markov), VAEP, PPDA, counter-pressing, grafo de passes com centralidade, RAPM Ridge, embeddings PCA → arquetipos por posição |
-| **Busca vetorial** | Índice HNSW no pgvector (`vector(16)` cosine distance) para "encontre jogadores similares a X" |
-| **Arquitetura** | 37 módulos de domain puro, 4 protocols em ports/, 6 adapters, 18 use cases — domain não importa `statsbombpy`, `sqlalchemy`, `matplotlib`, `fastapi` |
-| **Observabilidade** | Track record imutável com resolução automática de predições, backtest walk-forward, métricas Brier + RPS + ECE |
+| **Prediction model** | End-to-end CatBoost MultiClass with 43 features (Pi-Rating diff, EMA form, rolling xG, coach profile, standings, devigged market) and temporal CV |
+| **Multi-market** | Monte Carlo Dixon-Coles simulating 10k scorelines per match → extracts 1x2, Correct Score, Asian Handicap, O/U, BTTS, Corners, Cards, Player Props |
+| **Calibration** | Auto-selection between Platt, Isotonic, and Temperature scaling via time-split CV — ECE dropped from 0.060 to 0.028 |
+| **Value detection** | Edge filter + fractional Kelly over Betfair odds with symmetric dedup and 26% draw floor |
+| **Analytics** | xT (Markov), VAEP, PPDA, counter-pressing, pass graph with centrality, Ridge RAPM, PCA embeddings → position-wise archetypes |
+| **Vector search** | HNSW index on pgvector (`vector(16)` cosine distance) for "find players similar to X" queries |
+| **Architecture** | 37 pure-domain modules, 4 port protocols, 6 adapters, 18 use cases — domain doesn't import `statsbombpy`, `sqlalchemy`, `matplotlib`, or `fastapi` |
+| **Observability** | Immutable track record with automatic prediction resolution, walk-forward backtest, Brier + RPS + ECE metrics |
 
 ---
 
-## Arquitetura
+## Architecture
 
-Arquitetura hexagonal clássica. Dependências sempre apontam pra dentro — domínio não sabe que existe um banco, uma API externa ou um frontend.
+Classic hexagonal architecture. Dependencies always point inward — the domain has no knowledge of databases, external APIs, or frontends.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  Adapters IN                                             │
-│  ├─ cli.py      Typer + Rich — 22 comandos               │
-│  └─ api.py      FastAPI — endpoints read-only            │
+│  ├─ cli.py      Typer + Rich — 22 commands               │
+│  └─ api.py      FastAPI — read-only endpoints            │
 └────────────────────────────┬─────────────────────────────┘
                              ▼
 ┌──────────────────────────────────────────────────────────┐
@@ -69,14 +69,14 @@ Arquitetura hexagonal clássica. Dependências sempre apontam pra dentro — dom
 └────────────────────────────┬─────────────────────────────┘
                              ▼
 ┌──────────────────────────────────────────────────────────┐
-│  Domain (37 módulos) — Lógica pura                       │
+│  Domain (37 modules) — Pure logic                        │
 │                                                          │
-│  Predição          Calibração        Features           │
+│  Prediction        Calibration       Features           │
 │  ├ match_predictor ├ calibration     ├ context_features │
 │  ├ catboost_pred   ├ dixon_coles     ├ h2h_features     │
 │  ├ pi_rating       └ temperature     └ market_features  │
 │  ├ elo                                                   │
-│  └ ml_lambda       Multi-market      Métricas           │
+│  └ ml_lambda       Multi-market      Metrics            │
 │                    ├ markets         ├ metrics          │
 │  Betting           ├ multi_mc        ├ pressing         │
 │  ├ value_detector  ├ corners_pred    ├ possession_value │
@@ -95,14 +95,14 @@ Arquitetura hexagonal clássica. Dependências sempre apontam pra dentro — dom
 │  Adapters OUT                                            │
 │  ├─ statsbomb_provider   (StatsBomb Open Data)           │
 │  ├─ sofascore_provider   (Brasileirão scraping)          │
-│  ├─ odds_provider        (The Odds API + cache PG)       │
+│  ├─ odds_provider        (The Odds API + PG cache)       │
 │  ├─ postgres_repository  (SQLAlchemy + pgvector)         │
-│  ├─ orm                  (20 tabelas)                    │
+│  ├─ orm                  (20 tables)                     │
 │  └─ matplotlib_viz       (mpl + mplsoccer, dark theme)   │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Ver [`docs/architecture/overview.md`](docs/architecture/overview.md) pro mapa completo (fluxo de dados, schema PG, k8s).
+See [`docs/architecture/overview.md`](docs/architecture/overview.md) for the complete map (data flow, PG schema, k8s).
 
 ---
 
@@ -121,11 +121,11 @@ Ver [`docs/architecture/overview.md`](docs/architecture/overview.md) pro mapa co
 </td>
 <td width="33%" valign="top">
 
-**Dados & ML**
+**Data & ML**
 - NumPy / pandas / SciPy
 - scikit-learn (PCA, KMeans, Ridge)
 - CatBoost MultiClass
-- networkx (grafos)
+- networkx (graphs)
 - mplsoccer (pitch viz)
 
 </td>
@@ -142,20 +142,20 @@ Ver [`docs/architecture/overview.md`](docs/architecture/overview.md) pro mapa co
 </tr>
 </table>
 
-**Provedores de dados:** StatsBomb Open Data (`statsbombpy`), Sofascore (Brasileirão), The Odds API, Betfair Exchange (`betfairlightweight`).
+**Data providers:** StatsBomb Open Data (`statsbombpy`), Sofascore (Brasileirão), The Odds API, Betfair Exchange (`betfairlightweight`).
 
 ---
 
-## Estrutura
+## Layout
 
 ```
 moneyball/
 ├── football_moneyball/
-│   ├── domain/          37 módulos  Lógica pura, zero deps de infra
+│   ├── domain/          37 modules   Pure logic, zero infra deps
 │   ├── ports/            4 protocols DataProvider, OddsProvider, Repository, Visualizer
 │   ├── adapters/         6 adapters  StatsBomb, Sofascore, Odds, PG, ORM, matplotlib
-│   ├── use_cases/       18 use cases Orquestração
-│   ├── cli.py           22 comandos  Typer + Rich
+│   ├── use_cases/       18 use cases Orchestration
+│   ├── cli.py           22 commands  Typer + Rich
 │   ├── api.py                        FastAPI read-only
 │   └── config.py                     DI: get_provider, get_repository, get_odds_provider
 │
@@ -163,10 +163,10 @@ moneyball/
 ├── k8s/                              Kustomize (postgres + app + frontend + 3 cronjobs)
 ├── tests/                            pytest — domain tests = zero mocks
 ├── docs/
-│   ├── architecture/                 Visão de sistema
-│   ├── pitches/                      Propostas de features ativas
-│   ├── postmortem/                   19 features shipped com retrospectiva
-│   ├── research/                     16 research docs (métodos, benchmarks, datasets)
+│   ├── architecture/                 System view
+│   ├── pitches/                      Active feature proposals
+│   ├── postmortem/                   19 shipped features with retrospectives
+│   ├── research/                     16 research docs (methods, benchmarks, datasets)
 │   └── roadmap/central.md
 │
 └── pyproject.toml
@@ -174,9 +174,9 @@ moneyball/
 
 ---
 
-## Banco de dados
+## Database
 
-**20 tabelas** no PostgreSQL 16, schema definido em paralelo no ORM SQLAlchemy ([`orm.py`](football_moneyball/adapters/orm.py)) e no init SQL ([`k8s/configmap.yaml`](k8s/configmap.yaml)):
+**20 tables** on PostgreSQL 16, schema defined in parallel in the SQLAlchemy ORM ([`orm.py`](football_moneyball/adapters/orm.py)) and in the init SQL ([`k8s/configmap.yaml`](k8s/configmap.yaml)):
 
 <table>
 <tr>
@@ -194,7 +194,7 @@ moneyball/
 </td>
 <td valign="top">
 
-**Predição**
+**Prediction**
 - `match_predictions`
 - `prediction_history`
 - `match_stats`
@@ -208,7 +208,7 @@ moneyball/
 </td>
 <td valign="top">
 
-**Contexto**
+**Context**
 - `referee_stats`
 - `team_coaches`
 - `player_injuries`
@@ -219,39 +219,39 @@ moneyball/
 </tr>
 </table>
 
-**pgvector HNSW** em `player_embeddings.embedding` com `vector_cosine_ops` — busca de jogadores similares é delegada ao PG, não calculada em Python.
+**pgvector HNSW** on `player_embeddings.embedding` with `vector_cosine_ops` — similarity search is delegated to PG, not computed in Python.
 
 ---
 
 ## Quickstart
 
 ```bash
-# 1. Clone + instalar em modo editável
+# 1. Clone + install in editable mode
 git clone <repo> moneyball && cd moneyball
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 
-# 2. Subir PostgreSQL + app no Minikube
+# 2. Bring up PostgreSQL + app on Minikube
 kubectl apply -k k8s/
 kubectl port-forward -n football-moneyball svc/postgres 5432:5432 &
 
-# 3. Ingerir dados da temporada
+# 3. Ingest the season data
 moneyball ingest --competition "Brasileirão Série A" --season 2026
 moneyball ingest-context
 moneyball ingest-lineups
 moneyball snapshot-odds
 
-# 4. Treinar o modelo preditivo + calibração
+# 4. Train the prediction model + calibration
 moneyball train-catboost
 moneyball fit-calibration --method auto
 
-# 5. Gerar previsões e detectar value bets
+# 5. Generate predictions and detect value bets
 moneyball predict-all
 moneyball value-bets --min-edge 0.05
 
-# 6. Subir o dashboard React
+# 6. Run the React dashboard
 cd frontend && npm install && npm run dev
-# Em outro terminal:
+# In another terminal:
 uvicorn football_moneyball.api:app --reload
 ```
 
@@ -259,7 +259,7 @@ uvicorn football_moneyball.api:app --reload
 
 ## CLI
 
-`football-moneyball` expõe 22 comandos agrupados por domínio:
+`football-moneyball` exposes 22 commands grouped by domain:
 
 <table>
 <tr>
@@ -313,101 +313,101 @@ track-record
 </tr>
 </table>
 
-Exemplos:
+Examples:
 
 ```bash
-# Busca por similaridade vetorial
+# Vector similarity search
 moneyball find-similar "Pedro" --season 2025 --limit 10
 
-# Scout report completo em markdown
+# Full scout report as markdown
 moneyball scout-report "Endrick" --output endrick.md
 
-# Previsão de uma partida
+# Single-match prediction
 moneyball predict "Palmeiras" "Flamengo"
 
-# Value bets da rodada com edge mínimo de 5%
+# Round value bets with minimum 5% edge
 moneyball value-bets --min-edge 0.05
 
-# Backtest walk-forward da temporada
+# Walk-forward backtest for the season
 moneyball backtest --season 2025
 ```
 
 ---
 
-## Métricas & Resultados
+## Metrics & Results
 
-Resultados do modelo em backtest progressivo (`docs/postmortem/`):
+Progressive backtest results across versions (`docs/postmortem/`):
 
-| Versão | Contribuição | Métrica |
+| Version | Contribution | Metric |
 |---|---|---|
-| v1.9.0 — Dixon-Coles + Platt | Correção em placares baixos | Brier **0.2437** |
-| v1.11.0 — Isotonic/Temperature auto-select | Calibração não-paramétrica | ECE **0.060 → 0.028** |
-| v1.12.0 — Bivariate Poisson + backfill 2022-2025 | 1610 matches treinados | n = 409 → 1610 |
-| v1.13.0 — Market blend + draw floor | Blending odds Pinnacle × modelo | Brier melhora 9% |
-| v1.14.0 — CatBoost 1x2 + Pi-Rating | Substituição do motor 1x2 | RPS **< 0.22** |
+| v1.9.0 — Dixon-Coles + Platt | Low-score correction | Brier **0.2437** |
+| v1.11.0 — Isotonic/Temperature auto-select | Non-parametric calibration | ECE **0.060 → 0.028** |
+| v1.12.0 — Bivariate Poisson + 2022-2025 backfill | 1610 matches trained | n = 409 → 1610 |
+| v1.13.0 — Market blend + draw floor | Pinnacle × model blending | Brier improves 9% |
+| v1.14.0 — CatBoost 1x2 + Pi-Rating | 1x2 engine replacement | RPS **< 0.22** |
 | v1.15.0 — Context features | xG form EMA, coach profile, standings | FEATURE_DIM 24 → 43 |
 
-Ver [`docs/roadmap/central.md`](docs/roadmap/central.md) e cada postmortem em [`docs/postmortem/`](docs/postmortem/) pra métricas detalhadas e reliability diagrams.
+See [`docs/roadmap/central.md`](docs/roadmap/central.md) and each postmortem under [`docs/postmortem/`](docs/postmortem/) for detailed metrics and reliability diagrams.
 
 ---
 
-## Desenvolvimento
+## Development
 
 ```bash
-# Pureza do domain (deve retornar vazio)
+# Domain purity check (must return empty)
 grep -r "from statsbombpy\|from sqlalchemy\|import matplotlib\|from fastapi\|from typer" football_moneyball/domain/
 
 # Lint
 python3 -m ruff check football_moneyball/
 
-# Testes
+# Tests
 pytest tests/ -v
 
-# Deploy no Minikube
+# Deploy on Minikube
 ./deploy.sh 1.15.0
 ./connect.sh
 ```
 
-### Workflow de contribuição
+### Contribution workflow
 
-Cada feature nova segue:
+Every new feature follows:
 
-1. **Pitch** em `docs/pitches/<feature>.md` — problema, solução, arquitetura, scope, testing, success criteria
-2. **Research** em `docs/research/` quando necessário — papers, benchmarks, datasets
-3. **Plan mode** — plano de implementação
-4. **Implement** seguindo o plano, com testes unitários no domain
-5. **Postmortem** em `docs/postmortem/` após shipped — métricas, decisões, próximos passos
+1. **Pitch** in `docs/pitches/<feature>.md` — problem, solution, architecture, scope, testing, success criteria
+2. **Research** in `docs/research/` when needed — papers, benchmarks, datasets
+3. **Plan mode** — implementation plan
+4. **Implement** following the plan, with domain-level unit tests
+5. **Postmortem** in `docs/postmortem/` after shipping — metrics, decisions, next steps
 
-Inspirado no [Shape Up](https://basecamp.com/shapeup) do Basecamp.
+Inspired by Basecamp's [Shape Up](https://basecamp.com/shapeup).
 
 ---
 
 ## Status
 
-**Arquivado.** Este projeto foi desenvolvido como exploração pessoal de analytics de futebol, modelos preditivos e arquitetura hexagonal em Python. Chegou à v1.15.0 com pipeline end-to-end funcional, mas não está mais em desenvolvimento ativo.
+**Archived.** This project was built as a personal exploration of football analytics, predictive modeling, and hexagonal architecture in Python. It reached v1.15.0 with a functional end-to-end pipeline but is no longer under active development.
 
-O código continua servindo como referência de:
-- Arquitetura hexagonal aplicada a um domínio de data science
-- Pipeline ML em produção (ingest → train → calibrate → predict → value)
-- Integração multi-provider com cache e fallback
-- Documentação iterativa via pitches + postmortems
+The codebase still serves as a reference for:
+- Hexagonal architecture applied to a data science domain
+- ML pipelines in production (ingest → train → calibrate → predict → value)
+- Multi-provider integration with caching and fallback
+- Iterative documentation via pitches + postmortems
 
-Ideias de continuidade estão documentadas em [`docs/pitches/`](docs/pitches/) (v1.16 calibração monitorada, v1.17 hyperopt com Optuna + SHAP).
+Continuation ideas are documented under [`docs/pitches/`](docs/pitches/) (v1.16 monitored calibration, v1.17 hyperopt with Optuna + SHAP).
 
 ---
 
-## Créditos
+## Credits
 
-Dados:
+Data:
 - [StatsBomb Open Data](https://github.com/statsbomb/open-data) — events, lineups, 360 data
 - [Sofascore](https://www.sofascore.com) — Brasileirão Série A
 - [The Odds API](https://the-odds-api.com) — bookmaker odds
 - [Betfair Exchange](https://www.betfair.com) — exchange odds via `betfairlightweight`
 
-Métodos:
-- **Dixon-Coles** (1997) — correção de placares baixos em modelos Poisson
+Methods:
+- **Dixon-Coles** (1997) — low-score correction for Poisson models
 - **xT** — Karun Singh (2018)
 - **VAEP** — KU Leuven / Tom Decroos
-- **RAPM** — Jeremias Engelmann / adaptado do basquete
+- **RAPM** — Jeremias Engelmann / adapted from basketball
 - **Pi-Rating** — Constantinou & Fenton (2013)
-- **Shape Up** — Basecamp (workflow de pitches)
+- **Shape Up** — Basecamp (pitch workflow)

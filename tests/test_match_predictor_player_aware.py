@@ -1,4 +1,4 @@
-"""Testes para predict_match_player_aware — pipeline end-to-end com dados sinteticos."""
+"""Tests for predict_match_player_aware — end-to-end pipeline with synthetic data."""
 
 import pandas as pd
 
@@ -8,10 +8,10 @@ from football_moneyball.domain.match_predictor import (
 
 
 def _make_match_data():
-    """Constroi DataFrame team-level sintetico (10 jogos, 2 times)."""
+    """Build synthetic team-level DataFrame (10 games, 2 teams)."""
     rows = []
     for mid in range(1, 11):
-        # Home = Team A (time forte), Away = Team B (time medio)
+        # Home = Team A (strong team), Away = Team B (average team)
         rows.append({
             "match_id": mid, "team": "Team A", "goals": 2, "xg": 1.8, "is_home": True,
         })
@@ -22,7 +22,7 @@ def _make_match_data():
 
 
 def _make_player_aggregates(n_players: int, xg_per_player: float = 0.15) -> pd.DataFrame:
-    """Constroi agregados sintéticos: N jogadores, todos com mesmo xG/90."""
+    """Build synthetic aggregates: N players, all with the same xG/90."""
     rows = []
     for i in range(n_players):
         rows.append({
@@ -30,7 +30,7 @@ def _make_player_aggregates(n_players: int, xg_per_player: float = 0.15) -> pd.D
             "player_name": f"Player {i+1}",
             "matches_played": 5,
             "minutes_total": 450,
-            "xg_total": xg_per_player * 5,  # 5 jogos completos com xG/90 fixo
+            "xg_total": xg_per_player * 5,  # 5 full games with fixed xG/90
         })
     return pd.DataFrame(rows)
 
@@ -79,7 +79,7 @@ class TestPredictMatchPlayerAware:
 
     def test_home_team_favored_with_better_xi(self):
         match_data = _make_match_data()
-        # Home tem jogadores de melhor xG/90
+        # Home has players with higher xG/90
         home_aggs = _make_player_aggregates(11, xg_per_player=0.25)
         away_aggs = _make_player_aggregates(11, xg_per_player=0.05)
 
@@ -117,7 +117,7 @@ class TestPredictMatchPlayerAware:
         assert r1["draw_prob"] == r2["draw_prob"]
 
     def test_backward_compat_with_predict_match(self):
-        """Path team-level (v1.0.0) continua funcionando — smoke test."""
+        """Team-level path (v1.0.0) still works — smoke test."""
         match_data = _make_match_data()
         result = predict_match(
             home_team="Team A",

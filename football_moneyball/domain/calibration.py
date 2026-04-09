@@ -1,13 +1,13 @@
-"""Calibração de modelos de predição.
+"""Prediction model calibration.
 
 Implementa:
-1. Dixon-Coles correction (1997) — corrige Poisson independente em placares baixos
-2. Platt scaling — calibra probabilidades via regressão logística (sigmoid)
-3. Isotonic regression — calibração non-parametric monotônica (v1.11.0)
-4. Temperature scaling — calibração 1-parâmetro via softmax reescalado (v1.11.0)
-5. Métricas de calibração: Brier multi-class, ECE
+1. Dixon-Coles correction (1997) — corrige Poisson independente in placares baixos
+2. Platt scaling — calibrate probabilities via logistic regression (sigmoid)
+3. Isotonic regression — non-parametric monotonic calibration (v1.11.0)
+4. Temperature scaling — 1-parameter calibration via rescaled softmax (v1.11.0)
+5. Calibration metrics: Brier multi-class, ECE
 
-Lógica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -22,12 +22,12 @@ from sklearn.isotonic import IsotonicRegression
 
 @dataclass
 class PlattParams:
-    """Parâmetros de uma calibração Platt: p_cal = sigmoid(a · logit(p) + b)."""
+    """Parameters of a calibration Platt: p_cal = sigmoid(a · logit(p) + b)."""
     a: float
     b: float
 
     def apply(self, p: np.ndarray | float) -> np.ndarray | float:
-        """Aplica calibração a probabilidade(s) raw."""
+        """Apply calibration to raw probability(ies)."""
         p = np.clip(np.asarray(p, dtype=np.float64), 1e-9, 1 - 1e-9)
         logit = np.log(p / (1 - p))
         return _sigmoid(self.a * logit + self.b)
@@ -42,7 +42,7 @@ def dixon_coles_tau(
     away_xg: float,
     rho: float,
 ) -> np.ndarray:
-    """Retorna matriz 2x2 de fatores τ para os 4 placares baixos.
+    """Returns matriz 2x2 of fatores τ for the 4 placares baixos.
 
     τ(0,0) = 1 - λh·λa·ρ
     τ(0,1) = 1 + λh·ρ
@@ -54,7 +54,7 @@ def dixon_coles_tau(
     tau[0, 1] = 1.0 + home_xg * rho
     tau[1, 0] = 1.0 + away_xg * rho
     tau[1, 1] = 1.0 - rho
-    # Garantir não-negatividade (τ < 0 quebra PMF)
+    # Garantir not-negatividade (τ < 0 quebra PMF)
     return np.maximum(tau, 1e-9)
 
 
@@ -64,22 +64,22 @@ def dixon_coles_score_matrix(
     rho: float,
     max_goals: int = 10,
 ) -> np.ndarray:
-    """Calcula PMF conjunta P(X=x, Y=y) com correção Dixon-Coles.
+    """Compute joint PMF P(X=x, Y=y) with correction Dixon-Coles.
 
     Returns
     -------
     np.ndarray
-        Matriz (max_goals+1, max_goals+1) com probabilidades normalizadas.
+        Matriz (max_goals+1, max_goals+1) with probabilitys normalizadas.
     """
     home_pmf = poisson.pmf(np.arange(max_goals + 1), max(home_xg, 0.05))
     away_pmf = poisson.pmf(np.arange(max_goals + 1), max(away_xg, 0.05))
     joint = np.outer(home_pmf, away_pmf)
 
-    # Aplicar τ nos 4 placares baixos
+    # Aplicar τ in the 4 placares baixos
     tau = dixon_coles_tau(home_xg, away_xg, rho)
     joint[:2, :2] *= tau
 
-    # Renormalizar (τ quebra a soma = 1)
+    # Renormalizar (τ quebra a sum = 1)
     total = joint.sum()
     if total > 0:
         joint /= total
@@ -91,7 +91,7 @@ def dixon_coles_log_likelihood(
     rho: float,
     max_goals: int = 10,
 ) -> float:
-    """Log-likelihood de ρ dado um conjunto de partidas (λh, λa, goals_h, goals_a)."""
+    """Log-likelihood of ρ dado a conjunto of matches (λh, λa, goals_h, goals_a)."""
     ll = 0.0
     for home_xg, away_xg, gh, ga in matches:
         matrix = dixon_coles_score_matrix(home_xg, away_xg, rho, max_goals)
@@ -109,7 +109,7 @@ def fit_dixon_coles_rho(
     matches: list[tuple[float, float, int, int]],
     rho_bounds: tuple[float, float] = (-0.25, 0.05),
 ) -> float:
-    """Fitta ρ via MLE. Recebe list[(home_xg, away_xg, home_goals, away_goals)]."""
+    """Fitta ρ via MLE. Receives list[(home_xg, away_xg, home_goals, away_goals)]."""
     def neg_ll(rho: float) -> float:
         return -dixon_coles_log_likelihood(matches, rho)
 
@@ -132,12 +132,12 @@ def bivariate_poisson_score_matrix(
     lambda3: float = 0.10,
     max_goals: int = 10,
 ) -> np.ndarray:
-    """PMF conjunta via bivariate Poisson diagonal-inflated.
+    """PMF joint via bivariate Poisson diagonal-inflated.
 
-    X = X1 + X3,  Y = X2 + X3  onde X1~Poi(λ1), X2~Poi(λ2), X3~Poi(λ3).
+    X = X1 + X3,  Y = X2 + X3  where X1~Poi(λ1), X2~Poi(λ2), X3~Poi(λ3).
     λ1 = max(home_xg - λ3, 0.05), λ2 = max(away_xg - λ3, 0.05).
 
-    λ3 > 0 infla P(X=Y) naturalmente (empates), sem distorcer o resto.
+    λ3 > 0 infla P(X=Y) naturalmente (empates), without distorcer o resto.
 
     Returns
     -------
@@ -177,7 +177,7 @@ def sample_scores_bivariate(
     seed: int | None = None,
     max_goals: int = 10,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Amostra (home_goals, away_goals) da distribuição bivariate Poisson."""
+    """Sample (home_goals, away_goals) from the distribution bivariate Poisson."""
     rng = np.random.default_rng(seed)
     matrix = bivariate_poisson_score_matrix(home_xg, away_xg, lambda3, max_goals)
     flat = matrix.flatten()
@@ -195,7 +195,7 @@ def bivariate_poisson_log_likelihood(
     lambda3: float,
     max_goals: int = 10,
 ) -> float:
-    """Log-likelihood de λ3 dado matches [(λh, λa, goals_h, goals_a)]."""
+    """Log-likelihood of λ3 dado matches [(λh, λa, goals_h, goals_a)]."""
     ll = 0.0
     for home_xg, away_xg, gh, ga in matches:
         matrix = bivariate_poisson_score_matrix(home_xg, away_xg, lambda3, max_goals)
@@ -213,7 +213,7 @@ def fit_lambda3(
     matches: list[tuple[float, float, int, int]],
     bounds: tuple[float, float] = (0.0, 0.40),
 ) -> float:
-    """Fitta λ3 via MLE. Recebe list[(home_xg, away_xg, home_goals, away_goals)]."""
+    """Fitta λ3 via MLE. Receives list[(home_xg, away_xg, home_goals, away_goals)]."""
     def neg_ll(lam3: float) -> float:
         return -bivariate_poisson_log_likelihood(matches, lam3)
 
@@ -231,7 +231,7 @@ def fit_lambda3(
 # ---------------------------------------------------------------------------
 
 def _sigmoid(z: np.ndarray | float) -> np.ndarray | float:
-    """Sigmoid numericamente estável."""
+    """Numerically stable sigmoid."""
     z = np.asarray(z, dtype=np.float64)
     return np.where(
         z >= 0,
@@ -252,9 +252,9 @@ def fit_platt_binary(
     Parameters
     ----------
     raw_probs : np.ndarray
-        Probabilidades raw do modelo (entre 0 e 1).
+        Probabilidades raw of the model (between 0 and 1).
     labels : np.ndarray
-        Labels binárias 0/1.
+        Binary labels 0/1.
     """
     from scipy.optimize import minimize
 
@@ -265,7 +265,7 @@ def fit_platt_binary(
     def neg_log_likelihood(params: np.ndarray) -> float:
         a, b = params
         z = a * logit_p + b
-        # log-sigmoid numericamente estável
+        # log-sigmoid numerically stable
         log_sig = -np.logaddexp(0, -z)
         log_one_minus_sig = -np.logaddexp(0, z)
         return -float(np.sum(y * log_sig + (1 - y) * log_one_minus_sig))
@@ -286,14 +286,14 @@ def calibrate_1x2(
     platt_draw: PlattParams,
     platt_away: PlattParams,
 ) -> np.ndarray:
-    """Aplica Platt scaling 3-class (one-vs-rest) e renormaliza.
+    """Apply Platt scaling 3-class (one-vs-rest) and renormaliza.
 
     Parameters
     ----------
     raw_probs : np.ndarray
-        Shape (n_samples, 3) com colunas [p_home, p_draw, p_away].
+        Shape (n_samples, 3) with colunas [p_home, p_draw, p_away].
     platt_home/draw/away : PlattParams
-        Parâmetros fitados.
+        Parameters fitados.
     """
     raw = np.asarray(raw_probs, dtype=np.float64)
     if raw.ndim == 1:
@@ -304,7 +304,7 @@ def calibrate_1x2(
     cal[:, 1] = platt_draw.apply(raw[:, 1])
     cal[:, 2] = platt_away.apply(raw[:, 2])
 
-    # Renormalizar para somar 1
+    # Renormalizar for somar 1
     totals = cal.sum(axis=1, keepdims=True)
     totals = np.where(totals > 0, totals, 1.0)
     cal = cal / totals
@@ -318,15 +318,15 @@ def calibrate_1x2(
 
 @dataclass
 class TemperatureScaler:
-    """Calibração via temperature scaling 3-class.
+    """3-class temperature scaling calibration.
 
-    Aplica p_cal_k = p_k^(1/T) / Z, onde Z normaliza pra somar 1.
+    Apply p_cal_k = p_k^(1/T) / Z, where Z normaliza for somar 1.
     T > 1 comprime (reduz overconfidence), T < 1 afia.
     """
     T: float = 1.0
 
     def apply(self, probs_3class: np.ndarray | list) -> np.ndarray:
-        """Input/output: (n, 3) ou (3,). Aplica p^(1/T) + renormaliza."""
+        """Input/output: (n, 3) ou (3,). Apply p^(1/T) + renormaliza."""
         p = np.clip(np.asarray(probs_3class, dtype=np.float64), 1e-12, 1.0)
         original_ndim = p.ndim
         if p.ndim == 1:
@@ -343,14 +343,14 @@ def fit_temperature(
     raw_probs_3class: np.ndarray,
     y_3class: np.ndarray,
 ) -> TemperatureScaler:
-    """Fit T via minimização de NLL multi-class (Nelder-Mead).
+    """Fit T via multi-class NLL minimization (Nelder-Mead).
 
     Parameters
     ----------
     raw_probs_3class : np.ndarray
         Shape (n, 3) com [p_home, p_draw, p_away].
     y_3class : np.ndarray
-        Shape (n, 3) one-hot do resultado real.
+        Shape (n, 3) one-hot of the resultado real.
     """
     from scipy.optimize import minimize
 
@@ -380,7 +380,7 @@ def calibrate_1x2_temperature(
     raw_probs: np.ndarray,
     temp: TemperatureScaler,
 ) -> np.ndarray:
-    """Aplica temperature scaling 3-class direto."""
+    """Apply temperature scaling 3-class direto."""
     return temp.apply(raw_probs)
 
 
@@ -390,22 +390,22 @@ def calibrate_1x2_temperature(
 
 @dataclass
 class IsotonicCalibrator:
-    """Calibração isotonic binary — interpola linearmente nos thresholds fittados.
+    """Binary isotonic calibration — linearly interpolated in the thresholds fittados.
 
-    Extraído de sklearn.isotonic.IsotonicRegression pra serialização limpa.
-    Monotônico não-decrescente por construção.
+    Extracted from sklearn.isotonic.IsotonicRegression for clean serialization.
+    Monotonically non-decreasing by construction.
     """
     x_thresholds: list = field(default_factory=list)
     y_thresholds: list = field(default_factory=list)
 
     def apply(self, p: np.ndarray | float) -> np.ndarray | float:
-        """Aplica calibração isotonic a probabilidade(s) binary raw."""
+        """Apply isotonic calibration to raw binary probability(ies)."""
         x = np.asarray(self.x_thresholds, dtype=np.float64)
         y = np.asarray(self.y_thresholds, dtype=np.float64)
         if len(x) == 0:
             return np.asarray(p, dtype=np.float64)
         p_arr = np.clip(np.asarray(p, dtype=np.float64), 0.0, 1.0)
-        # np.interp faz interpolação linear; extrapola constante fora dos bounds
+        # np.interp faz linear interpolation; extrapolates flat outside the bounds
         return np.interp(p_arr, x, y)
 
 
@@ -415,7 +415,7 @@ def fit_isotonic_binary(
 ) -> IsotonicCalibrator:
     """Fit isotonic regression binary via sklearn.
 
-    Extrai X_thresholds_/y_thresholds_ pra serialização dataclass-friendly.
+    Extract X_thresholds_/y_thresholds_ for serialization dataclass-friendly.
     """
     p = np.clip(np.asarray(raw_probs, dtype=np.float64), 0.0, 1.0)
     y = np.asarray(labels, dtype=np.float64)
@@ -434,7 +434,7 @@ def calibrate_1x2_isotonic(
     iso_draw: IsotonicCalibrator,
     iso_away: IsotonicCalibrator,
 ) -> np.ndarray:
-    """Aplica isotonic one-vs-rest 3-class e renormaliza."""
+    """Apply isotonic one-vs-rest 3-class and renormaliza."""
     raw = np.asarray(raw_probs, dtype=np.float64)
     original_ndim = raw.ndim
     if raw.ndim == 1:
@@ -453,14 +453,14 @@ def calibrate_1x2_isotonic(
 
 
 # ---------------------------------------------------------------------------
-# Métricas de calibração (v1.11.0)
+# Calibration metrics (v1.11.0)
 # ---------------------------------------------------------------------------
 
 def compute_brier_3class(
     probs: np.ndarray,
     y: np.ndarray,
 ) -> float:
-    """Brier multi-class: media de sum_k (p_k - y_k)^2."""
+    """Brier multi-class: mean of sum_k (p_k - y_k)^2."""
     p = np.asarray(probs, dtype=np.float64)
     yv = np.asarray(y, dtype=np.float64)
     return float(np.mean(np.sum((p - yv) ** 2, axis=1)))
@@ -471,10 +471,10 @@ def compute_ece(
     y_3class: np.ndarray,
     n_bins: int = 10,
 ) -> float:
-    """Expected Calibration Error via binning da confiança max.
+    """Expected Calibration Error via binning of the confidence max.
 
-    Agrupa predições pela confiança da classe mais provável, compara com
-    acurácia empírica dentro de cada bin. ECE = sum_b (|B_b|/n) * |acc_b - conf_b|.
+    Groups predictions by the confidence of the most probable class, compared against
+    empirical accuracy within of each bin. ECE = sum_b (|B_b|/n) * |acc_b - conf_b|.
     """
     probs = np.asarray(probs_3class, dtype=np.float64)
     y = np.asarray(y_3class, dtype=np.float64)
@@ -505,7 +505,7 @@ def compute_ece(
 
 
 # ---------------------------------------------------------------------------
-# Integração com simulate_match
+# Integration with simulate_match
 # ---------------------------------------------------------------------------
 
 def sample_scores_dixon_coles(
@@ -516,11 +516,11 @@ def sample_scores_dixon_coles(
     seed: int | None = None,
     max_goals: int = 10,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Amostra (home_goals, away_goals) da distribuição Dixon-Coles corrigida.
+    """Sample (home_goals, away_goals) from the distribution Dixon-Coles corrected.
 
     Returns
     -------
-    (home_goals, away_goals) arrays de shape (n_simulations,).
+    (home_goals, away_goals) arrays of shape (n_simulations,).
     """
     rng = np.random.default_rng(seed)
     matrix = dixon_coles_score_matrix(home_xg, away_xg, rho, max_goals)

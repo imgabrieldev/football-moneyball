@@ -30,17 +30,17 @@ export function Dashboard() {
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
           <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
-            <BarChart3 size={16} /> Previsões
+            <BarChart3 size={16} /> Predictions
           </div>
           <div className="text-2xl font-bold">{preds.length}</div>
-          <div className="text-xs text-gray-500">jogos na rodada</div>
+          <div className="text-xs text-gray-500">games in matchday</div>
         </div>
         <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
           <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
             <TrendingUp size={16} /> Value Bets
           </div>
           <div className="text-2xl font-bold text-green-400">{vbets.length}</div>
-          <div className="text-xs text-gray-500">apostas com edge positivo</div>
+          <div className="text-xs text-gray-500">bets with positive edge</div>
         </div>
         <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
           <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
@@ -56,21 +56,21 @@ export function Dashboard() {
       {/* Predictions cards */}
       <div className="bg-gray-900 rounded-lg border border-gray-800">
         <div className="p-4 border-b border-gray-800">
-          <h2 className="text-lg font-semibold">Próximos Jogos</h2>
+          <h2 className="text-lg font-semibold">Upcoming Matches</h2>
         </div>
         {loadingPreds ? (
           <div className="p-8 text-center text-gray-500 flex items-center justify-center gap-2">
-            <Loader2 size={20} className="animate-spin" /> Carregando...
+            <Loader2 size={20} className="animate-spin" /> Loading...
           </div>
         ) : preds.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
-            Sem previsões. Vá em Previsões e clique "Computar".
+            No predictions. Go to Predictions and click "Compute".
           </div>
         ) : (
           <div className="divide-y divide-gray-800">
             {preds.slice(0, 8).map((pred: any, i: number) => {
               const conf = pred.confidence;
-              const confColor = conf === 'alta' ? 'text-green-400' : conf === 'media' ? 'text-yellow-400' : 'text-gray-500';
+              const confColor = conf === 'high' ? 'text-green-400' : conf === 'medium' ? 'text-yellow-400' : 'text-gray-500';
               return (
                 <div key={i} className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -81,9 +81,9 @@ export function Dashboard() {
                         <span className="font-bold text-base">{pred.away_team}</span>
                         {pred.commence_time && (
                           <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
-                            {new Date(pred.commence_time).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                            {new Date(pred.commence_time).toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                             {' '}
-                            {new Date(pred.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(pred.commence_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         )}
                       </div>
@@ -95,7 +95,7 @@ export function Dashboard() {
                     <div className="text-right">
                       <div className="font-mono text-lg">{pred.most_likely_score}</div>
                       <div className={`text-xs ${confColor}`}>
-                        {conf === 'alta' ? '● Alta confiança' : conf === 'media' ? '● Confiança média' : '○ Baixa confiança'}
+                        {conf === 'high' ? '● High confidence' : conf === 'medium' ? '● Medium confidence' : '○ Low confidence'}
                       </div>
                     </div>
                   </div>
@@ -110,7 +110,7 @@ export function Dashboard() {
                     />
                     <div className="flex justify-between text-xs text-gray-600 mt-1">
                       <span>{pred.home_team}</span>
-                      <span>Empate</span>
+                      <span>Draw</span>
                       <span>{pred.away_team}</span>
                     </div>
                   </div>
@@ -136,7 +136,7 @@ export function Dashboard() {
                 </div>
                 <div className="flex items-center gap-6 text-sm">
                   <div className="text-right">
-                    <div className="text-gray-500">Odds Betfair</div>
+                    <div className="text-gray-500">Betfair odds</div>
                     <div className="font-mono">{vb.best_odds?.toFixed(2)}</div>
                   </div>
                   <div className="text-right">

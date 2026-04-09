@@ -1,6 +1,6 @@
-"""Treina CatBoost 1x2 com temporal CV leak-proof.
+"""Treina CatBoost 1x2 with temporal CV leak-proof.
 
-Usa Pi-Rating + form EMA + xG como features. Salva modelo em
+Usa Pi-Rating + form EMA + xG as features. Save model em
 {models_dir}/catboost_1x2.cbm.
 """
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrainCatBoost:
-    """Treina modelo CatBoost 1x2 a partir de dados do repo."""
+    """Treina model CatBoost 1x2 from data of the repo."""
 
     def __init__(self, repo, models_dir: str = "football_moneyball/models") -> None:
         self.repo = repo
@@ -35,7 +35,7 @@ class TrainCatBoost:
         if seasons is None:
             seasons = ["2022", "2023", "2024", "2025", "2026"]
 
-        # Coleta dados de todas as temporadas
+        # Coleta data of todas as temporadas
         import pandas as pd
         all_data = pd.DataFrame()
         per_season = {}
@@ -45,35 +45,35 @@ class TrainCatBoost:
                 continue
             per_season[season] = int(data["match_id"].nunique())
             all_data = pd.concat([all_data, data], ignore_index=True)
-            logger.info(f"Temporada {season}: {per_season[season]} matches")
+            logger.info(f"Season {season}: {per_season[season]} matches")
 
         if all_data.empty:
-            return {"error": "Sem dados para treinamento."}
+            return {"error": "Without data for training."}
 
         total_matches = int(all_data["match_id"].nunique())
         logger.info(f"Total: {total_matches} matches, construindo dataset...")
 
-        # Carregar match_stats pra features expandidas
+        # Carregar match_stats for features expandidas
         match_stats = None
         try:
             match_stats = self.repo.get_all_match_stats(competition, seasons)
             logger.info(f"Match stats carregados: {len(match_stats)} rows")
         except Exception as e:
-            logger.warning(f"Match stats não disponíveis: {e}")
+            logger.warning(f"Match stats not available: {e}")
 
-        # v1.15.0: Carregar coach data e standings pra context features
+        # v1.15.0: Carregar coach data and standings for context features
         coach_data = None
         standings_data = None
         try:
             coach_data = self.repo.get_all_coach_data_for_training()
             logger.info(f"Coach data carregados: {len(coach_data)} entries")
         except Exception as e:
-            logger.warning(f"Coach data não disponíveis: {e}")
+            logger.warning(f"Coach data not available: {e}")
         try:
             standings_data = self.repo.get_all_standings_for_training()
             logger.info(f"Standings data carregados: {len(standings_data)} entries")
         except Exception as e:
-            logger.warning(f"Standings data não disponíveis: {e}")
+            logger.warning(f"Standings data not available: {e}")
 
         # Build training dataset (leak-proof)
         X, y = build_training_dataset(

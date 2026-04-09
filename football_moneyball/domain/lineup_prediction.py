@@ -1,8 +1,8 @@
-"""Modulo de predicao de escalacao provavel (Probable XI).
+"""Probable lineup prediction module (Probable XI).
 
-Logica pura — zero deps de infra. Dado um DataFrame com agregados
-por jogador nos ultimos N jogos, retorna os 11 titulares mais
-provaveis + peso de cada um (frequencia × minutos).
+Pure logic — zero infra deps. Given a DataFrame with per-player
+aggregates for the last N matches, returns the 11 most likely
+starters + a weight for each (frequency * minutes).
 """
 
 from __future__ import annotations
@@ -15,30 +15,30 @@ def minutes_weight(
     minutes_total: float,
     last_n: int,
 ) -> float:
-    """Peso de ser titular regular (0.0 a 1.0).
+    """Weight of being a regular starter (0.0 to 1.0).
 
-    weight = (matches_played / last_n) × (avg_minutes / 90)
+    weight = (matches_played / last_n) * (avg_minutes / 90)
 
-    Exemplos
+    Examples
     --------
-    Player com 5/5 jogos de 90 min → 1.0 × 1.0 = 1.0
-    Player com 2/5 jogos de 90 min → 0.4 × 1.0 = 0.4
-    Player com 5/5 jogos de 45 min → 1.0 × 0.5 = 0.5
-    Player com 1/5 jogos de 45 min → 0.2 × 0.5 = 0.1
+    Player with 5/5 matches of 90 min -> 1.0 * 1.0 = 1.0
+    Player with 2/5 matches of 90 min -> 0.4 * 1.0 = 0.4
+    Player with 5/5 matches of 45 min -> 1.0 * 0.5 = 0.5
+    Player with 1/5 matches of 45 min -> 0.2 * 0.5 = 0.1
 
     Parameters
     ----------
     matches_played : int
-        Numero de partidas que o jogador entrou.
+        Number of matches the player appeared in.
     minutes_total : float
-        Total de minutos jogados nas partidas.
+        Total minutes played across matches.
     last_n : int
-        Tamanho da janela de referencia (5 = ultimos 5 jogos).
+        Size of the reference window (5 = last 5 matches).
 
     Returns
     -------
     float
-        Peso no intervalo [0, 1].
+        Weight in the interval [0, 1].
     """
     if last_n <= 0 or matches_played <= 0:
         return 0.0
@@ -52,24 +52,24 @@ def probable_xi(
     player_aggregates: pd.DataFrame,
     last_n_matches: int = 5,
 ) -> pd.DataFrame:
-    """Retorna os 11 jogadores mais provaveis de serem titulares.
+    """Return the 11 players most likely to be starters.
 
-    Ordena por minutos totais (proxy de "mais usado") e pega os 11
-    primeiros. Calcula peso de cada um em [0, 1].
+    Sorts by total minutes (proxy for "most used") and takes the top 11.
+    Computes a weight for each in [0, 1].
 
     Parameters
     ----------
     player_aggregates : pd.DataFrame
-        Deve conter: player_id, player_name, matches_played,
+        Must contain: player_id, player_name, matches_played,
         minutes_total, xg_total.
     last_n_matches : int
-        Janela de referencia usada pra calcular weight.
+        Reference window used to compute the weight.
 
     Returns
     -------
     pd.DataFrame
-        Top 11 jogadores, ordenados por minutes_total desc.
-        Colunas: player_id, player_name, matches_played, minutes_total,
+        Top 11 players, sorted by minutes_total desc.
+        Columns: player_id, player_name, matches_played, minutes_total,
         xg_total, xg_per_90, weight.
     """
     if player_aggregates.empty:
@@ -80,7 +80,7 @@ def probable_xi(
 
     df = player_aggregates.copy()
 
-    # xG/90 individual
+    # Individual xG/90
     df["xg_per_90"] = df.apply(
         lambda r: (float(r["xg_total"]) / float(r["minutes_total"])) * 90.0
         if float(r["minutes_total"]) > 0
@@ -88,7 +88,7 @@ def probable_xi(
         axis=1,
     )
 
-    # Weight individual
+    # Individual weight
     df["weight"] = df.apply(
         lambda r: minutes_weight(
             int(r["matches_played"]),
@@ -98,7 +98,7 @@ def probable_xi(
         axis=1,
     )
 
-    # Top 11 por minutos totais
+    # Top 11 by total minutes
     df = df.sort_values("minutes_total", ascending=False).head(11).reset_index(drop=True)
 
     cols = [

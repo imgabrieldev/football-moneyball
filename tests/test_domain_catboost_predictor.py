@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.catboost_predictor."""
+"""Tests for football_moneyball.domain.catboost_predictor."""
 
 import numpy as np
 import pandas as pd
@@ -27,7 +27,7 @@ class TestFormEMA:
         assert compute_form_ema([]) == 0.5
 
     def test_recent_weight(self):
-        # Último resultado pesa mais
+        # Most recent result weighs more
         ema_recent_win = compute_form_ema([0.0, 0.0, 0.0, 1.0])
         ema_early_win = compute_form_ema([1.0, 0.0, 0.0, 0.0])
         assert ema_recent_win > ema_early_win
@@ -96,7 +96,7 @@ class TestBuildTrainingDataset:
         assert set(np.unique(y)).issubset({0, 1, 2})
 
     def test_leak_proof(self):
-        # Com min_history=50 e 50 matches, deveria ter 0 samples
+        # With min_history=50 and 50 matches, should have 0 samples
         data = self._make_data(50)
         X, y = build_training_dataset(data, min_history=50)
         assert len(X) == 0

@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.pi_rating."""
+"""Tests for football_moneyball.domain.pi_rating."""
 
 import numpy as np
 import pandas as pd
@@ -21,7 +21,7 @@ class TestUpdateRatings:
 
     def test_draw_no_change_when_expected(self):
         r = {"A": PiRating(1.0, 0.0), "B": PiRating(0.0, 1.0)}
-        # expected diff = 1.0 - 1.0 = 0, actual diff = 0 → no error
+        # expected diff = 1.0 - 1.0 = 0, actual diff = 0 -> no error
         update_ratings(r, "A", "B", 1, 1)
         assert abs(r["A"].home - 1.0) < 0.01
         assert abs(r["B"].away - 1.0) < 0.01
@@ -52,7 +52,7 @@ class TestComputeAllRatings:
         ratings = compute_all_ratings(data)
         assert "A" in ratings
         assert "B" in ratings
-        # A won at home, lost away → home rating > away rating
+        # A won at home, lost away -> home rating > away rating
         assert ratings["A"].home > ratings["A"].away
 
     def test_convergence(self):
@@ -65,7 +65,7 @@ class TestComputeAllRatings:
             ])
         data = pd.DataFrame(rows)
         ratings = compute_all_ratings(data)
-        # A's home rating should converge near 0.5 (goal diff 1 × gamma damping)
+        # A's home rating should converge near 0.5 (goal diff 1 * gamma damping)
         assert 0.3 < ratings["A"].home < 1.5
 
 

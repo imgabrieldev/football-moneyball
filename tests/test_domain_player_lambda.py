@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.player_lambda."""
+"""Tests for football_moneyball.domain.player_lambda."""
 
 import pandas as pd
 
@@ -11,11 +11,11 @@ from football_moneyball.domain.player_lambda import (
 
 class TestComputeXgPer90:
     def test_standard(self):
-        # 3 gols em 270 min → 1.0 xG/90
+        # 3 goals in 270 min -> 1.0 xG/90
         assert compute_xg_per_90(3.0, 270.0) == 1.0
 
     def test_one_full_game(self):
-        # 0.5 xG em 90 min → 0.5 xG/90
+        # 0.5 xG in 90 min -> 0.5 xG/90
         assert compute_xg_per_90(0.5, 90.0) == 0.5
 
     def test_zero_minutes(self):
@@ -33,31 +33,31 @@ class TestTeamLambdaFromPlayers:
         })
 
     def test_uniform_team(self):
-        # 11 jogadores × 0.15 xG/90 × weight 1.0 = 1.65
+        # 11 players * 0.15 xG/90 * weight 1.0 = 1.65
         xi = self._make_xi([0.15] * 11, [1.0] * 11)
         lam = team_lambda_from_players(xi, opponent_defense_factor=1.0)
         assert abs(lam - 1.65) < 1e-9
 
     def test_weighted(self):
-        # 11 jogadores × 0.2 xG/90 × weight 0.5 = 1.1
+        # 11 players * 0.2 xG/90 * weight 0.5 = 1.1
         xi = self._make_xi([0.2] * 11, [0.5] * 11)
         lam = team_lambda_from_players(xi, opponent_defense_factor=1.0)
         assert abs(lam - 1.1) < 1e-9
 
     def test_strong_defense(self):
-        # opp_defense_factor = 0.5 → corta pela metade
+        # opp_defense_factor = 0.5 -> halves
         xi = self._make_xi([0.2] * 11, [1.0] * 11)
         lam = team_lambda_from_players(xi, opponent_defense_factor=0.5)
         assert abs(lam - 1.1) < 1e-9
 
     def test_weak_defense(self):
-        # opp_defense_factor = 1.5 → infla
+        # opp_defense_factor = 1.5 -> inflates
         xi = self._make_xi([0.1] * 11, [1.0] * 11)
         lam = team_lambda_from_players(xi, opponent_defense_factor=1.5)
         assert abs(lam - 1.65) < 1e-9
 
     def test_minimum_clamp(self):
-        # 11 × 0.0 × 1.0 = 0.0 → clamp 0.15
+        # 11 * 0.0 * 1.0 = 0.0 -> clamp 0.15
         xi = self._make_xi([0.0] * 11, [1.0] * 11)
         lam = team_lambda_from_players(xi, opponent_defense_factor=1.0)
         assert lam == 0.15

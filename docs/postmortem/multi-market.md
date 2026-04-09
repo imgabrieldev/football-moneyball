@@ -11,141 +11,141 @@ tags:
 
 # Pitch — Multi-Market Prediction (v1.0.0)
 
-## Problema
+## Problem
 
-Nosso modelo só prevê 2 dos ~8 mercados da Betfair: resultado (1X2) e Over/Under 2.5. Estamos deixando na mesa:
+Our model only predicts 2 of the ~8 Betfair markets: result (1X2) and Over/Under 2.5. We're leaving on the table:
 
-1. **Placar Exato** — já calculamos (score_matrix) mas não mostramos
-2. **Over/Under 0.5, 1.5, 3.5** — já calculamos mas só expomos o 2.5
-3. **BTTS** — já calculamos mas não usamos pra bets
-4. **Asian Handicap** — derivável dos dados que temos
-5. **Escanteios** — Sofascore tem dados, precisa de Poisson separado
-6. **Cartões** — Sofascore tem dados, precisa de Poisson + fator árbitro
-7. **Half Time** — precisa Monte Carlo separado pro 1T
-8. **Gol do Jogador** — precisa xG individual + lineup confirmada
+1. **Correct Score** — already computed (score_matrix) but not shown
+2. **Over/Under 0.5, 1.5, 3.5** — already computed but only 2.5 exposed
+3. **BTTS** — already computed but not used for bets
+4. **Asian Handicap** — derivable from the data we have
+5. **Corners** — Sofascore has data, needs a separate Poisson
+6. **Cards** — Sofascore has data, needs Poisson + referee factor
+7. **Half Time** — needs separate Monte Carlo for the 1st half
+8. **Player Goal** — needs individual xG + confirmed lineup
 
-Cada mercado adicional = mais oportunidades de value bet. A Starlizard (Tony Bloom, £600M/ano) usa modelos separados pra cada mercado.
+Each additional market = more value bet opportunities. Starlizard (Tony Bloom, £600M/year) uses separate models for each market.
 
 Research: [[multi-market-prediction]]
 
-## Solução
+## Solution
 
-3 fases: P0 (expor o que temos), P1 (modelos novos), P2 (player props).
+3 phases: P0 (expose what we have), P1 (new models), P2 (player props).
 
-### Fase P0 — Expor mercados existentes (zero modelo novo)
+### Phase P0 — Expose existing markets (zero new models)
 
-Do Monte Carlo que já rodamos, derivar:
+From the Monte Carlo we already run, derive:
 
-**Correct Score (Placar Exato):**
+**Correct Score:**
 ```python
-# Já temos score_matrix: {"1x0": 0.15, "2x1": 0.12, ...}
-# Expor top 10 placares com probabilidade
+# We already have score_matrix: {"1x0": 0.15, "2x1": 0.12, ...}
+# Expose top 10 scorelines with probability
 ```
 
-**Over/Under completo:**
+**Full Over/Under:**
 ```python
-# Já temos over_05, over_15, over_25, over_35
-# Expor todos + under correspondente
+# We already have over_05, over_15, over_25, over_35
+# Expose all + matching under
 ```
 
 **BTTS:**
 ```python
-# Já temos btts_prob
-# Calcular btts_no = 1 - btts_prob
+# We already have btts_prob
+# Compute btts_no = 1 - btts_prob
 ```
 
-**Asian Handicap (derivado do score_matrix):**
+**Asian Handicap (derived from score_matrix):**
 ```python
 def calculate_asian_handicap(score_matrix: dict) -> dict:
-    """Derivar probabilidades de handicap do score matrix."""
-    # AH -0.5 home = P(home win) = sum onde home > away
-    # AH -1.5 home = P(home win by 2+) = sum onde home > away + 1
+    """Derive handicap probabilities from the score matrix."""
+    # AH -0.5 home = P(home win) = sum where home > away
+    # AH -1.5 home = P(home win by 2+) = sum where home > away + 1
     # AH +0.5 home = P(home win or draw)
     # AH -0.5 away = P(away win)
     # etc.
 ```
 
-### Fase P1 — Novos modelos Poisson
+### Phase P1 — New Poisson models
 
-**Escanteios (Corners Over/Under):**
+**Corners (Corners Over/Under):**
 ```python
 def predict_corners(
-    home_corners_avg: float,    # média corners casa (últimos 6 jogos)
-    away_corners_avg: float,    # média corners fora
-    home_corners_against: float, # corners sofridos em casa
+    home_corners_avg: float,    # average home corners (last 6 matches)
+    away_corners_avg: float,    # average away corners
+    home_corners_against: float, # corners conceded at home
     away_corners_against: float,
 ) -> dict:
-    """Poisson com λ = team_avg × opponent_factor."""
+    """Poisson with λ = team_avg × opponent_factor."""
     lambda_home = home_corners_avg * (away_corners_against / league_avg)
     lambda_away = away_corners_avg * (home_corners_against / league_avg)
-    # Monte Carlo: simular home_corners + away_corners
+    # Monte Carlo: simulate home_corners + away_corners
     # Over/Under 7.5, 8.5, 9.5, 10.5, 11.5
 ```
 
-Dados necessários: escanteios por time por jogo (Sofascore tem).
+Required data: corners per team per match (Sofascore has).
 
-**Cartões (Cards Over/Under):**
+**Cards (Cards Over/Under):**
 ```python
 def predict_cards(
-    home_fouls_avg: float,      # faltas por jogo do mandante
-    away_fouls_avg: float,      # faltas do visitante
-    referee_cards_avg: float,   # cartões médios deste árbitro
-    is_derby: bool,             # clássico?
+    home_fouls_avg: float,      # home team fouls per match
+    away_fouls_avg: float,      # away team fouls
+    referee_cards_avg: float,   # average cards for this referee
+    is_derby: bool,             # derby?
 ) -> dict:
-    """Zero-Inflated Poisson ajustado pelo árbitro."""
+    """Zero-Inflated Poisson adjusted by the referee."""
     base_lambda = (home_fouls_avg + away_fouls_avg) * referee_card_rate
     if is_derby:
-        base_lambda *= 1.2  # +20% em clássicos
-    # Monte Carlo: simular total de cartões
+        base_lambda *= 1.2  # +20% in derbies
+    # Monte Carlo: simulate total cards
     # Over/Under 2.5, 3.5, 4.5, 5.5
 ```
 
-Dados necessários: faltas e cartões por time (já temos), árbitro do jogo (Sofascore tem, precisa ingerir).
+Required data: fouls and cards per team (already have), match referee (Sofascore has, needs ingestion).
 
 **Half Time Result:**
 ```python
 def predict_half_time(home_xg: float, away_xg: float) -> dict:
-    """Monte Carlo com λ_HT ≈ 45% do λ_FT."""
+    """Monte Carlo with λ_HT ≈ 45% of λ_FT."""
     home_ht_xg = home_xg * 0.45
     away_ht_xg = away_xg * 0.45
-    # Simular: P(home HT), P(draw HT), P(away HT)
-    # HT/FT combinado: P(home/home), P(draw/home), etc.
+    # Simulate: P(home HT), P(draw HT), P(away HT)
+    # Combined HT/FT: P(home/home), P(draw/home), etc.
 ```
 
-### Fase P2 — Player Props
+### Phase P2 — Player Props
 
-**Gol do Jogador X:**
+**Player X Goal:**
 ```python
 def predict_player_goal(player_xg_per90: float, expected_minutes: int) -> float:
-    """P(gol) = 1 - e^(-xG_per90 × min/90)."""
+    """P(goal) = 1 - e^(-xG_per90 × min/90)."""
 ```
 
-Precisa: lineup confirmada (~1h antes), xG individual (já temos).
+Required: confirmed lineup (~1h before), individual xG (already have).
 
-## Arquitetura
+## Architecture
 
-### Módulos afetados
+### Affected modules
 
-| Módulo | Ação | Descrição |
+| Module | Action | Description |
 |--------|------|-----------|
-| `domain/match_predictor.py` | MODIFICAR | Adicionar `calculate_asian_handicap()` derivado do score_matrix |
-| `domain/corners_predictor.py` | NOVO | Poisson pra escanteios |
-| `domain/cards_predictor.py` | NOVO | ZIP pra cartões |
-| `domain/markets.py` | NOVO | Agregar todos os mercados num dict unificado |
-| `adapters/sofascore_provider.py` | MODIFICAR | Ingerir escanteios, cartões, faltas, árbitro |
-| `adapters/postgres_repository.py` | MODIFICAR | Queries pra corners/cards/referee stats |
-| `adapters/orm.py` | MODIFICAR | Campos novos em player_match_metrics (ou tabela separada) |
-| `use_cases/predict_all.py` | MODIFICAR | Rodar todos os preditores |
-| `api.py` | MODIFICAR | Retornar todos os mercados |
-| `frontend/` | MODIFICAR | Tabs por mercado em cada card |
+| `domain/match_predictor.py` | MODIFY | Add `calculate_asian_handicap()` derived from score_matrix |
+| `domain/corners_predictor.py` | NEW | Poisson for corners |
+| `domain/cards_predictor.py` | NEW | ZIP for cards |
+| `domain/markets.py` | NEW | Aggregate all markets into unified dict |
+| `adapters/sofascore_provider.py` | MODIFY | Ingest corners, cards, fouls, referee |
+| `adapters/postgres_repository.py` | MODIFY | Queries for corners/cards/referee stats |
+| `adapters/orm.py` | MODIFY | New fields in player_match_metrics (or separate table) |
+| `use_cases/predict_all.py` | MODIFY | Run all predictors |
+| `api.py` | MODIFY | Return all markets |
+| `frontend/` | MODIFY | Market tabs on each card |
 
 ### Schema
 
 ```sql
--- Campos extras no player_match_metrics (Sofascore já retorna)
--- corners, cards_yellow, cards_red, fouls já existem parcialmente
+-- Extra fields in player_match_metrics (Sofascore already returns)
+-- corners, cards_yellow, cards_red, fouls already partially exist
 
--- Nova tabela pra stats de árbitro
+-- New table for referee stats
 CREATE TABLE IF NOT EXISTS referee_stats (
     referee_name VARCHAR PRIMARY KEY,
     matches_officiated INTEGER,
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS referee_stats (
     last_updated VARCHAR
 );
 
--- Nova tabela pra match-level stats (corners, cards totais)
+-- New table for match-level stats (total corners, cards)
 CREATE TABLE IF NOT EXISTS match_stats (
     match_id INTEGER PRIMARY KEY,
     home_corners INTEGER,
@@ -174,132 +174,132 @@ CREATE TABLE IF NOT EXISTS match_stats (
 
 ### Infra (K8s)
 
-Sem mudanças.
+No changes.
 
-## Escopo
+## Scope
 
-### Fase P0 — Dentro do Escopo (sprint 1)
+### Phase P0 — In Scope (sprint 1)
 
-- [ ] `domain/markets.py` — agregar score_matrix → correct score, asian handicap, all O/U, BTTS
-- [ ] `api.py` — retornar `markets` dict completo em cada prediction
-- [ ] Frontend — tabs/seções: "Resultado", "Gols", "Placar Exato", "Handicap"
-- [ ] Value bets pra todos os mercados existentes (não só h2h e totals)
+- [ ] `domain/markets.py` — aggregate score_matrix → correct score, asian handicap, all O/U, BTTS
+- [ ] `api.py` — return complete `markets` dict in each prediction
+- [ ] Frontend — tabs/sections: "Result", "Goals", "Correct Score", "Handicap"
+- [ ] Value bets for all existing markets (not only h2h and totals)
 
-### Fase P1 — Dentro do Escopo (sprint 2)
+### Phase P1 — In Scope (sprint 2)
 
-- [ ] Ingerir dados extras do Sofascore: escanteios, cartões, faltas, árbitro por jogo
-- [ ] Tabelas `match_stats` e `referee_stats`
-- [ ] `domain/corners_predictor.py` — Poisson pra escanteios
-- [ ] `domain/cards_predictor.py` — ZIP pra cartões
-- [ ] Half Time prediction no Monte Carlo
-- [ ] Frontend — tabs: "Escanteios", "Cartões", "Intervalo"
+- [ ] Ingest extra Sofascore data: corners, cards, fouls, referee per match
+- [ ] `match_stats` and `referee_stats` tables
+- [ ] `domain/corners_predictor.py` — Poisson for corners
+- [ ] `domain/cards_predictor.py` — ZIP for cards
+- [ ] Half Time prediction in Monte Carlo
+- [ ] Frontend — tabs: "Corners", "Cards", "Half Time"
 
-### Fase P2 — Dentro do Escopo (sprint 3)
+### Phase P2 — In Scope (sprint 3)
 
-- [ ] Gol do Jogador X (xG individual + lineup)
-- [ ] Frontend — tab "Jogador"
+- [ ] Player X Goal (individual xG + lineup)
+- [ ] Frontend — "Player" tab
 
-### Fora do Escopo
+### Out of Scope
 
-- "Criar Aposta" / Bet Builder (combinação custom) — complexo demais
-- "Substituição Segura" — depende de decisão do treinador
+- "Bet Builder" (custom combination) — too complex
+- "Safe Substitution" — depends on coach decision
 - Live/in-play predictions
-- Mercados de time (handicap asiático de escanteios)
+- Team markets (corners asian handicap)
 
-## Research Necessária
+## Research Needed
 
-- [x] Mercados Betfair e como prever — [[multi-market-prediction]]
-- [ ] Validar que Sofascore retorna escanteios e árbitro pra Brasileirão
-- [ ] Calibrar λ de escanteios no Brasileirão (média ~10/jogo?)
-- [ ] Calibrar λ de cartões no Brasileirão + variância por árbitro
-- [ ] Testar: HT goals = 45% ou diferente no Brasileirão?
+- [x] Betfair markets and how to predict them — [[multi-market-prediction]]
+- [ ] Validate that Sofascore returns corners and referee for Brasileirão
+- [ ] Calibrate Brasileirão corners λ (average ~10/match?)
+- [ ] Calibrate Brasileirão cards λ + variance per referee
+- [ ] Test: HT goals = 45% or different in Brasileirão?
 
-## Estratégia de Testes
+## Testing Strategy
 
-### Unitários (domain — zero mocks)
-- `calculate_asian_handicap`: score_matrix conhecida → handicaps corretos
+### Unit (domain — zero mocks)
+- `calculate_asian_handicap`: known score_matrix → correct handicaps
 - `corners_predictor`: λ=5 home + λ=5 away → Over 9.5 ~50%
-- `cards_predictor`: referee com 5 cards/game → Over 3.5 alto
+- `cards_predictor`: referee with 5 cards/game → high Over 3.5
 
 ### Manual
-- Comparar Asian Handicap calculado com odds Betfair
-- Comparar corners prediction com linhas de casas de apostas
+- Compare computed Asian Handicap with Betfair odds
+- Compare corners prediction with bookmaker lines
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] P0: todos os mercados deriváveis expostos no frontend
-- [ ] P0: value bets identificadas em correct score e asian handicap (não só h2h)
-- [ ] P1: corners prediction com accuracy > 50% no Over/Under 9.5
-- [ ] P1: cards prediction com accuracy > 50% no Over/Under 3.5
-- [ ] Cada mercado tem calibração validada contra odds Betfair
+- [ ] P0: all derivable markets exposed on the frontend
+- [ ] P0: value bets identified in correct score and asian handicap (not only h2h)
+- [ ] P1: corners prediction with accuracy > 50% on Over/Under 9.5
+- [ ] P1: cards prediction with accuracy > 50% on Over/Under 3.5
+- [ ] Each market has calibration validated against Betfair odds
 
 ---
 
-## Atualização: Player-Aware Prediction (pré e pós-escalação)
+## Update: Player-Aware Prediction (pre and post lineup)
 
-### Conceito
+### Concept
 
-Duas rodadas de previsão por jogo:
+Two prediction rounds per match:
 
-1. **Pré-escalação (~24h antes):** Previsão baseada em médias do time + provável escalação (titulares mais frequentes)
-2. **Pós-escalação (~1h antes):** Sofascore publica lineup confirmada → recalcular TUDO com dados reais dos 11 titulares
+1. **Pre-lineup (~24h before):** Prediction based on team averages + likely lineup (most frequent starters)
+2. **Post-lineup (~1h before):** Sofascore publishes confirmed lineup → recompute EVERYTHING with real data from the 11 starters
 
-### O que muda com dados de jogador
+### What changes with player data
 
-Em vez de λ genérico do time, construir λ a partir dos 22 em campo:
+Instead of generic team λ, build λ from the 22 on the pitch:
 
 ```
-λ_gols = Σ xG/90 dos 11 titulares (ajustado por oposição)
-λ_chutes = Σ chutes/90 dos atacantes + meias
-λ_escanteios = f(cruzamentos/90 dos laterais, chutes bloqueados adversário)
-λ_cartões = Σ faltas/90 dos volantes × referee_card_rate
-λ_defesas_goleiro = chutes adversário esperados × (1 - xG/chute)
+λ_goals = Σ xG/90 of the 11 starters (adjusted by opposition)
+λ_shots = Σ shots/90 of forwards + midfielders
+λ_corners = f(crosses/90 of fullbacks, opponent's blocked shots)
+λ_cards = Σ fouls/90 of defensive mids × referee_card_rate
+λ_goalkeeper_saves = expected opponent shots × (1 - xG/shot)
 ```
 
-### Dados por jogador que o Sofascore já tem
+### Per-player data Sofascore already has
 
-- `expectedGoals` (xG por jogador por partida)
-- `totalShots`, `shotsOnTarget` (chutes)
-- `totalCross`, `accurateCross` (cruzamentos → escanteios)
-- `fouls`, `wasFouled` (faltas → cartões)
-- `totalTackle`, `wonTackle` (desarmes)
-- `saves` (defesas do goleiro)
-- `ballRecovery` (recuperações)
-- `touches`, `passes` (envolvimento)
+- `expectedGoals` (xG per player per match)
+- `totalShots`, `shotsOnTarget` (shots)
+- `totalCross`, `accurateCross` (crosses → corners)
+- `fouls`, `wasFouled` (fouls → cards)
+- `totalTackle`, `wonTackle` (tackles)
+- `saves` (goalkeeper saves)
+- `ballRecovery` (recoveries)
+- `touches`, `passes` (involvement)
 
-### Impacto por mercado
+### Impact per market
 
-| Mercado | Sem jogador | Com jogador |
+| Market | Without player | With player |
 |---------|------------|-------------|
-| Gols total | λ média time | Σ xG/90 dos 11 |
-| Gols por time | genérico | Σ xG dos atacantes/meias |
-| Chutes no gol | genérico | Σ shotsOnTarget/90 dos 11 |
-| Escanteios | média time | cruzamentos laterais + chutes bloqueados |
-| Cartões | média time | faltas/90 volantes × referee |
-| Marcador X | impossível | xG individual |
-| Defesas goleiro | genérico | chutes_adversário × (1 - save_rate) |
-| Assistência X | impossível | xA individual |
-| Primeiro gol | genérico | xG/90 × minutos esperados |
+| Total goals | team avg λ | Σ xG/90 of the 11 |
+| Goals per team | generic | Σ xG of forwards/midfielders |
+| Shots on target | generic | Σ shotsOnTarget/90 of the 11 |
+| Corners | team avg | fullback crosses + blocked shots |
+| Cards | team avg | defensive mid fouls/90 × referee |
+| Scorer X | impossible | individual xG |
+| Goalkeeper saves | generic | opponent_shots × (1 - save_rate) |
+| Assist X | impossible | individual xA |
+| First goal | generic | xG/90 × expected minutes |
 
-### Flow atualizado
+### Updated flow
 
 ```
-24h antes:
-  CronJob predict → previsão com titulares prováveis
-  Frontend mostra com badge "Pré-escalação"
+24h before:
+  CronJob predict → prediction with likely starters
+  Frontend shows with "Pre-lineup" badge
 
-1h antes:
-  Sofascore publica lineup
-  CronJob detect-lineup → busca lineups
-  CronJob predict-lineup → recalcula com 22 reais
-  Frontend atualiza com badge "Escalação confirmada"
-  Value bets recalculadas com novos λ
+1h before:
+  Sofascore publishes lineup
+  CronJob detect-lineup → fetches lineups
+  CronJob predict-lineup → recompute with 22 real
+  Frontend updates with "Lineup confirmed" badge
+  Value bets recomputed with new λ
 ```
 
-### Prioridade revisada
+### Revised priority
 
-| Sprint | O que | Player-aware? |
+| Sprint | What | Player-aware? |
 |--------|-------|:---:|
-| P0 | Expor mercados deriváveis | Não (já feito) |
-| P1 | Escanteios, cartões, HT, chutes | **Sim — player-based λ** |
-| P2 | Marcador, assistência, props individuais | **Sim — obrigatório** |
+| P0 | Expose derivable markets | No (already done) |
+| P1 | Corners, cards, HT, shots | **Yes — player-based λ** |
+| P2 | Scorer, assist, individual props | **Yes — mandatory** |

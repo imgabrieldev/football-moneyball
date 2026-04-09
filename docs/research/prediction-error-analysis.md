@@ -7,84 +7,91 @@ tags:
   - brasileirao-2026
 ---
 
-# Research — Análise de Erros Preditivos (Rodada 10, 2026-04-05)
+# Research — Prediction Error Analysis (Matchday 10, 2026-04-05)
 
 > Research date: 2026-04-05
-> Trigger: 2/7 acertos na rodada (29%), 4 away wins perdidos, 0 draws acertados
+> Trigger: 2/7 correct predictions on the matchday (29%), 4 missed away wins, 0 correct draws
 
 ## Context
 
-Modelo v1.10.0 previu 7 jogos em 2026-04-05 com 29% accuracy. Padrão de erro:
-- 4 visitantes venceram (Palmeiras, Inter, Botafogo, Bragantino) — modelo deu todos como underdog
-- 1 empate (Chapecoense-Vitória) — modelo deu Chapecoense 50%
-- 2 acertos (Flamengo, Atlético-MG) — ambos favoritos da casa que venceram
+Model v1.10.0 predicted 7 matches on 2026-04-05 with 29% accuracy. Error pattern:
+
+- 4 away teams won (Palmeiras, Inter, Botafogo, Bragantino) — model had all as underdogs
+- 1 draw (Chapecoense-Vitória) — model gave Chapecoense 50%
+- 2 correct picks (Flamengo, Atlético-MG) — both home favorites that won
 
 ## Findings
 
-### 1. Home Advantage Inflada
+### 1. Inflated Home Advantage
 
-Pesquisa acadêmica mostra declínio pós-COVID do HA no Brasil:
-- **Pré-COVID (2019):** 57.9% home wins
+Academic research shows a post-COVID decline in HA in Brazil:
+
+- **Pre-COVID (2019):** 57.9% home wins
 - **COVID (2020):** 44.9%
-- **Pós-COVID (2022):** 48.6%
-- **Dados internos 2024:** 47% H / 26% D / 27% A (HA xG = 0.34)
-- **Dados internos 2025:** 50% H / 26% D / 24% A (HA xG = 0.49)
-- **Dados internos 2026:** 50% H / 25% D / 25% A (HA xG = 0.51)
+- **Post-COVID (2022):** 48.6%
+- **Internal data 2024:** 47% H / 26% D / 27% A (HA xG = 0.34)
+- **Internal data 2025:** 50% H / 26% D / 24% A (HA xG = 0.49)
+- **Internal data 2026:** 50% H / 25% D / 25% A (HA xG = 0.51)
 
-**Problema no código:** `max(home_advantage, 0.0)` clampeava HA ≥ 0, impedindo que away teams tivessem boost em cenários extremos. Fallback de 0.30 xG quando sem dados era razoável mas agressivo.
+**Problem in the code:** `max(home_advantage, 0.0)` was clamping HA ≥ 0, preventing away teams from getting a boost in extreme scenarios. The 0.30 xG fallback when no data was available was reasonable but aggressive.
 
-**Fix aplicado:** removido clamp, fallback reduzido 0.30 → 0.20.
+**Fix applied:** clamp removed, fallback reduced 0.30 → 0.20.
 
 Sources:
+
 - [Nortis Journal - Home Advantage in Brazilian Football](https://nortisjournal.com/index.php/pub/article/view/6)
 - [MDPI - Two Years of COVID-19 Pandemic in Serie A](https://www.mdpi.com/1660-4601/19/16/10308)
 
-### 2. Dixon-Coles ρ Sem Efeito Prático
+### 2. Dixon-Coles ρ Had No Practical Effect
 
-Fitted ρ = 0.0089 (≈ 0) pelo MLE, mas:
-- Default em `simulate_match()` já era -0.10 (correto)
-- O fitted value do calibration.pkl **nunca era injetado** no pipeline de predição
-- Típico em ligas europeias: ρ = -0.10 a -0.15
+Fitted ρ = 0.0089 (≈ 0) via MLE, but:
 
-Draws sub-estimados: Poisson independente dá ~20-24%, real é 25-27%.
+- Default in `simulate_match()` was already -0.10 (correct)
+- The fitted value from calibration.pkl **was never injected** into the prediction pipeline
+- Typical in European leagues: ρ = -0.10 to -0.15
 
-**Fix aplicado:** rho do calibration.pkl agora é injetado em `predict_match()` e `predict_match_player_aware()`.
+Draws underestimated: independent Poisson gives ~20-24%, real is 25-27%.
+
+**Fix applied:** rho from calibration.pkl is now injected in `predict_match()` and `predict_match_player_aware()`.
 
 Sources:
+
 - [dashee87 - Dixon-Coles and Time-Weighting](https://dashee87.github.io/football/python/predicting-football-results-with-statistical-modelling-dixon-coles-and-time-weighting/)
 - [Pinnacle - Inflating/Deflating Draw Chance](https://www.pinnacle.com/betting-resources/en/soccer/inflating-or-deflating-the-chance-of-a-draw-in-soccer/cge2jp2sdkv3a9r5)
 - [Karlis & Ntzoufras 2003 - Bivariate Poisson](http://www2.stat-athens.aueb.gr/~jbn/papers2/08_Karlis_Ntzoufras_2003_RSSD.pdf)
 
-### 3. Brasileirão 2026 É Atípico
+### 3. Brasileirão 2026 Is Atypical
 
-- **2.72 gols/jogo** (maior desde 2007, vs histórico 2.4-2.6)
-- 65 jogos consecutivos sem 0-0 (recorde)
-- Times promovidos voláteis: Coritiba melhor fora que em casa
-- Palmeiras dominante (8V-1E-1D), Botafogo e Inter caindo
+- **2.72 goals/match** (highest since 2007, vs historical 2.4-2.6)
+- 65 consecutive matches without a 0-0 (record)
+- Volatile promoted teams: Coritiba better away than at home
+- Palmeiras dominant (8W-1D-1L), Botafogo and Inter falling
 
-Modelo não captura:
-- Volatilidade early-season (poucos dados por time)
-- Times promovidos sem prior de Brasileirão (Elo initialization fraca)
-- Tendência de mais gols (over/under threshold desatualizado)
+The model does not capture:
+
+- Early-season volatility (few data points per team)
+- Promoted teams without a Brasileirão prior (weak Elo initialization)
+- Trend of more goals (outdated over/under threshold)
 
 Sources:
+
 - [OneFootball - Brasileirão 2026 highest goals since 2007](https://onefootball.com/en/news/brasileirao-betano-2026-sees-highest-goals-per-game-since-2007-42405408)
 - [FootyStats - Brazil Serie A 2026](https://footystats.org/brazil/serie-a)
 
 ## Implications for Football Moneyball
 
-### Fixes aplicados (v1.11.1)
+### Fixes applied (v1.11.1)
 
-1. **Removido clamp** `max(home_advantage, 0.0)` → permite HA negativo
-2. **Fallback reduzido** 0.30 → 0.20 xG
-3. **Rho calibrado injetado** no pipeline (predict_match + predict_match_player_aware)
+1. **Removed clamp** `max(home_advantage, 0.0)` → allows negative HA
+2. **Reduced fallback** 0.30 → 0.20 xG
+3. **Calibrated rho injected** into the pipeline (predict_match + predict_match_player_aware)
 
-### Futuro (próximos pitches)
+### Future (upcoming pitches)
 
-4. **Bivariate Poisson** com diagonal inflation (Karlis & Ntzoufras 2003) → corrige draws estruturalmente
-5. **Team-specific away strength** → top-6 em budget deveria ter HA reduzido
-6. **Early-season regularization** → shrinkage mais forte nos primeiros 5 rounds
-7. **Promoted team priors** → Elo initialization baseada em performance na Série B
+4. **Bivariate Poisson** with diagonal inflation (Karlis & Ntzoufras 2003) → structurally corrects draws
+5. **Team-specific away strength** → top-6 in budget should have reduced HA
+6. **Early-season regularization** → stronger shrinkage during the first 5 rounds
+7. **Promoted team priors** → Elo initialization based on Série B performance
 
 ## Sources
 

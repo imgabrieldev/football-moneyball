@@ -1,6 +1,6 @@
-"""Use case: analise de uma partida individual.
+"""Use case: analise of a match individual.
 
-Extrai metricas, pressing, rede de passes e persiste no banco.
+Extract metrics, pressing, network of passes and persiste in the banco.
 """
 
 from __future__ import annotations
@@ -13,14 +13,14 @@ from football_moneyball.domain import metrics, pressing, network
 
 
 class AnalyzeMatch:
-    """Orquestra a analise completa de uma partida.
+    """Orquestra a analise complete of a match.
 
     Parameters
     ----------
     provider : DataProvider
-        Fonte de dados (StatsBomb, Sofascore, etc).
+        Fonte of data (StatsBomb, Sofascore, etc).
     repo : MatchRepository
-        Repositorio para persistencia.
+        Repositorio for persistencia.
     """
 
     def __init__(self, provider, repo) -> None:
@@ -30,23 +30,23 @@ class AnalyzeMatch:
     def execute(
         self, match_id: int, refresh: bool = False
     ) -> dict[str, Any]:
-        """Executa a analise de uma partida.
+        """Runs the analise of a match.
 
-        Se a partida ja existe no banco e refresh=False, retorna dados
-        do cache. Caso contrario, extrai do provider, calcula metricas
-        e persiste.
+        If a match ja existe in the banco and refresh=False, returns data
+        of the cache. Caso contrario, extrai of the provider, calcula metrics
+        and persiste.
 
         Parameters
         ----------
         match_id : int
-            ID da partida.
+            ID of the match.
         refresh : bool
-            Forcar reprocessamento mesmo se ja existir.
+            Forcar reprocessamento same if ja existir.
 
         Returns
         -------
         dict
-            Dicionario com chaves: 'metrics_df', 'pressing_df',
+            Dicionario with chaves: 'metrics_df', 'pressing_df',
             'partnerships', 'graph', 'edges_df'.
         """
         # Check cache

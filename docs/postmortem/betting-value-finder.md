@@ -11,111 +11,111 @@ tags:
 
 # Pitch — Betting Value Finder (v0.4.0)
 
-## Problema
+## Problem
 
-Temos um motor analítico completo (xG, pressing, RAPM, embeddings) e dados de 87 partidas do Brasileirão 2026. Mas toda essa análise é retroativa — "o que aconteceu". Não respondemos a pergunta que interessa pro mercado de apostas: **"o que VAI acontecer?"**
+We have a complete analytics engine (xG, pressing, RAPM, embeddings) and data for 87 Brasileirão 2026 matches. But all this analysis is retroactive — "what happened". We don't answer the question that matters for the betting market: **"what IS GOING TO happen?"**
 
-Casas de apostas (Betano, Bet365, Pinnacle) precificam partidas usando odds que refletem probabilidades implícitas. Se nosso modelo estatístico estima probabilidades mais precisas que as do mercado, existem **value bets** — apostas com expectativa positiva de retorno.
+Bookmakers (Betano, Bet365, Pinnacle) price matches using odds that reflect implied probabilities. If our statistical model estimates more accurate probabilities than the market's, there are **value bets** — bets with positive expected return.
 
-O problema é triplo:
-1. **Não temos acesso a odds** — precisamos integrar uma API de odds
-2. **Não temos modelo preditivo** — nosso xG é retroativo, não prospectivo
-3. **Não sabemos se o modelo funciona** — precisamos backtesting antes de arriscar dinheiro real
+The problem is threefold:
+1. **We don't have access to odds** — we need to integrate an odds API
+2. **We don't have a predictive model** — our xG is retroactive, not prospective
+3. **We don't know if the model works** — we need backtesting before risking real money
 
 Research: [[betting-value-model]]
 
-## Solução
+## Solution
 
-Sistema de 4 camadas que transforma análise retroativa em previsão probabilística:
+4-layer system that turns retroactive analysis into probabilistic prediction:
 
-### A. Odds Provider — Integração com The Odds API
+### A. Odds Provider — The Odds API integration
 
-Novo adapter que busca odds pré-jogo de múltiplas casas de apostas:
-- **The Odds API** free tier (500 req/mês — suficiente pro Brasileirão)
-- Mercados: 1X2 (`h2h`), over/under (`totals`), ambas marcam (`btts`), handicap (`spreads`)
-- ~30 bookmakers incluindo Bet365, Pinnacle
-- Odds históricas desde 2020 para backtesting
+New adapter that fetches pre-match odds from multiple bookmakers:
+- **The Odds API** free tier (500 req/month — enough for Brasileirão)
+- Markets: 1X2 (`h2h`), over/under (`totals`), both teams to score (`btts`), handicap (`spreads`)
+- ~30 bookmakers including Bet365, Pinnacle
+- Historical odds since 2020 for backtesting
 
 ### B. Match Predictor — Monte Carlo + Poisson + xG
 
-Modelo preditivo que estima probabilidades de cada resultado:
+Predictive model that estimates the probability of each outcome:
 
-1. **xG esperado por time**: média ponderada dos últimos 5-8 jogos, ajustada por:
-   - Força do adversário (xG against do oponente)
-   - Fator casa (+0.25-0.35 xG no Brasileirão)
-   - Forma recente (decaimento exponencial)
-   - Pressing intensity (PPDA correlaciona com xG criado)
+1. **Expected xG per team**: weighted average of the last 5-8 matches, adjusted by:
+   - Opponent strength (xG against of the opponent)
+   - Home factor (+0.25-0.35 xG in Brasileirão)
+   - Recent form (exponential decay)
+   - Pressing intensity (PPDA correlates with xG created)
 
-2. **Simulação Monte Carlo** (N=10.000):
-   - Gols de cada time sorteados via distribuição Poisson: `P(k) = (λ^k × e^-λ) / k!`
-   - Onde `λ = xG esperado ajustado`
-   - Cada simulação produz um placar
+2. **Monte Carlo simulation** (N=10,000):
+   - Each team's goals drawn from a Poisson distribution: `P(k) = (λ^k × e^-λ) / k!`
+   - Where `λ = adjusted expected xG`
+   - Each simulation produces a scoreline
 
-3. **Probabilidades derivadas** de 10.000 simulações:
+3. **Derived probabilities** from 10,000 simulations:
    - P(home win), P(draw), P(away win)
    - P(over 0.5), P(over 1.5), P(over 2.5), P(over 3.5)
    - P(BTTS yes), P(BTTS no)
-   - Placar mais provável
+   - Most likely scoreline
 
-### C. Value Detector — Comparar Modelo vs Odds
+### C. Value Detector — Compare Model vs Odds
 
-Para cada mercado de cada partida:
-1. Converter odds → probabilidade implícita: `prob = 1/odds`
-2. Remover margem (vig): `prob_real = prob / sum(probs)`
-3. Calcular edge: `edge = prob_modelo - prob_implícita`
-4. Classificar: **value bet** se `edge > threshold` (default 3%)
+For each market of each match:
+1. Convert odds → implied probability: `prob = 1/odds`
+2. Remove margin (vig): `prob_real = prob / sum(probs)`
+3. Compute edge: `edge = prob_model - prob_implied`
+4. Classify: **value bet** if `edge > threshold` (default 3%)
 
 ### D. Bankroll Manager — Kelly Criterion
 
-Para value bets identificadas:
-1. Calcular stake ótimo via Kelly: `f* = (b×p - q) / b`
-2. Aplicar Kelly fracionário (25%): `stake = 0.25 × f* × bankroll`
-3. Limitar stake máximo (5% do bankroll por aposta)
+For identified value bets:
+1. Compute optimal stake via Kelly: `f* = (b×p - q) / b`
+2. Apply fractional Kelly (25%): `stake = 0.25 × f* × bankroll`
+3. Limit maximum stake (5% of bankroll per bet)
 
-### E. Backtesting Engine — Validar com Dados Históricos
+### E. Backtesting Engine — Validate with Historical Data
 
-Antes de usar em jogos futuros:
-1. Para cada partida já jogada, simular como se fosse pré-jogo
-2. Usar apenas dados disponíveis até aquele momento (sem lookahead)
-3. Buscar odds históricas via The Odds API
-4. Calcular ROI, hit rate, Brier score, max drawdown
-5. Comparar com baseline (apostar sempre no favorito)
+Before using on future matches:
+1. For each already-played match, simulate as if pre-match
+2. Use only data available up to that moment (no lookahead)
+3. Fetch historical odds via The Odds API
+4. Compute ROI, hit rate, Brier score, max drawdown
+5. Compare with baseline (always bet on favorite)
 
-## Arquitetura
+## Architecture
 
-### Módulos afetados
+### Affected modules
 
-| Módulo | Ação | Camada |
+| Module | Action | Layer |
 |--------|------|--------|
-| **`adapters/odds_provider.py`** | NOVO | Adapter: busca odds via The Odds API |
-| **`domain/match_predictor.py`** | NOVO | Domain: Poisson + Monte Carlo + xG adjustment |
-| **`domain/value_detector.py`** | NOVO | Domain: identifica value bets (edge > threshold) |
-| **`domain/bankroll.py`** | NOVO | Domain: Kelly criterion + stake sizing |
-| **`use_cases/predict_match.py`** | NOVO | Use case: previsão de uma partida |
-| **`use_cases/find_value_bets.py`** | NOVO | Use case: scanner de value bets na rodada |
-| **`use_cases/backtest.py`** | NOVO | Use case: backtesting com dados históricos |
-| `ports/odds_provider.py` | NOVO | Port: interface para provider de odds |
-| `adapters/postgres_repository.py` | MODIFICAR | Queries de xG histórico por time |
-| `cli.py` | MODIFICAR | Novos comandos: predict, value-bets, backtest |
-| `adapters/matplotlib_viz.py` | MODIFICAR | Novos plots: probabilidade, ROI curve |
+| **`adapters/odds_provider.py`** | NEW | Adapter: fetches odds via The Odds API |
+| **`domain/match_predictor.py`** | NEW | Domain: Poisson + Monte Carlo + xG adjustment |
+| **`domain/value_detector.py`** | NEW | Domain: identifies value bets (edge > threshold) |
+| **`domain/bankroll.py`** | NEW | Domain: Kelly criterion + stake sizing |
+| **`use_cases/predict_match.py`** | NEW | Use case: single match prediction |
+| **`use_cases/find_value_bets.py`** | NEW | Use case: matchday value bet scanner |
+| **`use_cases/backtest.py`** | NEW | Use case: backtesting with historical data |
+| `ports/odds_provider.py` | NEW | Port: interface for odds provider |
+| `adapters/postgres_repository.py` | MODIFY | Historical xG queries per team |
+| `cli.py` | MODIFY | New commands: predict, value-bets, backtest |
+| `adapters/matplotlib_viz.py` | MODIFY | New plots: probability, ROI curve |
 
 ### Schema
 
 ```sql
--- Odds de partidas
+-- Match odds
 CREATE TABLE IF NOT EXISTS match_odds (
     match_id INTEGER,
     bookmaker VARCHAR(100),
     market VARCHAR(50),        -- h2h, totals, btts, spreads
     outcome VARCHAR(50),       -- Home, Away, Draw, Over, Under, Yes, No
-    point REAL,                -- linha (2.5 para over/under, etc.)
-    odds REAL,                 -- odds decimais
-    implied_prob REAL,         -- probabilidade implícita (1/odds)
+    point REAL,                -- line (2.5 for over/under, etc.)
+    odds REAL,                 -- decimal odds
+    implied_prob REAL,         -- implied probability (1/odds)
     fetched_at TIMESTAMP,
     PRIMARY KEY (match_id, bookmaker, market, outcome, point)
 );
 
--- Previsões do modelo
+-- Model predictions
 CREATE TABLE IF NOT EXISTS match_predictions (
     match_id INTEGER PRIMARY KEY,
     home_team VARCHAR(100),
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS match_predictions (
     predicted_at TIMESTAMP
 );
 
--- Value bets identificadas
+-- Identified value bets
 CREATE TABLE IF NOT EXISTS value_bets (
     id SERIAL PRIMARY KEY,
     match_id INTEGER,
@@ -145,12 +145,12 @@ CREATE TABLE IF NOT EXISTS value_bets (
     edge REAL,                  -- model_prob - implied_prob
     kelly_fraction REAL,
     recommended_stake REAL,
-    actual_result VARCHAR(50),  -- preenchido após o jogo
-    profit REAL,                -- preenchido após o jogo
+    actual_result VARCHAR(50),  -- filled in after the match
+    profit REAL,                -- filled in after the match
     created_at TIMESTAMP
 );
 
--- Performance do modelo (backtesting)
+-- Model performance (backtesting)
 CREATE TABLE IF NOT EXISTS backtest_results (
     id SERIAL PRIMARY KEY,
     run_date TIMESTAMP,
@@ -162,73 +162,73 @@ CREATE TABLE IF NOT EXISTS backtest_results (
     hit_rate REAL,
     brier_score REAL,
     max_drawdown REAL,
-    config JSONB               -- parâmetros do backtest
+    config JSONB               -- backtest parameters
 );
 ```
 
 ### Infra (K8s)
 
-Sem mudanças. The Odds API é chamada do CLI local.
+No changes. The Odds API is called from the local CLI.
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] Port `odds_provider.py` — interface para APIs de odds
+- [ ] Port `odds_provider.py` — interface for odds APIs
 - [ ] Adapter `odds_provider.py` — The Odds API integration (free tier)
 - [ ] Domain `match_predictor.py` — Poisson model + Monte Carlo (10K sims)
-- [ ] Domain `value_detector.py` — comparação modelo vs odds, edge calculation
-- [ ] Domain `bankroll.py` — Kelly criterion fracionário
-- [ ] Use case `predict_match.py` — previsão de uma partida
-- [ ] Use case `find_value_bets.py` — scanner de value bets na rodada
-- [ ] Use case `backtest.py` — backtesting com 87+ partidas históricas
-- [ ] CLI `predict <match_id>` — exibir previsão do modelo
-- [ ] CLI `value-bets [--round N]` — listar value bets da rodada
-- [ ] CLI `backtest --season 2026` — rodar backtesting e exibir ROI
-- [ ] Schema: tabelas match_odds, match_predictions, value_bets, backtest_results
-- [ ] Viz: gráfico de ROI acumulado, calibração de probabilidades
-- [ ] Testes unitários para Poisson, Monte Carlo, Kelly, edge detection
+- [ ] Domain `value_detector.py` — model vs odds comparison, edge calculation
+- [ ] Domain `bankroll.py` — fractional Kelly criterion
+- [ ] Use case `predict_match.py` — single match prediction
+- [ ] Use case `find_value_bets.py` — matchday value bet scanner
+- [ ] Use case `backtest.py` — backtesting with 87+ historical matches
+- [ ] CLI `predict <match_id>` — display model prediction
+- [ ] CLI `value-bets [--round N]` — list matchday value bets
+- [ ] CLI `backtest --season 2026` — run backtesting and display ROI
+- [ ] Schema: match_odds, match_predictions, value_bets, backtest_results tables
+- [ ] Viz: cumulative ROI chart, probability calibration
+- [ ] Unit tests for Poisson, Monte Carlo, Kelly, edge detection
 
-### Fora do Escopo
+### Out of Scope
 
-- Apostas automatizadas (sem integração direta com casas de apostas)
-- Live/in-play betting (apenas pré-jogo)
-- Mercados de jogador (artilheiro, cartões) — apenas mercados de partida
-- Arbitragem entre casas (foco é value, não arb)
-- Machine learning avançado (apenas Poisson + ajustes, sem neural networks)
-- Gestão de múltiplas bankrolls/carteiras
+- Automated betting (no direct integration with bookmakers)
+- Live/in-play betting (pre-match only)
+- Player markets (top scorer, cards) — match markets only
+- Cross-bookmaker arbitrage (focus is value, not arb)
+- Advanced machine learning (Poisson + adjustments only, no neural networks)
+- Managing multiple bankrolls/wallets
 
-## Research Necessária
+## Research Needed
 
-- [x] APIs de odds para Brasileirão — [[betting-value-model]]
-- [x] Monte Carlo + Poisson para previsão de partidas — [[betting-value-model]]
+- [x] Odds APIs for Brasileirão — [[betting-value-model]]
+- [x] Monte Carlo + Poisson for match prediction — [[betting-value-model]]
 - [x] Kelly Criterion — [[betting-value-model]]
-- [ ] Validar que The Odds API cobre odds históricas do Brasileirão 2026 (desde Jan/2026)
-- [ ] Calibrar fator casa do Brasileirão 2026 com nossos dados (87 partidas)
-- [ ] Testar sensibilidade do modelo a janela de xG (últimos 3, 5, 8 jogos)
+- [ ] Validate that The Odds API covers Brasileirão 2026 historical odds (since Jan/2026)
+- [ ] Calibrate Brasileirão home factor with our data (87 matches)
+- [ ] Test model sensitivity to xG window (last 3, 5, 8 matches)
 
-## Estratégia de Testes
+## Testing Strategy
 
-### Unitários (domain — zero mocks)
-- `match_predictor.py`: Poisson PMF com λ conhecido, Monte Carlo convergência (P(home) deve estabilizar com N grande)
-- `value_detector.py`: edge calculation com odds conhecidas, threshold filtering
-- `bankroll.py`: Kelly com inputs determinísticos, limites de stake
+### Unit (domain — zero mocks)
+- `match_predictor.py`: Poisson PMF with known λ, Monte Carlo convergence (P(home) should stabilize with large N)
+- `value_detector.py`: edge calculation with known odds, threshold filtering
+- `bankroll.py`: Kelly with deterministic inputs, stake limits
 
-### Integração
-- `odds_provider.py`: mock HTTP response, verificar parsing de odds
-- `backtest.py`: rodar com 5 partidas de teste, verificar ROI calculation
+### Integration
+- `odds_provider.py`: mock HTTP response, verify odds parsing
+- `backtest.py`: run with 5 test matches, verify ROI calculation
 
 ### Manual
-- Comparar previsão de partida específica com odds reais do Betano
-- Verificar que backtesting não tem lookahead bias
-- Conferir que Kelly nunca recomenda > 5% do bankroll
+- Compare specific match prediction with real Betano odds
+- Verify that backtesting has no lookahead bias
+- Check that Kelly never recommends > 5% of bankroll
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] Backtesting com 87 partidas produz ROI positivo (qualquer edge > 0 é sinal)
-- [ ] Brier score do modelo < 0.25 (melhor que aleatório)
-- [ ] Hit rate em value bets > 50% (se edge é real, deve acertar mais que erra)
-- [ ] Monte Carlo com 10K sims converge (desvio < 1% entre runs)
-- [ ] Free tier do The Odds API suficiente para operação mensal
-- [ ] Todos os novos módulos no domain layer (sem imports de infra)
-- [ ] Zero regressão nos comandos existentes
+- [ ] Backtesting on 87 matches produces positive ROI (any edge > 0 is a signal)
+- [ ] Model Brier score < 0.25 (better than random)
+- [ ] Value bet hit rate > 50% (if edge is real, should hit more than miss)
+- [ ] Monte Carlo with 10K sims converges (deviation < 1% between runs)
+- [ ] The Odds API free tier sufficient for monthly operation
+- [ ] All new modules in the domain layer (no infra imports)
+- [ ] Zero regression in existing commands

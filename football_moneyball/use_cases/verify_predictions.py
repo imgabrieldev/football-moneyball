@@ -1,7 +1,7 @@
 """Use case: verificar previsoes vs resultados reais.
 
-Compara as previsoes do modelo com os resultados reais das partidas
-ja disputadas para medir acuracia e calibracao.
+Comfor thes previsoes of the model with the resultados reais of the matches
+ja disputadas for medir acuracia and calibracao.
 """
 
 from __future__ import annotations
@@ -17,15 +17,15 @@ from football_moneyball.domain.match_predictor import simulate_match, estimate_t
 
 
 class VerifyPredictions:
-    """Compara previsoes com resultados reais.
+    """Comfor previsoes with resultados reais.
 
-    Carrega snapshots de odds salvos, roda o modelo para cada jogo,
-    e compara com o resultado real do Sofascore.
+    Loads snapshots of odds salvos, roda o model for each jogo,
+    and comfor with the resultado real of the Sofascore.
 
     Parameters
     ----------
     repo : MatchRepository
-        Repositorio com resultados reais.
+        Repositorio with resultados reais.
     """
 
     def __init__(self, repo) -> None:
@@ -37,39 +37,39 @@ class VerifyPredictions:
         competition: str = "Brasileirão Série A",
         season: str = "2026",
     ) -> dict[str, Any]:
-        """Verifica previsoes contra resultados reais.
+        """Check previsoes contra resultados reais.
 
-        Para cada partida que ja aconteceu:
-        1. Roda o modelo com dados pre-jogo
-        2. Compara previsao vs resultado
-        3. Calcula metricas de acuracia
+        For each match that ja aconteceu:
+        1. Roda o model with data pre-jogo
+        2. Comfor previsao vs resultado
+        3. Compute metrics of acuracia
 
         Returns
         -------
         dict
-            Metricas e detalhes de cada previsao.
+            Metrics and detalhes of each previsao.
         """
         if snapshots_dir is None:
             snapshots_dir = Path(__file__).resolve().parent.parent.parent / "data" / "snapshots"
 
-        # Carregar odds dos snapshots
+        # Carregar odds of the snapshots
         snapshot_odds = self._load_snapshots(snapshots_dir)
         if not snapshot_odds:
-            return {"error": "Nenhum snapshot de odds encontrado em data/snapshots/"}
+            return {"error": "Nenhum snapshot of odds encontrado in data/snapshots/"}
 
-        # Buscar resultados reais do banco
+        # Buscar resultados reais of the banco
         all_metrics = self.repo.get_all_metrics(competition, season)
         if all_metrics.empty:
-            return {"error": "Sem dados de resultados no banco."}
+            return {"error": "Without data of resultados in the banco."}
 
-        # Resultados por time por partida
+        # Resultados by time by match
         match_results = (
             all_metrics.groupby(["match_id", "team"])
             .agg(goals=("goals", "sum"), xg=("xg", "sum"))
             .reset_index()
         )
 
-        # Para cada jogo nas odds, verificar se ja aconteceu
+        # For each jogo in the odds, verificar if ja aconteceu
         predictions = []
         for game in snapshot_odds:
             home = game.get("home_team", "")
@@ -78,11 +78,11 @@ class VerifyPredictions:
             # Buscar resultado real
             result = self._find_result(match_results, home, away)
             if result is None:
-                continue  # jogo ainda nao aconteceu
+                continue  # jogo still nao aconteceu
 
             home_goals, away_goals = result
 
-            # Rodar modelo
+            # Rodar model
             home_history = self._get_team_history(all_metrics, home)
             away_history = self._get_team_history(all_metrics, away)
             home_def = self._get_defensive_history(all_metrics, home)
@@ -100,7 +100,7 @@ class VerifyPredictions:
             else:
                 actual = "Draw"
 
-            # Previsao do modelo (maior probabilidade)
+            # Previsao of the model (maior probability)
             probs = {
                 "Home": pred["home_win_prob"],
                 "Draw": pred["draw_prob"],
@@ -143,9 +143,9 @@ class VerifyPredictions:
             })
 
         if not predictions:
-            return {"error": "Nenhuma partida verificavel (jogos ainda nao aconteceram)."}
+            return {"error": "Nenhuma match verificavel (jogos still nao aconteceram)."}
 
-        # Metricas agregadas
+        # Metrics agregadas
         df = pd.DataFrame(predictions)
         n = len(df)
         correct_1x2 = df["correct_1x2"].sum()
@@ -163,7 +163,7 @@ class VerifyPredictions:
         }
 
     def _load_snapshots(self, snapshots_dir: Path) -> list[dict]:
-        """Carrega odds do snapshot mais recente."""
+        """Loads odds of the snapshot mais recente."""
         if not snapshots_dir.exists():
             return []
 
@@ -178,8 +178,8 @@ class VerifyPredictions:
     def _find_result(
         self, match_results: pd.DataFrame, home: str, away: str
     ) -> tuple[int, int] | None:
-        """Busca resultado real de uma partida por nomes dos times."""
-        # Fuzzy match por substring
+        """Busca resultado real of a match by nomes of the times."""
+        # Fuzzy match by substring
         for mid in match_results["match_id"].unique():
             match_data = match_results[match_results["match_id"] == mid]
             teams = match_data["team"].tolist()
@@ -205,7 +205,7 @@ class VerifyPredictions:
         return None
 
     def _get_team_history(self, all_metrics: pd.DataFrame, team: str) -> pd.DataFrame:
-        """Historico de xG ofensivo do time."""
+        """History of xG offensive of the time."""
         team_data = all_metrics[all_metrics["team"].str.contains(team, case=False, na=False)]
         if team_data.empty:
             return pd.DataFrame({"xg": [1.2]})
@@ -218,7 +218,7 @@ class VerifyPredictions:
         return per_match
 
     def _get_defensive_history(self, all_metrics: pd.DataFrame, team: str) -> pd.DataFrame:
-        """Historico de xG sofrido pelo time."""
+        """History of xG sofrido by the time."""
         team_matches = all_metrics[
             all_metrics["team"].str.contains(team, case=False, na=False)
         ]["match_id"].unique()
@@ -235,7 +235,7 @@ class VerifyPredictions:
         return pd.DataFrame(records).sort_values("match_id", ascending=False)
 
     def _get_best_odds(self, game: dict, actual_outcome: str) -> float | None:
-        """Retorna a melhor odd disponivel para o resultado que aconteceu."""
+        """Returns the melhor odd disponivel for the resultado that aconteceu."""
         outcome_map = {"Home": game.get("home_team", ""), "Away": game.get("away_team", ""), "Draw": "Draw"}
         target = outcome_map.get(actual_outcome, "")
 

@@ -7,17 +7,17 @@ tags:
   - brasileirao
 ---
 
-# Research — Features para Times Volateis e State-of-the-Art
+# Research — Features for Volatile Teams and State-of-the-Art
 
 > Research date: 2026-04-09
-> Context: Modelo v1.14.2 tem 40.7% accuracy 1X2 (Brier 0.2358). Mercado faz ~0.20. Times como Corinthians (20%), Palmeiras (11%), Mirassol (0%) sao imprevisiveis. Precisa fechar o gap de ~15% no Brier.
+> Context: Model v1.14.2 has 40.7% 1X2 accuracy (Brier 0.2358). The market delivers ~0.20. Teams like Corinthians (20%), Palmeiras (11%), Mirassol (0%) are unpredictable. We need to close the ~15% gap in Brier.
 
-## 1. Estado da Arte — O que Funciona
+## 1. State of the Art — What Works
 
-### 1.1 Modelos e Benchmarks
+### 1.1 Models and Benchmarks
 
-| Modelo | RPS | Accuracy | Fonte |
-|--------|-----|----------|-------|
+| Model | RPS | Accuracy | Source |
+|-------|-----|----------|--------|
 | CatBoost + Pi-Ratings | **0.1925** | **55.8%** | Razali et al. |
 | XGBoost + Pi-Ratings | 0.2063 | 52.4% | Hubacek et al. (2017 Challenge) |
 | XGBoost + Berrar Ratings | 0.2054 | 51.9% | Berrar et al. |
@@ -25,207 +25,214 @@ tags:
 | xG Poisson (best config) | Brier 58.6 | — | beatthebookie |
 | Goals Poisson (best config) | Brier 59.7 | — | beatthebookie |
 | Bet365 closing odds | Brier 57.2 | — | beatthebookie |
-| **Nosso modelo v1.14.2** | **Brier ~0.236** | **40.7%** | — |
+| **Our model v1.14.2** | **Brier ~0.236** | **40.7%** | — |
 
-**Conclusao**: CatBoost + Pi-Ratings e o state-of-the-art (RPS 0.1925). Ja temos CatBoost + Pi-Rating, mas algo ta errado — provavelmente features insuficientes.
+**Conclusion**: CatBoost + Pi-Ratings is the state-of-the-art (RPS 0.1925). We already have CatBoost + Pi-Rating, but something is off — probably insufficient features.
 
-### 1.2 Features que Mais Importam (ranked)
+### 1.2 Features That Matter Most (ranked)
 
-Baseado em XGBoost feature importance de estudo com 269 times, 7 ligas europeias, 20 temporadas:
+Based on XGBoost feature importance from a study with 269 teams, 7 European leagues, 20 seasons:
 
-1. **ELO/Pi-Rating difference** — contribuicao ~4-8x maior que features contextuais
-2. **Recent domestic performance** (form rolling)
+1. **ELO/Pi-Rating difference** — contribution ~4-8x larger than contextual features
+2. **Recent domestic performance** (rolling form)
 3. **Travel distance** (>500 miles = -15% away win rate)
-4. **Rest days between matches** (<3 dias pos viagem = vulneravel)
-5. **Manager tenure** — contribuicao menor mas significativa
-6. **Player rotations** — indicador indireto de fixture congestion
+4. **Rest days between matches** (<3 days after travel = vulnerable)
+5. **Manager tenure** — smaller but significant contribution
+6. **Player rotations** — indirect indicator of fixture congestion
 
-### 1.3 O Paradoxo Brier vs Profit
+### 1.3 The Brier vs Profit Paradox
 
-Descoberta critica do beatthebookie:
-- O modelo com **pior Brier score** gerou o **maior lucro** nas apostas
-- Minimizar erro de predicao != maximizar profit
-- Modelos de aposta devem otimizar **gap detection** (edge vs mercado), nao calibracao pura
-- Implicacao: nosso foco em Brier pode ser secundario ao foco em edge real vs Betfair
+Critical finding from beatthebookie:
 
-## 2. Features que Faltam no Nosso Modelo
+- The model with **worst Brier score** generated the **highest profit** in betting
+- Minimizing prediction error != maximizing profit
+- Betting models should optimize **gap detection** (edge vs market), not pure calibration
+- Implication: our Brier focus may be secondary to the focus on real edge vs Betfair
 
-### 2.1 Rolling Form com EMA (Exponential Moving Average)
+## 2. Features Missing From Our Model
 
-**Status atual**: temos form EMA basico no CatBoost.
+### 2.1 Rolling Form with EMA (Exponential Moving Average)
 
-**O que falta**:
-- **xG-based form** (nao so gols): rolling xG For - xG Against nos ultimos 5-10 jogos
-- **Venue-specific form**: form separado mandante/visitante (ja temos parcial)
-- **Window testing**: testar janelas de 5, 10, 15, 20, 35 jogos
-- **Key insight**: a melhoria maior vem de usar **xG ao inves de gols**, nao do tipo de media (EMA vs SMA)
+**Current status**: we have basic form EMA in CatBoost.
 
-Beat the bookie testou 14 combinacoes de window x weighting:
-- xG-based models dominaram (8 dos 10 melhores)
-- EMA teve melhoria marginal vs SMA
-- **A feature em si (xG) importa mais que o smoothing**
+**What is missing**:
 
-### 2.2 Coach Profile — Perfil Completo do Tecnico
+- **xG-based form** (not just goals): rolling xG For - xG Against over the last 5-10 matches
+- **Venue-specific form**: separate home/away form (we have partial)
+- **Window testing**: test windows of 5, 10, 15, 20, 35 matches
+- **Key insight**: the biggest improvement comes from using **xG instead of goals**, not from the smoothing type (EMA vs SMA)
 
-**Contexto Brasileirao**: 22 tecnicos demitidos em 38 rodadas (2025). E o fator de volatilidade #1.
-O tecnico nao e so um flag binario — e um perfil multidimensional que impacta tatica, resultado e estilo.
+Beat the bookie tested 14 combinations of window x weighting:
 
-#### 2.2.1 Performance Rating do Tecnico
+- xG-based models dominated (8 of the 10 best)
+- EMA showed marginal improvement vs SMA
+- **The feature itself (xG) matters more than the smoothing**
 
-Baseado no framework da Analytics FC (2021):
+### 2.2 Coach Profile — Full Coach Profile
 
-**Ratings duais (ELO-like)**:
-- **Results Rating**: W/D/L ajustado por expectativa pre-jogo (time forte ganha de fraco = pouco ganho)
-- **Performance Rating**: baseado em xT (Expected Threat) — recompensa tecnicos cujos times criam mais perigo independente do placar
+**Brasileirão context**: 22 coaches fired in 38 matchdays (2025). It is the #1 volatility factor.
+The coach is not just a binary flag — it is a multidimensional profile that impacts tactics, results and style.
 
-**Features derivadas**:
-- `coach_win_rate_career`: % vitorias na carreira
-- `coach_win_rate_current_team`: % vitorias neste time
-- `coach_win_rate_last_10`: forma recente do tecnico (EMA ultimos 10 jogos)
-- `coach_avg_xg_for`: media de xG produzido por seus times
-- `coach_avg_xg_against`: media de xG sofrido
-- `coach_tenure_days`: tempo no cargo atual
-- `coach_tenure_bucket`: <30d (lua de mel), 30-90d (adaptacao), 90-180d (consolidado), >180d (estabelecido)
-- `coach_changed_30d`: flag binaria — troca recente
-- `coach_teams_count`: quantos times ja treinou (experiencia)
+#### 2.2.1 Coach Performance Rating
 
-#### 2.2.2 Perfil Tatico do Tecnico (8 metricas — Analytics FC)
+Based on the Analytics FC framework (2021):
 
-Cada tecnico pode ser perfilado em 8 dimensoes taticas:
+**Dual ratings (ELO-like)**:
 
-| Metrica | O que Mede | Como Calcular |
-|---------|-----------|---------------|
-| **Long Balls** | Jogo direto no terco defensivo | % passes longos no terco defensivo |
-| **Deep Circulation** | Saida de bola curta vs direta | ratio passes curtos/longos no terco defensivo |
-| **Wing Play** | Progressao pelas pontas | % acoes ofensivas nas faixas laterais |
-| **Territory** | Dominio territorial (field tilt) | % acoes no terco ofensivo |
-| **Crossing** | Entrada na area por cruzamento | % cruzamentos vs outras entradas |
-| **High Press** | Intensidade de pressao alta | PPDA (passes por acao defensiva) — ja temos |
-| **Counters** | Contra-ataques | transicoes rapidas pos recuperacao |
-| **Low Block** | Bloco baixo defensivo | % acoes defensivas no terco defensivo |
+- **Results Rating**: W/D/L adjusted by pre-match expectation (a strong team beating a weak one = small gain)
+- **Performance Rating**: based on xT (Expected Threat) — rewards coaches whose teams generate more threat regardless of the score
 
-**Similarity via Kolmogorov-Smirnov Test**: compara distribuicoes completas (nao so medias) entre tecnicos. Permite medir "compatibilidade" tecnico-time.
+**Derived features**:
 
-#### 2.2.3 Compatibilidade Tecnico-Time
+- `coach_win_rate_career`: career win %
+- `coach_win_rate_current_team`: win % with this team
+- `coach_win_rate_last_10`: recent coach form (EMA last 10 matches)
+- `coach_avg_xg_for`: average xG produced by their teams
+- `coach_avg_xg_against`: average xG conceded
+- `coach_tenure_days`: time in the current role
+- `coach_tenure_bucket`: <30d (honeymoon), 30-90d (adaptation), 90-180d (consolidated), >180d (established)
+- `coach_changed_30d`: binary flag — recent change
+- `coach_teams_count`: how many teams they have coached (experience)
 
-Feature chave: **quao diferente e o perfil do tecnico vs o que o time jogava antes?**
+#### 2.2.2 Coach Tactical Profile (8 metrics — Analytics FC)
 
-- `style_distance`: distancia euclidiana entre perfil tatico do tecnico e estilo historico do time
-- `similar_teams_coached`: % de times anteriores do tecnico com perfil similar ao time atual
-- `league_experience`: ja treinou nesta liga/divisao? (Brasileirao e muito diferente de Serie B)
+Each coach can be profiled on 8 tactical dimensions:
 
-**Hipotese**: times com alta `style_distance` (tecnico novo com estilo muito diferente do anterior) devem ter mais variancia nos resultados iniciais — o modelo pode ajustar a confianca nesses jogos.
+| Metric | What It Measures | How to Compute |
+|--------|------------------|----------------|
+| **Long Balls** | Direct play in the defensive third | % long passes in the defensive third |
+| **Deep Circulation** | Short vs direct build-up | ratio of short/long passes in the defensive third |
+| **Wing Play** | Progression down the flanks | % offensive actions in the wide lanes |
+| **Territory** | Territorial dominance (field tilt) | % actions in the offensive third |
+| **Crossing** | Box entries via crossing | % crosses vs other entries |
+| **High Press** | High press intensity | PPDA (passes per defensive action) — we already have |
+| **Counters** | Counter-attacks | fast transitions after recovery |
+| **Low Block** | Defensive low block | % defensive actions in the defensive third |
+
+**Similarity via Kolmogorov-Smirnov Test**: compares full distributions (not just means) between coaches. Allows measuring coach-team "compatibility".
+
+#### 2.2.3 Coach-Team Compatibility
+
+Key feature: **how different is the coach's profile vs what the team played before?**
+
+- `style_distance`: Euclidean distance between the coach's tactical profile and the team's historical style
+- `similar_teams_coached`: % of the coach's previous teams with profiles similar to the current team
+- `league_experience`: has the coach coached in this league/division before? (Brasileirão is very different from Série B)
+
+**Hypothesis**: teams with high `style_distance` (new coach with a very different style from the previous one) should have more variance in early results — the model can adjust confidence on those matches.
 
 #### 2.2.4 Regime Detection
 
-- **Efeito lua de mel**: times geralmente melhoram nos primeiros 5-7 jogos pos-troca
-- **Performance reset**: quando tecnico troca, reduzir peso do historico recente (decay factor mais agressivo)
-- **Dados**: `ingest-context` ja traz managers do Sofascore. Falta enriquecer com historico do tecnico.
+- **Honeymoon effect**: teams usually improve in the first 5-7 matches after a coach change
+- **Performance reset**: when the coach changes, reduce the weight of recent history (more aggressive decay factor)
+- **Data**: `ingest-context` already brings managers from Sofascore. Need to enrich with the coach's history.
 
-#### 2.2.5 Fonte de Dados para Coach Profile
+#### 2.2.5 Data Sources for Coach Profile
 
-- **Sofascore API**: ja usamos, tem dados de manager por time
-- **Transfermarkt**: historico completo de carreira, times treinados, datas
-- **Sofascore match-level**: xG, posse, PPDA por partida = permite recalcular perfil tatico
-- **Nosso DB**: match_stats ja tem xG, posse, chutes — podemos derivar perfil tatico do time sob cada tecnico
+- **Sofascore API**: already in use, has manager per team
+- **Transfermarkt**: full career history, teams coached, dates
+- **Sofascore match-level**: xG, possession, PPDA per match = allows recomputing the tactical profile
+- **Our DB**: match_stats already has xG, possession, shots — we can derive the team tactical profile under each coach
 
 ### 2.3 Fixture Congestion & Rest Days
 
 **Features**:
-- `rest_days_home` / `rest_days_away`: dias desde ultimo jogo
-- `games_last_7d` / `games_last_14d`: ja temos no context
-- `travel_distance_km`: distancia entre cidades (BR tem voos longos: Porto Alegre->Manaus)
-- `cup_match_midweek`: flag se jogou copa no meio da semana
 
-**Impacto**: contribuicao 4-8x menor que ratings, mas relevante para times com calendario apertado (Libertadores + Brasileirao + Copa do Brasil).
+- `rest_days_home` / `rest_days_away`: days since the last match
+- `games_last_7d` / `games_last_14d`: we already have in context
+- `travel_distance_km`: distance between cities (Brazil has long flights: Porto Alegre -> Manaus)
+- `cup_match_midweek`: flag if there was a cup match in midweek
+
+**Impact**: contribution 4-8x smaller than ratings, but relevant for teams with a tight calendar (Libertadores + Brasileirão + Copa do Brasil).
 
 ### 2.4 Squad Depth & Key Player Absence
 
 **Features**:
-- `key_players_missing`: contagem de titulares ausentes (lesao/suspensao)
-- `squad_rotation_rate`: % de mudancas no XI vs jogo anterior
-- `total_market_value_ratio`: ratio de valor de mercado home/away (Transfermarkt)
-- **Ja temos**: `ingest-lineups` + `ingest-context` (lesoes). Falta pipeline pro CatBoost.
+
+- `key_players_missing`: count of absent starters (injury/suspension)
+- `squad_rotation_rate`: % of changes in the XI vs the previous match
+- `total_market_value_ratio`: home/away market value ratio (Transfermarkt)
+- **Already have**: `ingest-lineups` + `ingest-context` (injuries). Missing pipeline into CatBoost.
 
 ### 2.5 Draw-Specific Features
 
-Draws sao o ponto fraco de TODOS os modelos (F1 ~0.30 vs 0.75 pra wins). Features especificas:
+Draws are the weak point of ALL models (F1 ~0.30 vs 0.75 for wins). Specific features:
 
-- **Style matchup**: times defensivos vs defensivos = mais draws
-- **League position proximity**: times proximos na tabela empatam mais
-- **Goal expectation < 2.0**: jogos com xG total baixo empatam mais
-- **Derby flag**: classicos tendem a ter mais draws
-- **Handicap spread**: se spread < 0.5 gol, draw prob sobe
+- **Style matchup**: defensive vs defensive = more draws
+- **League position proximity**: teams close in the table draw more
+- **Goal expectation < 2.0**: matches with low total xG draw more
+- **Derby flag**: derbies tend to have more draws
+- **Handicap spread**: if spread < 0.5 goal, draw prob rises
 
-## 3. Plano de Ataque — Priorizado por Impacto
+## 3. Action Plan — Prioritized by Impact
 
-### Tier 1: Alto Impacto, Dados ja Disponiveis (1-2 dias cada)
+### Tier 1: High Impact, Data Already Available (1-2 days each)
 
-1. **xG Rolling Form**: substituir gols por xG no calculo de form strength
-   - Ja temos xG nos match_stats. So precisa mudar o calculo de attack/defense strength
-   - Esperado: ~2-3% melhoria no Brier (xG models dominam 8/10 top configs)
+1. **xG Rolling Form**: replace goals with xG in the form strength calculation
+   - We already have xG in match_stats. Just need to change the attack/defense strength computation
+   - Expected: ~2-3% Brier improvement (xG models dominate 8/10 top configs)
 
-2. **Coach Profile basico**: tenure + win rate + flag de troca
-   - Dados de manager ja no DB via `ingest-context`
+2. **Basic Coach Profile**: tenure + win rate + change flag
+   - Manager data already in DB via `ingest-context`
    - Features: `coach_tenure_days`, `coach_changed_30d`, `coach_tenure_bucket`
-   - `coach_win_rate_current_team` calculavel dos nossos match results
-   - Esperado: melhoria forte nos times volateis (Corinthians, Mirassol, etc.)
+   - `coach_win_rate_current_team` computable from our match results
+   - Expected: strong improvement on volatile teams (Corinthians, Mirassol, etc.)
 
-3. **Rest days + fixture congestion**: dias entre jogos por time
+3. **Rest days + fixture congestion**: days between matches per team
    - `rest_days = commence_time - last_match_time`
-   - `games_last_14d` ja temos parcial no context
-   - Esperado: melhoria em semanas com midweek + Libertadores
+   - `games_last_14d` we already have partial in context
+   - Expected: improvement on midweek + Libertadores weeks
 
-### Tier 2: Medio Impacto, Dados Parciais (3-5 dias)
+### Tier 2: Medium Impact, Partial Data (3-5 days)
 
-4. **Coach Tactical Profile (8 metricas)**: perfil tatico derivado dos match_stats
-   - PPDA ja temos. Posse, chutes, passes longos — derivar das match_stats
-   - Calcular `style_distance` (perfil tecnico vs historico do time)
-   - Precisa de pipeline novo mas dados ja estao no DB
+4. **Coach Tactical Profile (8 metrics)**: tactical profile derived from match_stats
+   - We already have PPDA. Possession, shots, long balls — derive from match_stats
+   - Compute `style_distance` (coach profile vs team history)
+   - Needs a new pipeline but the data is already in the DB
 
-5. **Draw-specific features**: league position gap, xG total, style matchup
-   - Standings ja temos. Calcular gap de pontos + xG expected total
-   - Derby flags, handicap spread derivado das odds
-   - Pode melhorar significativamente o F1 de draws (0.30 -> ?)
+5. **Draw-specific features**: league position gap, total xG, style matchup
+   - We already have standings. Compute points gap + expected total xG
+   - Derby flags, handicap spread derived from odds
+   - Can significantly improve draw F1 (0.30 -> ?)
 
-6. **Key player absence score**: pipeline lineups -> feature de ausencias
-   - Lineups ingeridas. Precisa de heuristica de "key player"
-   - Impact score = minutos_jogados * (gols+assists) / total_time
+6. **Key player absence score**: lineups pipeline -> absences feature
+   - Lineups ingested. Need a "key player" heuristic
+   - Impact score = minutes_played * (goals+assists) / total_time
 
-### Tier 3: Alto Impacto, Alto Esforco (1+ semana)
+### Tier 3: High Impact, High Effort (1+ week)
 
-7. **Coach historico completo**: carreira, times anteriores, compatibilidade
-   - Scraping Transfermarkt ou enriquecimento Sofascore
+7. **Full coach history**: career, previous teams, compatibility
+   - Transfermarkt scraping or Sofascore enrichment
    - `similar_teams_coached`, `league_experience`, `coach_avg_xg_career`
-   - Kolmogorov-Smirnov test pra medir similaridade de estilo
+   - Kolmogorov-Smirnov test to measure style similarity
 
-8. **Ensemble meta-learner**: combinar Poisson + CatBoost + Dixon-Coles com stacking
-   - Layer 1: cada modelo gera probs independentes
-   - Layer 2: meta-learner (logistic regression) combina os outputs
-   - Benchmarks mostram 70%+ accuracy com ensembles
+8. **Ensemble meta-learner**: combine Poisson + CatBoost + Dixon-Coles with stacking
+   - Layer 1: each model generates independent probs
+   - Layer 2: meta-learner (logistic regression) combines the outputs
+   - Benchmarks show 70%+ accuracy with ensembles
 
-9. **Edge-based optimization**: ao inves de minimizar Brier, maximizar edge vs Betfair
-   - Custom loss function que penaliza erros onde tinhamos edge
-   - Pode melhorar ROI sem melhorar Brier (paradoxo Brier vs profit)
+9. **Edge-based optimization**: instead of minimizing Brier, maximize edge vs Betfair
+   - Custom loss function that penalizes errors where we had an edge
+   - Can improve ROI without improving Brier (Brier vs profit paradox)
 
-## 4. Implicacoes para Football Moneyball
+## 4. Implications for Football Moneyball
 
-### O que muda na arquitetura
+### What changes in the architecture
 
-- `match_predictor.py`: adicionar xG-based form (trocar goals por xG no rolling)
-- `train_catboost.py`: adicionar features de context (coach, rest days, standings gap)
-- `predict_all.py`: pipeline pra extrair novas features antes de prever
-- `domain/features.py` (novo?): modulo de feature engineering centralizado
+- `match_predictor.py`: add xG-based form (swap goals for xG in the rolling)
+- `train_catboost.py`: add context features (coach, rest days, standings gap)
+- `predict_all.py`: pipeline to extract new features before predicting
+- `domain/features.py` (new?): centralized feature engineering module
 
-### O que NAO muda
+### What does NOT change
 
-- Infra (K8s, PG, CronJobs) — tudo funciona
-- Market blending — continua importante (65% mercado)
-- Calibracao — Dixon-Coles rho + draw floor 26% continuam
+- Infra (K8s, PG, CronJobs) — everything works
+- Market blending — still important (65% market)
+- Calibration — Dixon-Coles rho + draw floor 26% remain
 
-### Prioridade sugerida
+### Suggested priority
 
-**Proximo pitch**: implementar Tier 1 (xG form + coach tenure + rest days) como features do CatBoost. Estimativa de melhoria: Brier de 0.236 -> ~0.215-0.220 (gap vs mercado cai de 15% pra ~5-8%).
+**Next pitch**: implement Tier 1 (xG form + coach tenure + rest days) as CatBoost features. Improvement estimate: Brier from 0.236 -> ~0.215-0.220 (market gap drops from 15% to ~5-8%).
 
 ## Sources
 
@@ -236,11 +243,11 @@ Draws sao o ponto fraco de TODOS os modelos (F1 ~0.30 vs 0.75 pra wins). Feature
 - [Predicting football results — Dixon-Coles](https://dashee87.github.io/football/python/predicting-football-results-with-statistical-modelling-dixon-coles-and-time-weighting/)
 - [Match outcome factors — elite European football (Settembre et al.)](https://journals.sagepub.com/doi/10.3233/JSA-240745)
 - [Travel distance impact](https://nerdytips.com/blog/the-hidden-influence-of-travel-distance-on-football-betting-outcomes/)
-- [Modelo preditivo Brasileirao (RBFF)](https://www.rbff.com.br/index.php/rbff/article/view/1265)
-- [Troca de tecnicos no futebol brasileiro](https://jornalismojunior.com.br/troca-repete-e-recomeca-o-ciclo-infinito-das-trocas-de-tecnicos-no-brasil/)
+- [Brasileirão predictive model (RBFF)](https://www.rbff.com.br/index.php/rbff/article/view/1265)
+- [Coaching turnover in Brazilian football](https://jornalismojunior.com.br/troca-repete-e-recomeca-o-ciclo-infinito-das-trocas-de-tecnicos-no-brasil/)
 - [Fixture congestion meta-analysis (PMC)](https://pmc.ncbi.nlm.nih.gov/articles/PMC7846542/)
 - [CatBoost + Pi-Ratings (Razali et al.)](https://arxiv.org/html/2309.14807)
-- [Profiling Coaches with Data — Analytics FC](https://analyticsfc.co.uk/blog/2021/03/22/profiling-coaches-with-data/) — 8 metricas taticas + ELO dual + K-S similarity
+- [Profiling Coaches with Data — Analytics FC](https://analyticsfc.co.uk/blog/2021/03/22/profiling-coaches-with-data/) — 8 tactical metrics + dual ELO + K-S similarity
 - [Predicting Success of Football Coaches — Dartmouth](https://sites.dartmouth.edu/sportsanalytics/2024/01/23/predicting-the-success-of-football-coaches/) — WPA/RSA metrics
 - [Coaching Tactical Impact Serie A](https://arxiv.org/pdf/2509.22683) — fixed effects model, home advantage x coaching
 - [Tactical Situations and Playing Styles as KPIs (PMC)](https://pmc.ncbi.nlm.nih.gov/articles/PMC11130910/)

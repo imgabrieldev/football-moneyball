@@ -1,4 +1,4 @@
-"""Use case: analise de uma temporada completa de um time."""
+"""Use case: analise of a season complete of a time."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import pandas as pd
 
 
 class AnalyzeSeason:
-    """Processa todas as partidas de um time em uma temporada.
+    """Process todas as matches of a time in a season.
 
     Parameters
     ----------
     provider : DataProvider
-        Fonte de dados.
+        Fonte of data.
     repo : MatchRepository
-        Repositorio para persistencia.
+        Repositorio for persistencia.
     """
 
     def __init__(self, provider, repo) -> None:
@@ -32,18 +32,18 @@ class AnalyzeSeason:
         refresh: bool = False,
         on_progress: Any = None,
     ) -> dict[str, Any]:
-        """Processa a temporada inteira.
+        """Process the season inteira.
 
         Parameters
         ----------
         competition, season, team : str
-            Filtros de competicao/temporada/time.
+            Filtros of competicao/season/time.
         competition_id, season_id : int
-            IDs para busca de partidas no provider.
+            IDs for busca of matches in the provider.
         refresh : bool
             Forcar reprocessamento.
         on_progress : callable, optional
-            Callback(match_index, total, match_info) para progresso.
+            Callback(match_index, total, match_info) for progresso.
 
         Returns
         -------
@@ -60,7 +60,7 @@ class AnalyzeSeason:
         ]
 
         if team_matches.empty:
-            return {"error": f"Nenhuma partida encontrada para '{team}'."}
+            return {"error": f"Nenhuma match encontrada for '{team}'."}
 
         all_metrics = []
         total = len(team_matches)
@@ -124,13 +124,13 @@ class AnalyzeSeason:
                 all_metrics.append(match_metrics)
 
         if not all_metrics:
-            return {"error": "Nenhuma metrica extraida."}
+            return {"error": "Nenhuma metric extraida."}
 
         combined = pd.concat(all_metrics, ignore_index=True)
         team_data = combined[combined["team"] == team]
 
         if team_data.empty:
-            return {"error": "Nenhuma metrica para o time especificado."}
+            return {"error": "Nenhuma metric for the time especificado."}
 
         # Aggregate
         numeric_cols = team_data.select_dtypes(include="number").columns.tolist()
@@ -141,7 +141,7 @@ class AnalyzeSeason:
             .sum()
             .reset_index()
         )
-        agg_stats["partidas"] = team_data.groupby("player_id").size().values
+        agg_stats["matches"] = team_data.groupby("player_id").size().values
         agg_stats = agg_stats.sort_values("xg", ascending=False)
 
         return {
@@ -155,12 +155,12 @@ class AnalyzeSeason:
         }
 
     def generate_embeddings(self, competition: str, season: str) -> bool:
-        """Gera embeddings para todos os jogadores da temporada.
+        """Generate embeddings for todos os players of the season.
 
         Returns
         -------
         bool
-            True se gerou com sucesso.
+            True if gerou with sucesso.
         """
         from football_moneyball.domain import embeddings
 
@@ -180,12 +180,12 @@ class AnalyzeSeason:
         return True
 
     def compute_rapm(self, competition: str, season: str) -> bool:
-        """Calcula RAPM para a temporada.
+        """Compute RAPM for the season.
 
         Returns
         -------
         bool
-            True se calculou com sucesso.
+            True if calculou with sucesso.
         """
         try:
             from football_moneyball.domain import rapm

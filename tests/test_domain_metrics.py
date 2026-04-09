@@ -1,8 +1,8 @@
-"""Testes para football_moneyball.domain.metrics — metricas via modulo hexagonal.
+"""Tests for football_moneyball.domain.metrics — metrics via the hexagonal module.
 
-Diferenca chave do test_player_metrics.py: funcoes de dominio recebem
-DataFrames diretamente (sem sb.events/sb.lineups), entao ZERO mocks sao
-necessarios.
+Key difference from test_player_metrics.py: domain functions receive
+DataFrames directly (no sb.events/sb.lineups), so ZERO mocks are
+required.
 """
 
 import pandas as pd

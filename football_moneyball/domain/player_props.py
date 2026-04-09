@@ -1,8 +1,8 @@
-"""Modulo de predicao de mercados individuais por jogador.
+"""Player props (individual player markets) prediction module.
 
-Usa Poisson com lambda = metric_per_90 × minutes_expected / 90.
+Uses Poisson with lambda = metric_per_90 * minutes_expected / 90.
 
-Logica pura — zero deps de infra.
+Pure logic — zero infra deps.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import pandas as pd
 
 
 def _poisson_cdf(k: int, lam: float) -> float:
-    """P(X ≤ k) para Poisson(lam)."""
+    """P(X <= k) for Poisson(lam)."""
     if lam <= 0:
         return 1.0 if k >= 0 else 0.0
     cdf = 0.0
@@ -26,22 +26,22 @@ def predict_player_goal(
     xg_per_90: float,
     minutes_expected: float,
 ) -> float:
-    """P(jogador ≥ 1 gol) via Poisson.
+    """P(player >= 1 goal) via Poisson.
 
-    λ_player = xg_per_90 × minutes_expected / 90
-    P(≥ 1) = 1 - e^(-λ)
+    lambda_player = xg_per_90 * minutes_expected / 90
+    P(>= 1) = 1 - e^(-lambda)
 
     Parameters
     ----------
     xg_per_90 : float
-        xG por 90 min do jogador.
+        Player xG per 90 min.
     minutes_expected : float
-        Minutos esperados (0-90).
+        Expected minutes (0-90).
 
     Returns
     -------
     float
-        Probabilidade em [0, 1].
+        Probability in [0, 1].
     """
     if xg_per_90 <= 0 or minutes_expected <= 0:
         return 0.0
@@ -54,9 +54,9 @@ def predict_player_multiple_goals(
     minutes_expected: float,
     n: int = 2,
 ) -> float:
-    """P(jogador marca ≥ n gols) via Poisson.
+    """P(player scores >= n goals) via Poisson.
 
-    P(X ≥ n) = 1 - P(X ≤ n-1)
+    P(X >= n) = 1 - P(X <= n-1)
     """
     if xg_per_90 <= 0 or minutes_expected <= 0:
         return 0.0
@@ -68,9 +68,9 @@ def predict_player_assist(
     xa_per_90: float,
     minutes_expected: float,
 ) -> float:
-    """P(jogador ≥ 1 assistencia) via Poisson.
+    """P(player >= 1 assist) via Poisson.
 
-    Mesma formula do gol, mas com xA/90.
+    Same formula as goal, but with xA/90.
     """
     if xa_per_90 <= 0 or minutes_expected <= 0:
         return 0.0
@@ -83,7 +83,7 @@ def predict_player_shots(
     minutes_expected: float,
     lines: list[float] | None = None,
 ) -> list[dict]:
-    """P(shots do jogador ≥ line) pra cada linha.
+    """P(player shots >= line) for each line.
 
     Returns
     -------
@@ -98,7 +98,7 @@ def predict_player_shots(
     lam = shots_per_90 * minutes_expected / 90.0
     result = []
     for line in lines:
-        # P(shots > line) = P(shots ≥ ceil(line)) = 1 - cdf(floor(line))
+        # P(shots > line) = P(shots >= ceil(line)) = 1 - cdf(floor(line))
         k = int(line)
         prob = 1.0 - _poisson_cdf(k, lam)
         result.append({"line": line, "over_prob": round(prob, 4)})
@@ -110,9 +110,9 @@ def predict_player_scores_or_assists(
     xa_per_90: float,
     minutes_expected: float,
 ) -> float:
-    """P(jogador marca OU assiste) via independencia.
+    """P(player scores OR assists) via independence.
 
-    P(A ou B) = 1 - P(nao A) × P(nao B)
+    P(A or B) = 1 - P(not A) * P(not B)
     """
     p_goal = predict_player_goal(xg_per_90, minutes_expected)
     p_assist = predict_player_assist(xa_per_90, minutes_expected)
@@ -125,36 +125,36 @@ def compute_team_player_props(
     min_matches: int = 3,
     top_n: int = 5,
 ) -> list[dict]:
-    """Calcula props pra top N jogadores mais regulares.
+    """Compute props for the top N most regular players.
 
     Parameters
     ----------
     player_aggregates : pd.DataFrame
-        Deve conter: player_id, player_name, matches_played, minutes_total,
-        xg_total, xa_total (opcional), shots_total, assists_total (opcional).
+        Must contain: player_id, player_name, matches_played, minutes_total,
+        xg_total, xa_total (optional), shots_total, assists_total (optional).
     last_n : int
-        Janela historica usada pro aggregates.
+        Historical window used for the aggregates.
     min_matches : int
-        Minimo de partidas pra incluir jogador.
+        Minimum matches to include a player.
     top_n : int
-        Quantos jogadores retornar por time.
+        How many players to return per team.
 
     Returns
     -------
     list[dict]
-        Lista ordenada por minutes_total. Cada dict tem probs por mercado.
+        List sorted by minutes_total. Each dict has probs per market.
     """
     if player_aggregates.empty:
         return []
 
     df = player_aggregates.copy()
 
-    # Filtrar por min_matches
+    # Filter by min_matches
     df = df[df["matches_played"] >= min_matches]
     if df.empty:
         return []
 
-    # Ordenar por minutes_total descendente, top N
+    # Sort by minutes_total descending, top N
     df = df.sort_values("minutes_total", ascending=False).head(top_n)
 
     results = []
@@ -164,7 +164,7 @@ def compute_team_player_props(
         if matches == 0:
             continue
 
-        # Minutos esperados = media de minutos por jogo
+        # Expected minutes = average minutes per match
         minutes_expected = min(minutes_total / matches, 90.0)
 
         xg_per_90 = (float(row.get("xg_total", 0) or 0) / minutes_total) * 90.0 if minutes_total > 0 else 0

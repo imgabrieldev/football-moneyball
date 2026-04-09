@@ -1,9 +1,9 @@
-"""Feature engineering para predicao de lambda via ML.
+"""Feature engineering for predicao of lambda via ML.
 
-Funcoes puras que constroem vetores de features a partir de dicts/DataFrames
-de estatisticas de times. Zero deps de infra.
+Funcoes puras that constroem vetores of features from dicts/DataFrames
+of estatisticas of times. Zero deps of infra.
 
-**v1.5.0 — 24 features (expandido de 12):**
+**v1.5.0 — 24 features (expandido of 12):**
 
 Layout:
   0-5:   team_goals_for, team_goals_against, team_xg_for, team_xg_against,
@@ -101,9 +101,9 @@ def build_team_features(
     league_avg: dict,
     is_home: bool,
 ) -> np.ndarray:
-    """Retorna array de FEATURE_DIM (40) com defaults seguros para v1.6.0.
+    """Returns array of FEATURE_DIM (40) with defaults seguros for v1.6.0.
 
-    Backward compat: se chamado sem Elo/rest/context, preenche defaults.
+    Backward compat: if chamado without Elo/rest/context, preenche defaults.
     """
     return build_context_aware_features(
         team_stats, opponent_stats, league_avg, is_home,
@@ -123,29 +123,29 @@ def build_rich_team_features(
     team_rest_days: int = 7,
     opp_rest_days: int = 7,
 ) -> np.ndarray:
-    """Constroi vetor de 24 features para predicao ML.
+    """Builds vetor of 24 features for predicao ML.
 
     Parameters
     ----------
     team_stats : dict
-        Agregados do time atacante. Chaves esperadas:
+        Agregados of the time atacante. Chaves esperadas:
         goals_for, goals_against, xg_for, xg_against, corners_for,
         cards_for, goal_diff_ema, xg_overperf, xga_overperf,
         creation_index, defensive_intensity, touches_per_match.
     opponent_stats : dict
-        Mesmas chaves do adversario.
+        Mesmas chaves of the adversario.
     league_avg : dict
         goals_per_team, corners_per_team.
     is_home : bool
     team_elo, opp_elo : float
         Ratings Elo PRE-match.
     team_rest_days, opp_rest_days : int
-        Dias desde ultimo jogo de cada time.
+        Dias since last jogo of each time.
 
     Returns
     -------
     np.ndarray
-        Array (24,) de float64.
+        Array (24,) of float64.
     """
     league_goals = league_avg.get("goals_per_team", 1.3)
 
@@ -203,22 +203,22 @@ def build_context_aware_features(
     referee_features: dict | None = None,
     market_probs: dict | None = None,
 ) -> np.ndarray:
-    """Constroi vetor de FEATURE_DIM features.
+    """Builds vetor of FEATURE_DIM features.
 
     Parameters
     ----------
     team_stats, opponent_stats, league_avg, is_home, team_elo, opp_elo,
     team_rest_days, opp_rest_days :
-        Mesma semantica de build_rich_team_features.
+        Mesma semantica of build_rich_team_features.
     team_context : dict | None
-        {coach, injuries, fixtures, position} dicts do team.
+        {coach, injuries, fixtures, position} dicts of the team.
     opp_context : dict | None
         Mesmo pro adversario.
 
     Returns
     -------
     np.ndarray
-        Array (40,) de float64.
+        Array (40,) of float64.
     """
     from football_moneyball.domain.context_features import (
         coach_features, fixture_features, injury_features, position_features,
@@ -248,7 +248,7 @@ def build_context_aware_features(
     # team_position vs opp_position vs gap (from one of them)
     home_pos = t_pos.get("home_position", 10)
     away_pos = t_pos.get("away_position", 10)
-    # se is_home, team_position = home_pos, else away_pos
+    # if is_home, team_position = home_pos, else away_pos
     team_pos = home_pos if is_home else away_pos
     opp_pos = away_pos if is_home else home_pos
 
@@ -323,7 +323,7 @@ def _team_rolling_stats(
     last_n: int = 5,
     decay: float = 0.85,
 ) -> dict:
-    """Calcula agregados dos ultimos N jogos do time.
+    """Compute agregados of the last N jogos of the time.
 
     Returns dict com:
         goals_for, goals_against, xg_for, xg_against, corners_for, cards_for,
@@ -349,7 +349,7 @@ def _team_rolling_stats(
     if team_matches.empty:
         return defaults
 
-    # Vetores por perspectiva do time
+    # Vetores by perspectiva of the time
     gf, ga, xf, xa_against = [], [], [], []
     corners_for, cards_for = [], []
     xa_team, key_passes_team = [], []
@@ -397,7 +397,7 @@ def _team_rolling_stats(
     goal_diffs = np.array(gf) - np.array(ga)
     goal_diff_ema = float(np.dot(goal_diffs, weights))
 
-    # xG overperformance (gols - xG esperados) por jogo
+    # xG overperformance (goals - xG esperados) by jogo
     xg_overperf = (sum(gf) - sum(xf)) / n if n > 0 else 0.0
     xga_overperf = (sum(ga) - sum(xa_against)) / n if n > 0 else 0.0
 
@@ -406,13 +406,13 @@ def _team_rolling_stats(
     sum_kp = sum(key_passes_team)
     creation_index = (sum_xa + sum_kp * 0.05) / n if n > 0 else 0.0
 
-    # Defensive intensity: tackles + interceptions + recoveries por jogo
+    # Defensive intensity: tackles + interceptions + recoveries by jogo
     defensive_intensity = (
         (sum(tackles_team) + sum(interceptions_team) + sum(recoveries_team)) / n
         if n > 0 else 0.0
     )
 
-    # Touches por jogo
+    # Touches by jogo
     touches_per_match = sum(touches_team) / n if n > 0 else 500.0
 
     return {
@@ -435,9 +435,9 @@ def _compute_rest_days(
     match_date: str,
     default: int = 7,
 ) -> int:
-    """Dias desde ultimo jogo do time antes de match_date.
+    """Dias since last jogo of the time antes of match_date.
 
-    Fallback: `default` (7 dias) se sem historico.
+    Fallback: `default` (7 days) if without history.
     """
     if past_matches.empty or not match_date:
         return default
@@ -459,7 +459,7 @@ def _compute_rest_days(
 def _compute_h2h_from_past(
     past: pd.DataFrame, home: str, away: str, last_n: int = 5,
 ) -> dict[str, float]:
-    """Calcula H2H features do DataFrame passado (leak-proof)."""
+    """Compute H2H features of the DataFrame passado (leak-proof)."""
     from football_moneyball.domain.h2h_features import compute_h2h_features
     h2h_matches = past[
         ((past["home_team"] == home) & (past["away_team"] == away))
@@ -483,14 +483,14 @@ def build_training_dataset(
     min_prior: int = 3,
     match_referees: dict[int, dict] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Constroi (X, y) para treino usando APENAS dados anteriores a cada partida.
+    """Builds (X, y) for training usando APENAS data earlier a each match.
 
     v1.10.0 — inclui H2H (leak-proof) + referee features.
 
     Parameters
     ----------
     match_referees : dict[int, dict] | None
-        Mapping match_id -> referee_stats dict. Se None, ref features usam defaults.
+        Mapping match_id -> referee_stats dict. If None, ref features usam defaults.
     """
     from football_moneyball.domain.elo import compute_elo_timeline
     from football_moneyball.domain.referee_features import compute_referee_features
@@ -531,7 +531,7 @@ def build_training_dataset(
         home_hist = _team_rolling_stats(past, home, last_n)
         away_hist = _team_rolling_stats(past, away, last_n)
 
-        # Elo PRE-match (compute_elo_timeline armazena valor ANTES do jogo)
+        # Elo PRE-match (compute_elo_timeline armazena value ANTES of the jogo)
         home_elo = elo_timeline.get((match_id, home), 1500.0)
         away_elo = elo_timeline.get((match_id, away), 1500.0)
 

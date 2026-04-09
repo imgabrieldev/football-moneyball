@@ -1,8 +1,8 @@
-"""Modulo de agregacao jogador->time pra calcular lambda (λ) de Poisson.
+"""Player-to-team aggregation module to compute Poisson lambda.
 
-Logica pura — recebe DataFrames de jogadores (com xG/90 e peso) e
-retorna o lambda (esperado de gols) do time. Substitui o path
-team-level onde λ = league_avg × attack_strength × opp_defense.
+Pure logic — receives player DataFrames (with xG/90 and weight) and
+returns the team lambda (expected goals). Replaces the team-level
+path where lambda = league_avg x attack_strength x opp_defense.
 """
 
 from __future__ import annotations
@@ -11,19 +11,19 @@ import pandas as pd
 
 
 def compute_xg_per_90(xg_total: float, minutes_total: float) -> float:
-    """xG por 90 minutos: (xg_total / minutes_total) × 90.
+    """xG per 90 minutes: (xg_total / minutes_total) * 90.
 
     Parameters
     ----------
     xg_total : float
-        xG acumulado do jogador no periodo.
+        Accumulated xG of the player in the period.
     minutes_total : float
-        Minutos totais jogados no periodo.
+        Total minutes played in the period.
 
     Returns
     -------
     float
-        xG/90 ajustado. Retorna 0.0 se minutes_total <= 0.
+        Adjusted xG/90. Returns 0.0 if minutes_total <= 0.
     """
     if minutes_total <= 0:
         return 0.0
@@ -34,25 +34,25 @@ def team_lambda_from_players(
     xi: pd.DataFrame,
     opponent_defense_factor: float = 1.0,
 ) -> float:
-    """Calcula λ do time a partir de agregacao de xG/90 dos titulares.
+    """Compute team lambda from the aggregation of xG/90 of starters.
 
-    λ_time = Σ(xG/90 × weight) × opponent_defense_factor
+    lambda_team = sum(xG/90 * weight) * opponent_defense_factor
 
-    O peso (weight) representa a probabilidade × participacao do
-    jogador. Jogador que joga todos os jogos completos tem weight=1.0.
+    The weight represents the probability * participation of the
+    player. A player who plays every match in full has weight=1.0.
 
     Parameters
     ----------
     xi : pd.DataFrame
-        DataFrame dos titulares com colunas xg_per_90 e weight.
+        Starters DataFrame with columns xg_per_90 and weight.
     opponent_defense_factor : float
-        Fator defensivo do adversario (de calculate_team_strength).
-        1.0 = media da liga, <1.0 = defesa boa, >1.0 = defesa ruim.
+        Defensive factor of the opponent (from calculate_team_strength).
+        1.0 = league average, <1.0 = strong defense, >1.0 = weak defense.
 
     Returns
     -------
     float
-        λ esperado de gols do time. Minimo 0.15.
+        Expected team goal lambda. Minimum 0.15.
     """
     if xi.empty or "xg_per_90" not in xi.columns or "weight" not in xi.columns:
         return 0.15
@@ -63,17 +63,17 @@ def team_lambda_from_players(
 
 
 def summarize_xi(xi: pd.DataFrame) -> list[dict]:
-    """Resumo da escalacao pra exibir no frontend.
+    """Lineup summary to display in the frontend.
 
     Parameters
     ----------
     xi : pd.DataFrame
-        Output de probable_xi().
+        Output of probable_xi().
 
     Returns
     -------
     list[dict]
-        Lista com nome, xG/90 e weight de cada jogador.
+        List with name, xG/90 and weight of each player.
     """
     if xi.empty:
         return []

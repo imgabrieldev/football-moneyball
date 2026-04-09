@@ -1,8 +1,8 @@
-"""CLI Typer para Football Moneyball Analytics.
+"""Typer CLI for Football Moneyball Analytics.
 
-Interface de linha de comando com saida Rich para analise de futebol.
-Camada fina: argument parsing (Typer) + output formatting (Rich).
-Toda logica de negocio e delegada para use cases e adapters.
+Command-line interface with Rich output for football analysis.
+Thin layer: argument parsing (Typer) + output formatting (Rich).
+All business logic is delegated to use cases and adapters.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def main(
         "statsbomb", help="Data provider (statsbomb/sofascore)"
     ),
 ) -> None:
-    """Football Moneyball Analytics — CLI de analytics de futebol."""
+    """Football Moneyball Analytics — football analytics CLI."""
     global _provider_name
     _provider_name = provider
 
@@ -52,25 +52,25 @@ def main(
 # ---------------------------------------------------------------------------
 
 def _get_repo():
-    """Retorna um MatchRepository conectado ao banco de dados."""
+    """Return a MatchRepository connected to the database."""
     try:
         return get_repository()
     except Exception as exc:
-        console.print(f"[red]Erro ao conectar ao banco de dados: {exc}[/red]")
+        console.print(f"[red]Error connecting to database: {exc}[/red]")
         raise typer.Exit(1)
 
 
 def _get_provider():
-    """Retorna o DataProvider configurado."""
+    """Return the configured DataProvider."""
     try:
         return get_provider(_provider_name)
     except Exception as exc:
-        console.print(f"[red]Erro ao criar provider '{_provider_name}': {exc}[/red]")
+        console.print(f"[red]Error creating provider '{_provider_name}': {exc}[/red]")
         raise typer.Exit(1)
 
 
 def _xg_contribution(row) -> float:
-    """Calcula a contribuicao xG (xG + xA) de uma linha do DataFrame."""
+    """Compute the xG contribution (xG + xA) from a DataFrame row."""
     xg = row.get("xg", 0) or 0
     xa = row.get("xa", 0) or 0
     return float(xg) + float(xa)
@@ -82,50 +82,50 @@ def _xg_contribution(row) -> float:
 
 @app.command("analyze-match")
 def analyze_match(
-    match_id: int = typer.Argument(..., help="ID da partida StatsBomb"),
-    refresh: bool = typer.Option(False, "--refresh", help="Forca reprocessamento mesmo que ja exista no banco"),
+    match_id: int = typer.Argument(..., help="StatsBomb match ID"),
+    refresh: bool = typer.Option(False, "--refresh", help="Force reprocessing even if already in the database"),
 ) -> None:
-    """Analisa uma partida especifica e exibe metricas dos jogadores."""
+    """Analyze a specific match and display player metrics."""
     provider = _get_provider()
     repo = _get_repo()
 
     try:
         use_case = AnalyzeMatch(provider, repo)
 
-        with console.status("[bold green]Analisando partida..."):
+        with console.status("[bold green]Analyzing match..."):
             result = use_case.execute(match_id, refresh)
 
         if "error" in result:
-            console.print(f"[red]Erro: {result['error']}[/red]")
+            console.print(f"[red]Error: {result['error']}[/red]")
             raise typer.Exit(1)
 
         metrics_df = result["metrics_df"]
 
         if metrics_df.empty:
-            console.print(f"[red]Erro: nenhum dado encontrado para a partida {match_id}.[/red]")
+            console.print(f"[red]Error: no data found for match {match_id}.[/red]")
             raise typer.Exit(1)
 
         if result.get("from_cache"):
-            console.print(f"[cyan]Carregando partida {match_id} do banco de dados...[/cyan]")
+            console.print(f"[cyan]Loading match {match_id} from database...[/cyan]")
         else:
-            console.print("[green]Dados persistidos com sucesso.[/green]")
+            console.print("[green]Data persisted successfully.[/green]")
 
         # Display player metrics table sorted by xG contribution
         metrics_df = metrics_df.copy()
         metrics_df["xg_contribution"] = metrics_df.apply(_xg_contribution, axis=1)
         metrics_df = metrics_df.sort_values("xg_contribution", ascending=False)
 
-        table = Table(title=f"Metricas dos Jogadores - Partida {match_id}")
-        table.add_column("Jogador", style="bold")
-        table.add_column("Time")
+        table = Table(title=f"Player Metrics - Match {match_id}")
+        table.add_column("Player", style="bold")
+        table.add_column("Team")
         table.add_column("Min", justify="right")
-        table.add_column("Gols", justify="right")
-        table.add_column("Assist.", justify="right")
+        table.add_column("Goals", justify="right")
+        table.add_column("Assists", justify="right")
         table.add_column("xG", justify="right")
         table.add_column("xA", justify="right")
         table.add_column("xG+xA", justify="right", style="green")
         table.add_column("Passes", justify="right")
-        table.add_column("Finalizacoes", justify="right")
+        table.add_column("Shots", justify="right")
 
         for _, row in metrics_df.iterrows():
             table.add_row(
@@ -146,11 +146,11 @@ def analyze_match(
         # Display top passing partnerships
         partnerships = result.get("partnerships")
         if partnerships:
-            partner_table = Table(title="Principais Parcerias de Passe")
-            partner_table.add_column("Passador", style="bold")
-            partner_table.add_column("Receptor", style="bold")
+            partner_table = Table(title="Top Passing Partnerships")
+            partner_table.add_column("Passer", style="bold")
+            partner_table.add_column("Receiver", style="bold")
             partner_table.add_column("Passes", justify="right")
-            partner_table.add_column("% do Total", justify="right")
+            partner_table.add_column("% of Total", justify="right")
 
             for p in partnerships:
                 partner_table.add_row(
@@ -166,10 +166,10 @@ def analyze_match(
         pressing_df = result.get("pressing_df")
         try:
             if pressing_df is not None and not pressing_df.empty:
-                press_table = Table(title="Metricas de Pressing")
-                press_table.add_column("Time", style="bold")
+                press_table = Table(title="Pressing Metrics")
+                press_table.add_column("Team", style="bold")
                 press_table.add_column("PPDA", justify="right")
-                press_table.add_column("Sucesso %", justify="right")
+                press_table.add_column("Success %", justify="right")
                 press_table.add_column("Counter-press %", justify="right")
                 press_table.add_column("High Turnovers", justify="right")
 
@@ -186,10 +186,10 @@ def analyze_match(
                 # When loaded from cache, try fetching pressing from repo
                 pressing_rows = repo.get_pressing_metrics_for_match(match_id)
                 if pressing_rows:
-                    press_table = Table(title="Metricas de Pressing")
-                    press_table.add_column("Time", style="bold")
+                    press_table = Table(title="Pressing Metrics")
+                    press_table.add_column("Team", style="bold")
                     press_table.add_column("PPDA", justify="right")
-                    press_table.add_column("Sucesso %", justify="right")
+                    press_table.add_column("Success %", justify="right")
                     press_table.add_column("Counter-press %", justify="right")
                     press_table.add_column("High Turnovers", justify="right")
 
@@ -208,7 +208,7 @@ def analyze_match(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao analisar partida: {exc}[/red]")
+        console.print(f"[red]Error analyzing match: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -216,18 +216,18 @@ def analyze_match(
 
 @app.command("analyze-season")
 def analyze_season(
-    competition: str = typer.Argument(..., help="Nome da competicao"),
-    season: str = typer.Argument(..., help="Temporada (ex: 2023/2024)"),
-    team: str = typer.Argument(..., help="Nome do time"),
-    refresh: bool = typer.Option(False, "--refresh", help="Forca reprocessamento de todas as partidas"),
+    competition: str = typer.Argument(..., help="Competition name"),
+    season: str = typer.Argument(..., help="Season (e.g. 2023/2024)"),
+    team: str = typer.Argument(..., help="Team name"),
+    refresh: bool = typer.Option(False, "--refresh", help="Force reprocessing of all matches"),
 ) -> None:
-    """Processa todas as partidas de um time em uma competicao/temporada."""
+    """Process all matches for a team in a competition/season."""
     provider = _get_provider()
     repo = _get_repo()
 
     try:
         # Resolve competition_id and season_id
-        with console.status("[bold green]Buscando competicoes e partidas..."):
+        with console.status("[bold green]Fetching competitions and matches..."):
             comps = provider.get_competitions()
             comp_match = comps[
                 (comps["competition_name"] == competition)
@@ -236,7 +236,7 @@ def analyze_season(
 
             if comp_match.empty:
                 console.print(
-                    f"[red]Erro: competicao '{competition}' temporada '{season}' nao encontrada.[/red]"
+                    f"[red]Error: competition '{competition}' season '{season}' not found.[/red]"
                 )
                 raise typer.Exit(1)
 
@@ -254,12 +254,12 @@ def analyze_season(
             nonlocal task_id
             if task_id is None:
                 task_id = progress_ctx.add_task(
-                    "[green]Processando partidas...", total=total
+                    "[green]Processing matches...", total=total
                 )
             progress_ctx.advance(task_id)
 
         console.print(
-            f"[cyan]Processando partidas para {team} em {competition} {season}...[/cyan]"
+            f"[cyan]Processing matches for {team} in {competition} {season}...[/cyan]"
         )
 
         with progress_ctx:
@@ -270,7 +270,7 @@ def analyze_season(
                 nonlocal task_id
                 if task_id is None:
                     task_id = progress_ctx.add_task(
-                        "[green]Processando partidas...", total=total
+                        "[green]Processing matches...", total=total
                     )
                 progress_ctx.advance(task_id)
 
@@ -285,23 +285,23 @@ def analyze_season(
             )
 
         if "error" in result:
-            console.print(f"[red]Erro: {result['error']}[/red]")
+            console.print(f"[red]Error: {result['error']}[/red]")
             raise typer.Exit(1)
 
         agg_stats = result["agg_stats"]
 
         # Display aggregated stats table
-        agg_table = Table(title=f"Estatisticas Agregadas - {team} ({competition} {season})")
-        agg_table.add_column("Jogador", style="bold")
-        agg_table.add_column("Partidas", justify="right")
+        agg_table = Table(title=f"Aggregated Stats - {team} ({competition} {season})")
+        agg_table.add_column("Player", style="bold")
+        agg_table.add_column("Matches", justify="right")
         agg_table.add_column("Min", justify="right")
-        agg_table.add_column("Gols", justify="right")
-        agg_table.add_column("Assist.", justify="right")
+        agg_table.add_column("Goals", justify="right")
+        agg_table.add_column("Assists", justify="right")
         agg_table.add_column("xG", justify="right")
         agg_table.add_column("xA", justify="right")
         agg_table.add_column("Passes", justify="right")
-        agg_table.add_column("Dribles", justify="right")
-        agg_table.add_column("Desarmes", justify="right")
+        agg_table.add_column("Dribbles", justify="right")
+        agg_table.add_column("Tackles", justify="right")
 
         for _, row in agg_stats.iterrows():
             agg_table.add_row(
@@ -321,19 +321,19 @@ def analyze_season(
 
         # Generate embeddings
         try:
-            with console.status("[bold green]Gerando embeddings dos jogadores..."):
+            with console.status("[bold green]Generating player embeddings..."):
                 if use_case.generate_embeddings(competition, season):
-                    console.print("[green]Embeddings gerados e salvos com sucesso.[/green]")
+                    console.print("[green]Embeddings generated and saved successfully.[/green]")
         except Exception as exc:
-            console.print(f"[yellow]Aviso: falha ao gerar embeddings: {exc}[/yellow]")
+            console.print(f"[yellow]Warning: failed to generate embeddings: {exc}[/yellow]")
 
         # Compute RAPM
         try:
-            with console.status("[bold green]Calculando RAPM..."):
+            with console.status("[bold green]Computing RAPM..."):
                 if use_case.compute_rapm(competition, season):
-                    console.print("[green]RAPM calculado com sucesso.[/green]")
+                    console.print("[green]RAPM computed successfully.[/green]")
         except Exception as exc:
-            console.print(f"[yellow]Aviso: falha ao calcular RAPM: {exc}[/yellow]")
+            console.print(f"[yellow]Warning: failed to compute RAPM: {exc}[/yellow]")
 
         # Season summary panel
         total_goals = int(agg_stats["goals"].sum()) if "goals" in agg_stats.columns else 0
@@ -343,18 +343,18 @@ def analyze_season(
 
         summary_text = (
             f"[bold]{team}[/bold] - {competition} {season}\n\n"
-            f"Partidas: {total_matches}\n"
-            f"Jogadores utilizados: {total_players}\n"
-            f"Gols totais: {total_goals}\n"
-            f"xG total: {total_xg:.2f}\n"
+            f"Matches: {total_matches}\n"
+            f"Players used: {total_players}\n"
+            f"Total goals: {total_goals}\n"
+            f"Total xG: {total_xg:.2f}\n"
         )
 
-        console.print(Panel(summary_text, title="Resumo da Temporada", border_style="green"))
+        console.print(Panel(summary_text, title="Season Summary", border_style="green"))
 
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao analisar temporada: {exc}[/red]")
+        console.print(f"[red]Error analyzing season: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -362,11 +362,11 @@ def analyze_season(
 
 @app.command("compare-players")
 def compare_players(
-    player_a: str = typer.Argument(..., help="Nome do primeiro jogador"),
-    player_b: str = typer.Argument(..., help="Nome do segundo jogador"),
-    season: Optional[str] = typer.Option(None, "--season", help="Filtrar por temporada"),
+    player_a: str = typer.Argument(..., help="First player name"),
+    player_b: str = typer.Argument(..., help="Second player name"),
+    season: Optional[str] = typer.Option(None, "--season", help="Filter by season"),
 ) -> None:
-    """Compara metricas de dois jogadores lado a lado."""
+    """Compare metrics of two players side by side."""
     repo = _get_repo()
 
     try:
@@ -374,48 +374,48 @@ def compare_players(
         result = use_case.execute(player_a, player_b, season)
 
         if "error" in result:
-            console.print(f"[red]Erro: {result['error']}[/red]")
+            console.print(f"[red]Error: {result['error']}[/red]")
             raise typer.Exit(1)
 
         agg_a = result["agg_a"]
         agg_b = result["agg_b"]
 
         # Display comparison table
-        compare_table = Table(title=f"Comparacao: {player_a} vs {player_b}")
-        compare_table.add_column("Metrica", style="bold")
+        compare_table = Table(title=f"Comparison: {player_a} vs {player_b}")
+        compare_table.add_column("Metric", style="bold")
         compare_table.add_column(player_a, justify="right")
         compare_table.add_column(player_b, justify="right")
 
         display_metrics = [
-            ("Partidas", "partidas"),
-            ("Minutos", "minutes_played"),
-            ("Gols", "goals"),
-            ("Assistencias", "assists"),
+            ("Matches", "partidas"),
+            ("Minutes", "minutes_played"),
+            ("Goals", "goals"),
+            ("Assists", "assists"),
             ("xG", "xg"),
             ("xA", "xa"),
             ("Big Chances", "big_chances"),
             ("Passes", "passes"),
-            ("Passes Completados", "passes_completed"),
-            ("Passes Curtos", "passes_short"),
-            ("Passes Medios", "passes_medium"),
-            ("Passes Longos", "passes_long"),
-            ("Passes sob Pressao", "passes_under_pressure"),
-            ("Passes Progressivos", "progressive_passes"),
-            ("Recepcoes Progressivas", "progressive_receptions"),
-            ("Passes Decisivos", "key_passes"),
-            ("Mudancas de Jogo", "switches_of_play"),
-            ("Finalizacoes", "shots"),
-            ("Finalizacoes no Alvo", "shots_on_target"),
-            ("Dribles Completados", "dribbles_completed"),
-            ("Desarmes", "tackles"),
-            ("Taxa Sucesso Desarme", "tackle_success_rate"),
-            ("Duelos Terrestres", "ground_duels_total"),
-            ("Interceptacoes", "interceptions"),
-            ("Bloqueios", "blocks"),
-            ("Pressoes", "pressures"),
-            ("Toques", "touches"),
-            ("Conducoes", "carries"),
-            ("Conducoes Progressivas", "progressive_carries"),
+            ("Completed Passes", "passes_completed"),
+            ("Short Passes", "passes_short"),
+            ("Medium Passes", "passes_medium"),
+            ("Long Passes", "passes_long"),
+            ("Passes Under Pressure", "passes_under_pressure"),
+            ("Progressive Passes", "progressive_passes"),
+            ("Progressive Receptions", "progressive_receptions"),
+            ("Key Passes", "key_passes"),
+            ("Switches of Play", "switches_of_play"),
+            ("Shots", "shots"),
+            ("Shots on Target", "shots_on_target"),
+            ("Completed Dribbles", "dribbles_completed"),
+            ("Tackles", "tackles"),
+            ("Tackle Success Rate", "tackle_success_rate"),
+            ("Ground Duels", "ground_duels_total"),
+            ("Interceptions", "interceptions"),
+            ("Blocks", "blocks"),
+            ("Pressures", "pressures"),
+            ("Touches", "touches"),
+            ("Carries", "carries"),
+            ("Progressive Carries", "progressive_carries"),
         ]
 
         for label, key in display_metrics:
@@ -449,9 +449,9 @@ def compare_players(
                 radar_b[col] = float(agg_b.get(col, 0) or 0)
 
             viz.plot_radar_comparison(radar_a, radar_b)
-            console.print("[green]Grafico radar gerado.[/green]")
+            console.print("[green]Radar chart generated.[/green]")
         except Exception as exc:
-            console.print(f"[yellow]Aviso: falha ao gerar grafico radar: {exc}[/yellow]")
+            console.print(f"[yellow]Warning: failed to generate radar chart: {exc}[/yellow]")
 
         # Similarity score
         similarity = result.get("similarity")
@@ -459,19 +459,19 @@ def compare_players(
             cosine_dist = 1 - similarity
             console.print(
                 Panel(
-                    f"Similaridade cosseno: [bold]{similarity:.4f}[/bold]\n"
-                    f"Distancia cosseno: [bold]{cosine_dist:.4f}[/bold]",
-                    title="Similaridade entre Jogadores",
+                    f"Cosine similarity: [bold]{similarity:.4f}[/bold]\n"
+                    f"Cosine distance: [bold]{cosine_dist:.4f}[/bold]",
+                    title="Player Similarity",
                     border_style="cyan",
                 )
             )
         else:
-            console.print("[yellow]Aviso: embeddings nao encontrados para calcular similaridade.[/yellow]")
+            console.print("[yellow]Warning: embeddings not found to compute similarity.[/yellow]")
 
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao comparar jogadores: {exc}[/red]")
+        console.print(f"[red]Error comparing players: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -479,11 +479,11 @@ def compare_players(
 
 @app.command("find-similar")
 def find_similar(
-    player: str = typer.Argument(..., help="Nome do jogador de referencia"),
-    season: Optional[str] = typer.Option(None, "--season", help="Filtrar por temporada"),
-    limit: int = typer.Option(10, "--limit", help="Numero maximo de resultados"),
+    player: str = typer.Argument(..., help="Reference player name"),
+    season: Optional[str] = typer.Option(None, "--season", help="Filter by season"),
+    limit: int = typer.Option(10, "--limit", help="Maximum number of results"),
 ) -> None:
-    """Busca jogadores similares usando busca vetorial pgvector."""
+    """Find similar players using pgvector vector search."""
     repo = _get_repo()
 
     try:
@@ -491,25 +491,25 @@ def find_similar(
         result = use_case.execute(player, season, limit)
 
         if "error" in result:
-            console.print(f"[red]Erro: {result['error']}[/red]")
+            console.print(f"[red]Error: {result['error']}[/red]")
             raise typer.Exit(1)
 
         similar_df = result["similar_df"]
         resolved_season = result["season"]
 
         if resolved_season != season and season is None:
-            console.print(f"[cyan]Usando temporada mais recente: {resolved_season}[/cyan]")
+            console.print(f"[cyan]Using most recent season: {resolved_season}[/cyan]")
 
         if similar_df.empty:
-            console.print(f"[yellow]Nenhum jogador similar encontrado para '{player}'.[/yellow]")
+            console.print(f"[yellow]No similar players found for '{player}'.[/yellow]")
             raise typer.Exit(0)
 
-        table = Table(title=f"Jogadores Similares a {player} ({resolved_season})")
+        table = Table(title=f"Players Similar to {player} ({resolved_season})")
         table.add_column("#", justify="right", style="dim")
-        table.add_column("Jogador", style="bold")
-        table.add_column("Posicao")
-        table.add_column("Distancia", justify="right")
-        table.add_column("Arquetipo")
+        table.add_column("Player", style="bold")
+        table.add_column("Position")
+        table.add_column("Distance", justify="right")
+        table.add_column("Archetype")
 
         for idx, row in similar_df.iterrows():
             table.add_row(
@@ -525,7 +525,7 @@ def find_similar(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao buscar jogadores similares: {exc}[/red]")
+        console.print(f"[red]Error finding similar players: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -533,24 +533,24 @@ def find_similar(
 
 @app.command("recommend")
 def recommend(
-    profile_path: str = typer.Argument(..., help="Caminho para o arquivo JSON com perfil desejado"),
-    season: Optional[str] = typer.Option(None, "--season", help="Filtrar por temporada"),
-    limit: int = typer.Option(10, "--limit", help="Numero maximo de recomendacoes"),
+    profile_path: str = typer.Argument(..., help="Path to the JSON file with the desired profile"),
+    season: Optional[str] = typer.Option(None, "--season", help="Filter by season"),
+    limit: int = typer.Option(10, "--limit", help="Maximum number of recommendations"),
 ) -> None:
-    """Recomenda jogadores com base em um perfil de atributos desejados."""
+    """Recommend players based on a desired attribute profile."""
     try:
         profile_file = Path(profile_path)
         if not profile_file.exists():
-            console.print(f"[red]Erro: arquivo '{profile_path}' nao encontrado.[/red]")
+            console.print(f"[red]Error: file '{profile_path}' not found.[/red]")
             raise typer.Exit(1)
 
         with open(profile_file, "r", encoding="utf-8") as f:
             profile = json.load(f)
 
-        console.print(f"[cyan]Perfil carregado: {len(profile)} atributos definidos.[/cyan]")
+        console.print(f"[cyan]Profile loaded: {len(profile)} attributes defined.[/cyan]")
 
     except json.JSONDecodeError as exc:
-        console.print(f"[red]Erro: arquivo JSON invalido: {exc}[/red]")
+        console.print(f"[red]Error: invalid JSON file: {exc}[/red]")
         raise typer.Exit(1)
 
     repo = _get_repo()
@@ -558,7 +558,7 @@ def recommend(
     try:
         from football_moneyball.domain import embeddings as emb_mod
 
-        with console.status("[bold green]Buscando recomendacoes..."):
+        with console.status("[bold green]Searching for recommendations..."):
             # Build synthetic embedding from profile using PCA/scaler
             embedding = emb_mod.profile_to_embedding(profile)
             recommendations = repo.recommend_by_profile(
@@ -569,15 +569,15 @@ def recommend(
             )
 
         if recommendations.empty:
-            console.print("[yellow]Nenhuma recomendacao encontrada para o perfil informado.[/yellow]")
+            console.print("[yellow]No recommendations found for the given profile.[/yellow]")
             raise typer.Exit(0)
 
-        table = Table(title="Recomendacoes de Jogadores")
+        table = Table(title="Player Recommendations")
         table.add_column("#", justify="right", style="dim")
-        table.add_column("Jogador", style="bold")
-        table.add_column("Temporada")
+        table.add_column("Player", style="bold")
+        table.add_column("Season")
         table.add_column("Score", justify="right")
-        table.add_column("Arquetipo")
+        table.add_column("Archetype")
 
         for rank, (_, row) in enumerate(recommendations.iterrows(), start=1):
             table.add_row(
@@ -595,21 +595,21 @@ def recommend(
         try:
             from football_moneyball import player_embeddings
 
-            with console.status("[bold green]Buscando recomendacoes..."):
+            with console.status("[bold green]Searching for recommendations..."):
                 recommendations = player_embeddings.recommend_by_profile(
                     repo.session, profile, season=season, limit=limit
                 )
 
             if recommendations.empty:
-                console.print("[yellow]Nenhuma recomendacao encontrada para o perfil informado.[/yellow]")
+                console.print("[yellow]No recommendations found for the given profile.[/yellow]")
                 raise typer.Exit(0)
 
-            table = Table(title="Recomendacoes de Jogadores")
+            table = Table(title="Player Recommendations")
             table.add_column("#", justify="right", style="dim")
-            table.add_column("Jogador", style="bold")
-            table.add_column("Temporada")
+            table.add_column("Player", style="bold")
+            table.add_column("Season")
             table.add_column("Score", justify="right")
-            table.add_column("Arquetipo")
+            table.add_column("Archetype")
 
             for rank, (_, row) in enumerate(recommendations.iterrows(), start=1):
                 table.add_row(
@@ -622,12 +622,12 @@ def recommend(
 
             console.print(table)
         except ImportError:
-            console.print("[red]Erro: modulo de embeddings nao disponivel.[/red]")
+            console.print("[red]Error: embeddings module not available.[/red]")
             raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao gerar recomendacoes: {exc}[/red]")
+        console.print(f"[red]Error generating recommendations: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -635,12 +635,12 @@ def recommend(
 
 @app.command("scout-report")
 def scout_report(
-    player: str = typer.Argument(..., help="Nome do jogador"),
-    season: Optional[str] = typer.Option(None, "--season", help="Filtrar por temporada"),
-    team_target: Optional[str] = typer.Option(None, "--team-target", help="Time alvo para analise de compatibilidade"),
-    output: Optional[str] = typer.Option(None, "--output", help="Caminho do arquivo de saida (markdown ou JSON)"),
+    player: str = typer.Argument(..., help="Player name"),
+    season: Optional[str] = typer.Option(None, "--season", help="Filter by season"),
+    team_target: Optional[str] = typer.Option(None, "--team-target", help="Target team for fit analysis"),
+    output: Optional[str] = typer.Option(None, "--output", help="Output file path (markdown or JSON)"),
 ) -> None:
-    """Gera relatorio completo de scouting de um jogador."""
+    """Generate a complete scouting report for a player."""
     repo = _get_repo()
 
     try:
@@ -648,7 +648,7 @@ def scout_report(
         report = use_case.execute(player, season, team_target)
 
         if "error" in report:
-            console.print(f"[red]Erro: {report['error']}[/red]")
+            console.print(f"[red]Error: {report['error']}[/red]")
             raise typer.Exit(1)
 
         percentiles = report.get("percentis", {})
@@ -676,72 +676,72 @@ def scout_report(
                 except ImportError:
                     # Fallback: write basic markdown
                     lines = [
-                        f"# Relatorio de Scouting: {player}",
-                        f"\n**Temporada:** {report['temporada']}",
-                        f"**Partidas:** {report['partidas']}",
-                        f"**Arquetipo:** {report['arquetipo']}",
-                        "\n## Metricas Totais",
+                        f"# Scouting Report: {player}",
+                        f"\n**Season:** {report['temporada']}",
+                        f"**Matches:** {report['partidas']}",
+                        f"**Archetype:** {report['arquetipo']}",
+                        "\n## Total Metrics",
                     ]
                     for k, v in report["metricas_totais"].items():
                         lines.append(f"- {k}: {v}")
-                    lines.append("\n## Metricas por 90 minutos")
+                    lines.append("\n## Per-90 Metrics")
                     for k, v in report["metricas_por_90"].items():
                         lines.append(f"- {k}: {v}")
                     if percentiles:
-                        lines.append("\n## Percentis")
+                        lines.append("\n## Percentiles")
                         for k, v in percentiles.items():
                             lines.append(f"- {k}: {v}%")
                     if report["similares"]:
-                        lines.append("\n## Jogadores Similares")
+                        lines.append("\n## Similar Players")
                         for s in report["similares"]:
-                            lines.append(f"- {s.get('player_name', '')} (distancia: {s.get('distance', '')})")
+                            lines.append(f"- {s.get('player_name', '')} (distance: {s.get('distance', '')})")
 
                     with open(output_path, "w", encoding="utf-8") as f:
                         f.write("\n".join(lines) + "\n")
 
-            console.print(f"[green]Relatorio salvo em: {output_path}[/green]")
+            console.print(f"[green]Report saved to: {output_path}[/green]")
         else:
             # Display in terminal
             header_text = (
                 f"[bold]{player}[/bold]\n"
-                f"Temporada: {report['temporada']}\n"
-                f"Partidas: {report['partidas']}\n"
-                f"Arquetipo: [bold cyan]{report['arquetipo']}[/bold cyan]"
+                f"Season: {report['temporada']}\n"
+                f"Matches: {report['partidas']}\n"
+                f"Archetype: [bold cyan]{report['arquetipo']}[/bold cyan]"
             )
-            console.print(Panel(header_text, title="Relatorio de Scouting", border_style="blue"))
+            console.print(Panel(header_text, title="Scouting Report", border_style="blue"))
 
             # Metrics table
-            metrics_table = Table(title="Metricas")
-            metrics_table.add_column("Metrica", style="bold")
+            metrics_table = Table(title="Metrics")
+            metrics_table.add_column("Metric", style="bold")
             metrics_table.add_column("Total", justify="right")
-            metrics_table.add_column("Por 90 min", justify="right")
-            metrics_table.add_column("Percentil", justify="right")
+            metrics_table.add_column("Per 90 min", justify="right")
+            metrics_table.add_column("Percentile", justify="right")
 
             display_keys = [
-                ("Gols", "goals"),
-                ("Assistencias", "assists"),
+                ("Goals", "goals"),
+                ("Assists", "assists"),
                 ("xG", "xg"),
                 ("xA", "xa"),
                 ("Big Chances", "big_chances"),
                 ("Passes", "passes"),
-                ("Passes Completados", "passes_completed"),
-                ("Passes Curtos", "passes_short"),
-                ("Passes Longos", "passes_long"),
-                ("Passes sob Pressao", "passes_under_pressure"),
-                ("Passes Progressivos", "progressive_passes"),
-                ("Recepcoes Progressivas", "progressive_receptions"),
-                ("Passes Decisivos", "key_passes"),
-                ("Mudancas de Jogo", "switches_of_play"),
-                ("Finalizacoes", "shots"),
-                ("Dribles Completados", "dribbles_completed"),
-                ("Desarmes", "tackles"),
-                ("Taxa Sucesso Desarme %", "tackle_success_rate"),
-                ("Duelos Terrestres", "ground_duels_total"),
-                ("Interceptacoes", "interceptions"),
-                ("Pressoes", "pressures"),
-                ("Conducoes Progressivas", "progressive_carries"),
-                ("xT Gerado", "xt_generated"),
-                ("VAEP Gerado", "vaep_generated"),
+                ("Completed Passes", "passes_completed"),
+                ("Short Passes", "passes_short"),
+                ("Long Passes", "passes_long"),
+                ("Passes Under Pressure", "passes_under_pressure"),
+                ("Progressive Passes", "progressive_passes"),
+                ("Progressive Receptions", "progressive_receptions"),
+                ("Key Passes", "key_passes"),
+                ("Switches of Play", "switches_of_play"),
+                ("Shots", "shots"),
+                ("Completed Dribbles", "dribbles_completed"),
+                ("Tackles", "tackles"),
+                ("Tackle Success Rate %", "tackle_success_rate"),
+                ("Ground Duels", "ground_duels_total"),
+                ("Interceptions", "interceptions"),
+                ("Pressures", "pressures"),
+                ("Progressive Carries", "progressive_carries"),
+                ("xT Generated", "xt_generated"),
+                ("VAEP Generated", "vaep_generated"),
             ]
 
             for label, key in display_keys:
@@ -764,10 +764,10 @@ def scout_report(
 
             # Similar players
             if not similar_df.empty:
-                sim_table = Table(title="Top 5 Jogadores Similares")
-                sim_table.add_column("Jogador", style="bold")
-                sim_table.add_column("Distancia", justify="right")
-                sim_table.add_column("Arquetipo")
+                sim_table = Table(title="Top 5 Similar Players")
+                sim_table.add_column("Player", style="bold")
+                sim_table.add_column("Distance", justify="right")
+                sim_table.add_column("Archetype")
 
                 for _, srow in similar_df.iterrows():
                     sim_table.add_row(
@@ -783,7 +783,7 @@ def scout_report(
                 console.print(
                     Panel(
                         str(report["compatibilidade"]),
-                        title=f"Compatibilidade com {team_target}",
+                        title=f"Fit with {team_target}",
                         border_style="magenta",
                     )
                 )
@@ -801,7 +801,7 @@ def scout_report(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao gerar relatorio de scouting: {exc}[/red]")
+        console.print(f"[red]Error generating scouting report: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -809,23 +809,23 @@ def scout_report(
 
 @app.command("list-competitions")
 def list_competitions() -> None:
-    """Lista as competicoes disponiveis nos dados abertos do StatsBomb."""
+    """List competitions available in StatsBomb open data."""
     try:
         provider = _get_provider()
 
-        with console.status("[bold green]Buscando competicoes..."):
+        with console.status("[bold green]Fetching competitions..."):
             comps = provider.get_competitions()
 
         if comps.empty:
-            console.print("[yellow]Nenhuma competicao encontrada.[/yellow]")
+            console.print("[yellow]No competitions found.[/yellow]")
             raise typer.Exit(0)
 
-        table = Table(title="Competicoes Disponiveis (StatsBomb Open Data)")
-        table.add_column("ID Comp.", justify="right", style="dim")
-        table.add_column("Competicao", style="bold")
-        table.add_column("ID Temp.", justify="right", style="dim")
-        table.add_column("Temporada")
-        table.add_column("Pais")
+        table = Table(title="Available Competitions (StatsBomb Open Data)")
+        table.add_column("Comp. ID", justify="right", style="dim")
+        table.add_column("Competition", style="bold")
+        table.add_column("Season ID", justify="right", style="dim")
+        table.add_column("Season")
+        table.add_column("Country")
 
         for _, row in comps.iterrows():
             table.add_row(
@@ -841,32 +841,32 @@ def list_competitions() -> None:
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao listar competicoes: {exc}[/red]")
+        console.print(f"[red]Error listing competitions: {exc}[/red]")
         raise typer.Exit(1)
 
 
 @app.command("list-matches")
 def list_matches(
-    competition_id: int = typer.Argument(..., help="ID da competicao StatsBomb"),
-    season_id: int = typer.Argument(..., help="ID da temporada StatsBomb"),
+    competition_id: int = typer.Argument(..., help="StatsBomb competition ID"),
+    season_id: int = typer.Argument(..., help="StatsBomb season ID"),
 ) -> None:
-    """Lista as partidas de uma competicao/temporada."""
+    """List matches for a competition/season."""
     try:
         provider = _get_provider()
 
-        with console.status("[bold green]Buscando partidas..."):
+        with console.status("[bold green]Fetching matches..."):
             matches = provider.get_matches(competition_id, season_id)
 
         if matches.empty:
-            console.print("[yellow]Nenhuma partida encontrada.[/yellow]")
+            console.print("[yellow]No matches found.[/yellow]")
             raise typer.Exit(0)
 
-        table = Table(title=f"Partidas - Competicao {competition_id} / Temporada {season_id}")
+        table = Table(title=f"Matches - Competition {competition_id} / Season {season_id}")
         table.add_column("ID", justify="right", style="dim")
-        table.add_column("Data")
-        table.add_column("Mandante", style="bold")
-        table.add_column("Placar", justify="center")
-        table.add_column("Visitante", style="bold")
+        table.add_column("Date")
+        table.add_column("Home", style="bold")
+        table.add_column("Score", justify="center")
+        table.add_column("Away", style="bold")
 
         for _, row in matches.iterrows():
             home_score = row.get("home_score", "")
@@ -886,7 +886,7 @@ def list_matches(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao listar partidas: {exc}[/red]")
+        console.print(f"[red]Error listing matches: {exc}[/red]")
         raise typer.Exit(1)
 
 
@@ -896,17 +896,17 @@ def list_matches(
 
 @app.command("predict")
 def predict(
-    match_id: int = typer.Argument(..., help="ID da partida"),
-    home_team: str = typer.Option(..., "--home", help="Nome do time da casa"),
-    away_team: str = typer.Option(..., "--away", help="Nome do time visitante"),
-    simulations: int = typer.Option(10_000, "--sims", help="Numero de simulacoes Monte Carlo"),
+    match_id: int = typer.Argument(..., help="Match ID"),
+    home_team: str = typer.Option(..., "--home", help="Home team name"),
+    away_team: str = typer.Option(..., "--away", help="Away team name"),
+    simulations: int = typer.Option(10_000, "--sims", help="Number of Monte Carlo simulations"),
 ) -> None:
-    """Preve resultado de uma partida via Monte Carlo + Poisson."""
+    """Predict a match outcome via Monte Carlo + Poisson."""
     from football_moneyball.use_cases.predict_match import PredictMatch
 
     repo = get_repository()
     try:
-        with console.status("[bold green]Rodando simulacao Monte Carlo..."):
+        with console.status("[bold green]Running Monte Carlo simulation..."):
             result = PredictMatch(repo).execute(match_id, home_team, away_team, simulations)
 
         if "error" in result:
@@ -916,41 +916,41 @@ def predict(
         # Header
         console.print(Panel(
             f"[bold]{home_team}[/bold] vs [bold]{away_team}[/bold]\n"
-            f"xG esperado: {result['home_xg']:.2f} - {result['away_xg']:.2f}\n"
-            f"Simulacoes: {result['simulations']:,}",
-            title="Previsao Monte Carlo", border_style="cyan",
+            f"Expected xG: {result['home_xg']:.2f} - {result['away_xg']:.2f}\n"
+            f"Simulations: {result['simulations']:,}",
+            title="Monte Carlo Prediction", border_style="cyan",
         ))
 
         # 1X2 probabilities
-        prob_table = Table(title="Probabilidades 1X2")
-        prob_table.add_column("Resultado", style="bold")
-        prob_table.add_column("Probabilidade", justify="right")
-        prob_table.add_column("Odds justo", justify="right")
-        for label, key in [("Casa", "home_win_prob"), ("Empate", "draw_prob"), ("Fora", "away_win_prob")]:
+        prob_table = Table(title="1X2 Probabilities")
+        prob_table.add_column("Outcome", style="bold")
+        prob_table.add_column("Probability", justify="right")
+        prob_table.add_column("Fair odds", justify="right")
+        for label, key in [("Home", "home_win_prob"), ("Draw", "draw_prob"), ("Away", "away_win_prob")]:
             prob = result[key]
             fair_odds = round(1 / prob, 2) if prob > 0 else 0
             prob_table.add_row(label, f"{prob*100:.1f}%", f"{fair_odds:.2f}")
         console.print(prob_table)
 
         # Markets
-        market_table = Table(title="Outros Mercados")
-        market_table.add_column("Mercado", style="bold")
-        market_table.add_column("Probabilidade", justify="right")
+        market_table = Table(title="Other Markets")
+        market_table.add_column("Market", style="bold")
+        market_table.add_column("Probability", justify="right")
         for label, key in [
-            ("Over 0.5 gols", "over_05"), ("Over 1.5 gols", "over_15"),
-            ("Over 2.5 gols", "over_25"), ("Over 3.5 gols", "over_35"),
-            ("Ambas marcam", "btts_prob"),
+            ("Over 0.5 goals", "over_05"), ("Over 1.5 goals", "over_15"),
+            ("Over 2.5 goals", "over_25"), ("Over 3.5 goals", "over_35"),
+            ("Both teams to score", "btts_prob"),
         ]:
             prob = result.get(key, 0)
             market_table.add_row(label, f"{prob*100:.1f}%")
         console.print(market_table)
 
         # Most likely scores
-        console.print(f"\n[cyan]Placar mais provavel:[/cyan] [bold]{result['most_likely_score']}[/bold]")
+        console.print(f"\n[cyan]Most likely score:[/cyan] [bold]{result['most_likely_score']}[/bold]")
         if result.get("score_matrix"):
-            score_table = Table(title="Top 5 Placares")
-            score_table.add_column("Placar", style="bold")
-            score_table.add_column("Probabilidade", justify="right")
+            score_table = Table(title="Top 5 Scores")
+            score_table.add_column("Score", style="bold")
+            score_table.add_column("Probability", justify="right")
             for score, prob in list(result["score_matrix"].items())[:5]:
                 score_table.add_row(score, f"{prob*100:.1f}%")
             console.print(score_table)
@@ -958,7 +958,7 @@ def predict(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro na previsao: {exc}[/red]")
+        console.print(f"[red]Prediction error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -966,39 +966,39 @@ def predict(
 
 @app.command("value-bets")
 def value_bets(
-    bankroll: float = typer.Option(1000.0, "--bankroll", help="Bankroll atual"),
-    min_edge: float = typer.Option(0.05, "--min-edge", help="Edge minimo (0.05 = 5%)"),
-    bookmaker: str = typer.Option("betfair", "--bookmaker", help="Filtro de bookmaker (default: betfair)"),
+    bankroll: float = typer.Option(1000.0, "--bankroll", help="Current bankroll"),
+    min_edge: float = typer.Option(0.05, "--min-edge", help="Minimum edge (0.05 = 5%)"),
+    bookmaker: str = typer.Option("betfair", "--bookmaker", help="Bookmaker filter (default: betfair)"),
 ) -> None:
-    """Busca value bets nas proximas partidas via Betfair Exchange."""
+    """Find value bets on upcoming matches via Betfair Exchange."""
     from football_moneyball.config import get_odds_provider
     from football_moneyball.use_cases.find_value_bets import FindValueBets
 
     repo = get_repository()
     try:
         odds_provider = get_odds_provider()
-        with console.status(f"[bold green]Buscando odds ({bookmaker})..."):
+        with console.status(f"[bold green]Fetching odds ({bookmaker})..."):
             result = FindValueBets(odds_provider, repo).execute(
                 bankroll=bankroll, min_edge=min_edge, bookmaker_filter=bookmaker,
             )
 
         if not result.get("value_bets"):
-            console.print(f"[yellow]Nenhuma value bet encontrada (edge > {min_edge*100:.0f}%).[/yellow]")
-            console.print(f"Partidas analisadas: {result.get('total_matches', 0)}")
+            console.print(f"[yellow]No value bets found (edge > {min_edge*100:.0f}%).[/yellow]")
+            console.print(f"Matches analyzed: {result.get('total_matches', 0)}")
             raise typer.Exit(0)
 
         console.print(Panel(
-            f"Partidas analisadas: {result['total_matches']}\n"
-            f"Partidas com value: {result['matches_with_value']}\n"
-            f"Value bets encontradas: {len(result['value_bets'])}",
+            f"Matches analyzed: {result['total_matches']}\n"
+            f"Matches with value: {result['matches_with_value']}\n"
+            f"Value bets found: {len(result['value_bets'])}",
             title="Value Bets — Betfair Exchange", border_style="green",
         ))
 
-        vb_table = Table(title="Value Bets Recomendadas")
-        vb_table.add_column("Partida", style="bold")
-        vb_table.add_column("Mercado")
-        vb_table.add_column("Aposta")
-        vb_table.add_column("Modelo", justify="right")
+        vb_table = Table(title="Recommended Value Bets")
+        vb_table.add_column("Match", style="bold")
+        vb_table.add_column("Market")
+        vb_table.add_column("Bet")
+        vb_table.add_column("Model", justify="right")
         vb_table.add_column("Odds", justify="right")
         vb_table.add_column("Edge", justify="right", style="green")
         vb_table.add_column("EV", justify="right")
@@ -1024,7 +1024,7 @@ def value_bets(
         console.print("[dim]Configure: BETFAIR_USERNAME, BETFAIR_PASSWORD, BETFAIR_APP_KEY[/dim]")
         raise typer.Exit(1)
     except Exception as exc:
-        console.print(f"[red]Erro ao buscar value bets: {exc}[/red]")
+        console.print(f"[red]Error finding value bets: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1032,17 +1032,17 @@ def value_bets(
 
 @app.command("backtest")
 def backtest(
-    season: str = typer.Option("2026", "--season", help="Temporada"),
-    competition: str = typer.Option("Brasileirão Série A", "--competition", help="Competicao"),
-    bankroll: float = typer.Option(1000.0, "--bankroll", help="Bankroll inicial"),
-    min_edge: float = typer.Option(0.05, "--min-edge", help="Edge minimo (0.05 = 5%)"),
+    season: str = typer.Option("2026", "--season", help="Season"),
+    competition: str = typer.Option("Brasileirão Série A", "--competition", help="Competition"),
+    bankroll: float = typer.Option(1000.0, "--bankroll", help="Initial bankroll"),
+    min_edge: float = typer.Option(0.05, "--min-edge", help="Minimum edge (0.05 = 5%)"),
 ) -> None:
-    """Roda backtesting com dados historicos do Brasileirao."""
+    """Run backtesting using historical Brasileirão data."""
     from football_moneyball.use_cases.backtest import Backtest
 
     repo = get_repository()
     try:
-        with console.status("[bold green]Rodando backtesting..."):
+        with console.status("[bold green]Running backtesting..."):
             result = Backtest(repo).execute(
                 competition=competition,
                 season=season,
@@ -1053,40 +1053,40 @@ def backtest(
         if "error" in result:
             console.print(f"[yellow]{result['error']}[/yellow]")
             if "predictions" in result:
-                console.print(f"Partidas analisadas: {result.get('matches_analyzed', 0)}")
+                console.print(f"Matches analyzed: {result.get('matches_analyzed', 0)}")
             raise typer.Exit(0)
 
         # Results panel
         roi_color = "green" if result["roi"] > 0 else "red"
         console.print(Panel(
             f"[bold]Backtesting — {competition} {season}[/bold]\n\n"
-            f"Bankroll inicial: R$ {result['initial_bankroll']:.2f}\n"
-            f"Bankroll final: R$ {result['final_bankroll']:.2f}\n"
+            f"Initial bankroll: R$ {result['initial_bankroll']:.2f}\n"
+            f"Final bankroll: R$ {result['final_bankroll']:.2f}\n"
             f"[{roi_color}]ROI: {result['roi']:+.2f}%[/{roi_color}]\n\n"
-            f"Partidas analisadas: {result['matches_analyzed']}\n"
-            f"Apostas realizadas: {result['bets_placed']}\n"
-            f"Apostas ganhas: {result['bets_won']}\n"
+            f"Matches analyzed: {result['matches_analyzed']}\n"
+            f"Bets placed: {result['bets_placed']}\n"
+            f"Bets won: {result['bets_won']}\n"
             f"Hit rate: {result['hit_rate']:.1f}%\n"
-            f"Edge medio: {result['avg_edge']:.2f}%\n"
-            f"Odds media: {result['avg_odds']:.2f}\n\n"
-            f"Brier score: {result['brier_score']:.4f} (< 0.25 = melhor que aleatorio)\n"
+            f"Average edge: {result['avg_edge']:.2f}%\n"
+            f"Average odds: {result['avg_odds']:.2f}\n\n"
+            f"Brier score: {result['brier_score']:.4f} (< 0.25 = better than random)\n"
             f"Max drawdown: {result['max_drawdown']:.1f}%\n"
-            f"Total apostado: R$ {result['total_staked']:.2f}\n"
-            f"Retorno total: R$ {result['total_return']:.2f}",
-            title="Resultados do Backtesting", border_style=roi_color,
+            f"Total staked: R$ {result['total_staked']:.2f}\n"
+            f"Total return: R$ {result['total_return']:.2f}",
+            title="Backtesting Results", border_style=roi_color,
         ))
 
         # Top bets
         if result.get("bets"):
-            bets_table = Table(title="Ultimas 10 Apostas")
-            bets_table.add_column("Partida", style="bold")
-            bets_table.add_column("Mercado")
-            bets_table.add_column("Aposta")
+            bets_table = Table(title="Last 10 Bets")
+            bets_table.add_column("Match", style="bold")
+            bets_table.add_column("Market")
+            bets_table.add_column("Bet")
             bets_table.add_column("Odds", justify="right")
             bets_table.add_column("Edge", justify="right")
             bets_table.add_column("Stake", justify="right")
-            bets_table.add_column("Resultado")
-            bets_table.add_column("Lucro", justify="right")
+            bets_table.add_column("Result")
+            bets_table.add_column("Profit", justify="right")
 
             for bet in result["bets"][-10:]:
                 won_str = "[green]✓[/green]" if bet["won"] else "[red]✗[/red]"
@@ -1106,7 +1106,7 @@ def backtest(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro no backtesting: {exc}[/red]")
+        console.print(f"[red]Backtesting error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1114,15 +1114,15 @@ def backtest(
 
 @app.command("verify")
 def verify(
-    season: str = typer.Option("2026", "--season", help="Temporada"),
-    competition: str = typer.Option("Brasileirão Série A", "--competition", help="Competicao"),
+    season: str = typer.Option("2026", "--season", help="Season"),
+    competition: str = typer.Option("Brasileirão Série A", "--competition", help="Competition"),
 ) -> None:
-    """Verifica previsoes vs resultados reais."""
+    """Verify predictions against actual results."""
     from football_moneyball.use_cases.verify_predictions import VerifyPredictions
 
     repo = get_repository()
     try:
-        with console.status("[bold green]Comparando previsoes com resultados..."):
+        with console.status("[bold green]Comparing predictions with results..."):
             result = VerifyPredictions(repo).execute(competition=competition, season=season)
 
         if "error" in result:
@@ -1133,24 +1133,24 @@ def verify(
         acc_color = "green" if result["accuracy_1x2"] > 40 else "red"
         brier_color = "green" if result["avg_brier_score"] < 0.25 else "yellow"
         console.print(Panel(
-            f"[bold]Verificacao — {competition} {season}[/bold]\n\n"
-            f"Partidas verificadas: {result['total_matches']}\n\n"
-            f"[{acc_color}]1X2 corretos: {result['correct_1x2']}/{result['total_matches']} "
+            f"[bold]Verification — {competition} {season}[/bold]\n\n"
+            f"Matches verified: {result['total_matches']}\n\n"
+            f"[{acc_color}]Correct 1X2: {result['correct_1x2']}/{result['total_matches']} "
             f"({result['accuracy_1x2']}%)[/{acc_color}]\n"
-            f"Over/Under corretos: {result['correct_over_under']}/{result['total_matches']} "
+            f"Correct Over/Under: {result['correct_over_under']}/{result['total_matches']} "
             f"({result['accuracy_over_under']}%)\n"
             f"[{brier_color}]Brier score: {result['avg_brier_score']:.4f}[/{brier_color}] "
-            f"(< 0.25 = melhor que aleatorio)",
-            title="Modelo vs Realidade", border_style=acc_color,
+            f"(< 0.25 = better than random)",
+            title="Model vs Reality", border_style=acc_color,
         ))
 
         # Detail table
-        detail_table = Table(title="Detalhamento por Partida")
-        detail_table.add_column("Partida", style="bold")
-        detail_table.add_column("Placar")
-        detail_table.add_column("Prev 1X2")
-        detail_table.add_column("Real")
-        detail_table.add_column("Acertou")
+        detail_table = Table(title="Per-Match Breakdown")
+        detail_table.add_column("Match", style="bold")
+        detail_table.add_column("Score")
+        detail_table.add_column("Pred 1X2")
+        detail_table.add_column("Actual")
+        detail_table.add_column("Correct")
         detail_table.add_column("P(H)", justify="right")
         detail_table.add_column("P(D)", justify="right")
         detail_table.add_column("P(A)", justify="right")
@@ -1177,7 +1177,7 @@ def verify(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro na verificacao: {exc}[/red]")
+        console.print(f"[red]Verification error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1195,7 +1195,7 @@ def ingest(
     competition_id: int = typer.Option(325, "--competition-id", help="Sofascore tournament_id"),
     season_id: int = typer.Option(87678, "--season-id", help="Sofascore season_id (2026=87678, 2025=72034, 2024=58766)"),
 ) -> None:
-    """Ingere partidas novas do provider (delta — so jogos que faltam)."""
+    """Ingest new matches from the provider (delta — only missing games)."""
     from football_moneyball.use_cases.ingest_matches import IngestMatches
 
     repo = get_repository()
@@ -1208,7 +1208,7 @@ def ingest(
             )
         else:
             provider = get_provider(provider_name)
-        with console.status(f"[bold green]Ingerindo {season} de {provider_name}..."):
+        with console.status(f"[bold green]Ingesting {season} from {provider_name}..."):
             result = IngestMatches(provider, repo).execute(
                 competition=competition, season=season,
                 competition_id=competition_id, season_id=season_id,
@@ -1219,16 +1219,16 @@ def ingest(
             raise typer.Exit(1)
 
         console.print(Panel(
-            f"Ingeridos: {result['ingested']}\n"
-            f"Ja existiam: {result['skipped']}\n"
-            f"Erros: {result['errors']}\n"
-            f"Total no provider: {result['total']}",
-            title=f"Ingestao — {provider_name}", border_style="green",
+            f"Ingested: {result['ingested']}\n"
+            f"Already existed: {result['skipped']}\n"
+            f"Errors: {result['errors']}\n"
+            f"Total in provider: {result['total']}",
+            title=f"Ingestion — {provider_name}", border_style="green",
         ))
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro na ingestao: {exc}[/red]")
+        console.print(f"[red]Ingestion error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1236,29 +1236,29 @@ def ingest(
 
 @app.command("train-models")
 def train_models_cmd(
-    season: str = typer.Option("all", "--season", help="Temporada ou 'all' pra todas"),
+    season: str = typer.Option("all", "--season", help="Season or 'all' for all seasons"),
     models_dir: str = typer.Option(
         "football_moneyball/models", "--models-dir",
     ),
 ) -> None:
-    """Treina modelos ML (GBR) pra gols, corners, cartoes."""
+    """Train ML models (GBR) for goals, corners, cards."""
     from football_moneyball.use_cases.train_ml_models import TrainMLModels
     season_arg: str | None = None if season == "all" else season
 
     repo = get_repository()
     try:
-        with console.status("[bold green]Treinando modelos..."):
+        with console.status("[bold green]Training models..."):
             result = TrainMLModels(repo, models_dir).execute(season_arg)
 
         if "error" in result:
             console.print(f"[red]{result['error']}[/red]")
             raise typer.Exit(1)
 
-        table = Table(title="Modelos ML treinados", border_style="green")
+        table = Table(title="Trained ML Models", border_style="green")
         table.add_column("Target")
         table.add_column("MAE (CV)")
-        table.add_column("Amostras")
-        table.add_column("Arquivo")
+        table.add_column("Samples")
+        table.add_column("File")
         for target, metrics in result.items():
             if "error" in metrics:
                 table.add_row(target, "—", "—", f"[red]{metrics['error']}[/red]")
@@ -1273,7 +1273,7 @@ def train_models_cmd(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro: {exc}[/red]")
+        console.print(f"[red]Error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1283,15 +1283,15 @@ def train_models_cmd(
 def train_catboost_cmd(
     models_dir: str = typer.Option("football_moneyball/models", "--models-dir"),
     seasons: str = typer.Option("2022,2023,2024,2025,2026", "--seasons"),
-    draw_weight: float = typer.Option(1.3, "--draw-weight", help="Peso extra pra draws"),
+    draw_weight: float = typer.Option(1.3, "--draw-weight", help="Extra weight for draws"),
 ) -> None:
-    """Treina CatBoost 1x2 com Pi-Rating + form EMA + xG."""
+    """Train CatBoost 1x2 with Pi-Rating + EMA form + xG."""
     from football_moneyball.use_cases.train_catboost import TrainCatBoost
 
     repo = get_repository()
     try:
         seasons_list = [s.strip() for s in seasons.split(",")]
-        with console.status("[bold green]Treinando CatBoost 1x2..."):
+        with console.status("[bold green]Training CatBoost 1x2..."):
             result = TrainCatBoost(repo, models_dir).execute(
                 seasons=seasons_list, draw_weight=draw_weight,
             )
@@ -1305,8 +1305,8 @@ def train_catboost_cmd(
         fi_text = "\n".join(f"  {k:30s} {v:.1f}" for k, v in fi_sorted)
 
         console.print(Panel(
-            f"[bold]CatBoost 1x2 treinado[/bold]\n\n"
-            f"Samples: {result['n_samples']} (de {result['total_matches']} matches)\n"
+            f"[bold]CatBoost 1x2 trained[/bold]\n\n"
+            f"Samples: {result['n_samples']} (of {result['total_matches']} matches)\n"
             f"Seasons: {result['per_season']}\n"
             f"Draw weight: {result['draw_weight']}\n"
             f"Best iteration: {result.get('best_iteration', '?')}\n\n"
@@ -1316,13 +1316,13 @@ def train_catboost_cmd(
             f"Brier:    {result['brier']:.4f}\n\n"
             f"[bold]Pred distribution:[/bold] {result['pred_distribution']}\n\n"
             f"[bold]Feature importance (top 8):[/bold]\n{fi_text}\n\n"
-            f"Salvo em: {result['saved_to']}",
+            f"Saved to: {result['saved_to']}",
             title="CatBoost 1x2", border_style="green",
         ))
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro: {exc}[/red]")
+        console.print(f"[red]Error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1331,16 +1331,16 @@ def train_catboost_cmd(
 @app.command("fit-calibration")
 def fit_calibration_cmd(
     models_dir: str = typer.Option("football_moneyball/models", "--models-dir"),
-    seasons: str = typer.Option("2024,2026", "--seasons", help="Temporadas separadas por virgula"),
-    method: str = typer.Option("auto", "--method", help="Metodo: auto|platt|isotonic|temperature"),
+    seasons: str = typer.Option("2024,2026", "--seasons", help="Comma-separated seasons"),
+    method: str = typer.Option("auto", "--method", help="Method: auto|platt|isotonic|temperature"),
 ) -> None:
-    """Fitta calibracao (Dixon-Coles rho + Platt/Isotonic/Temperature) em dados historicos."""
+    """Fit calibration (Dixon-Coles rho + Platt/Isotonic/Temperature) on historical data."""
     from football_moneyball.use_cases.fit_calibration import FitCalibration
 
     repo = get_repository()
     try:
         seasons_list = [s.strip() for s in seasons.split(",")]
-        with console.status("[bold green]Fittando calibracao..."):
+        with console.status("[bold green]Fitting calibration..."):
             result = FitCalibration(repo, models_dir).execute(
                 seasons=seasons_list, method=method,
             )
@@ -1358,25 +1358,25 @@ def fit_calibration_cmd(
         )
 
         console.print(Panel(
-            f"[bold]Calibracao fittada[/bold]\n\n"
-            f"Metodo calibracao: [bold green]{result['method']}[/bold green]\n"
+            f"[bold]Calibration fitted[/bold]\n\n"
+            f"Calibration method: [bold green]{result['method']}[/bold green]\n"
             f"Score method: {result.get('score_method', 'dixon-coles')}\n"
             f"Dixon-Coles rho: {result['rho']:.4f} | "
             f"Bivariate lambda3: {result.get('lambda3', 0):.4f}\n"
-            f"Amostras: {result['n_samples']} (train={result['n_train']}, val={result['n_val']})\n"
-            f"Por temporada: {result['per_season']}\n\n"
+            f"Samples: {result['n_samples']} (train={result['n_train']}, val={result['n_val']})\n"
+            f"Per season: {result['per_season']}\n\n"
             f"{cv_table}\n"
             f"[bold]Full-sample metrics ({result['method']}):[/bold]\n"
             f"Brier raw → cal:    {result['brier_raw']:.4f} → {result['brier_calibrated']:.4f}\n"
             f"ECE raw → cal:      {result['ece_raw']:.4f} → {result['ece_calibrated']:.4f}\n"
             f"Accuracy raw → cal: {result['accuracy_raw']:.1f}% → {result['accuracy_calibrated']:.1f}%\n\n"
-            f"Salvo em: {result['saved_to']}",
+            f"Saved to: {result['saved_to']}",
             title="Calibration", border_style="green",
         ))
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro: {exc}[/red]")
+        console.print(f"[red]Error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1385,29 +1385,29 @@ def fit_calibration_cmd(
 @app.command("ingest-context")
 def ingest_context_cmd(
     season: str = typer.Option("2026", "--season"),
-    backfill: bool = typer.Option(False, "--backfill", help="Processa TODOS os matches"),
+    backfill: bool = typer.Option(False, "--backfill", help="Process ALL matches"),
     provider_name: str = typer.Option("sofascore", "--provider"),
 ) -> None:
-    """Ingere managers, lesoes e standings (context features v1.6.0)."""
+    """Ingest managers, injuries and standings (context features v1.6.0)."""
     from football_moneyball.use_cases.ingest_context import IngestContext
 
     repo = get_repository()
     try:
         provider = get_provider(provider_name)
-        with console.status("[bold green]Ingerindo contexto..."):
+        with console.status("[bold green]Ingesting context..."):
             result = IngestContext(provider, repo).execute(season=season, backfill=backfill)
 
         console.print(Panel(
-            f"Matches processados: {result['matches_processed']}\n"
-            f"Managers encontrados: {result['managers_found']}\n"
-            f"Lesoes salvas: {result['injuries_saved']}\n"
-            f"Coaches persistidos: {result['coaches_persisted']}\n"
-            f"Standings salvos: {result['standings_saved']}\n"
-            f"Erros: {result['errors']}",
+            f"Matches processed: {result['matches_processed']}\n"
+            f"Managers found: {result['managers_found']}\n"
+            f"Injuries saved: {result['injuries_saved']}\n"
+            f"Coaches persisted: {result['coaches_persisted']}\n"
+            f"Standings saved: {result['standings_saved']}\n"
+            f"Errors: {result['errors']}",
             title="Ingest Context", border_style="green",
         ))
     except Exception as exc:
-        console.print(f"[red]Erro: {exc}[/red]")
+        console.print(f"[red]Error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1415,21 +1415,21 @@ def ingest_context_cmd(
 
 @app.command("ingest-lineups")
 def ingest_lineups_cmd(
-    match_ids: str = typer.Option("", "--match-ids", help="IDs separados por virgula"),
+    match_ids: str = typer.Option("", "--match-ids", help="Comma-separated IDs"),
     provider_name: str = typer.Option("sofascore", "--provider"),
 ) -> None:
-    """Ingere escalacoes confirmadas (lineups) de partidas."""
+    """Ingest confirmed lineups for matches."""
     from football_moneyball.use_cases.ingest_lineups import IngestLineups
 
     if not match_ids:
-        console.print("[red]Informe --match-ids com IDs separados por virgula[/red]")
+        console.print("[red]Provide --match-ids with comma-separated IDs[/red]")
         raise typer.Exit(1)
 
     ids = [int(x) for x in match_ids.split(",") if x.strip()]
     repo = get_repository()
     try:
         provider = get_provider(provider_name)
-        with console.status("[bold green]Ingerindo lineups..."):
+        with console.status("[bold green]Ingesting lineups..."):
             result = IngestLineups(provider, repo).execute(match_ids=ids)
 
         if "error" in result:
@@ -1437,16 +1437,16 @@ def ingest_lineups_cmd(
             raise typer.Exit(1)
 
         console.print(Panel(
-            f"Lineups ingeridas: {result['ingested']}\n"
-            f"Erros: {result['errors']}",
+            f"Lineups ingested: {result['ingested']}\n"
+            f"Errors: {result['errors']}",
             title="Ingest Lineups", border_style="green",
         ))
         for d in result.get("details", []):
-            console.print(f"  {d['home']} vs {d['away']}: {d['players']} jogadores")
+            console.print(f"  {d['home']} vs {d['away']}: {d['players']} players")
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro: {exc}[/red]")
+        console.print(f"[red]Error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1454,7 +1454,7 @@ def ingest_lineups_cmd(
 
 @app.command("snapshot-odds")
 def snapshot_odds() -> None:
-    """Busca odds atuais e salva no PostgreSQL."""
+    """Fetch current odds and save to PostgreSQL."""
     from football_moneyball.use_cases.snapshot_odds import SnapshotOdds
     from football_moneyball.config import get_odds_provider
 
@@ -1462,7 +1462,7 @@ def snapshot_odds() -> None:
     try:
         odds_provider = get_odds_provider()
         odds_provider.repo = repo
-        with console.status("[bold green]Buscando odds..."):
+        with console.status("[bold green]Fetching odds..."):
             result = SnapshotOdds(odds_provider, repo).execute()
 
         if "error" in result:
@@ -1470,15 +1470,15 @@ def snapshot_odds() -> None:
             raise typer.Exit(0)
 
         console.print(Panel(
-            f"Partidas: {result['matches']}\n"
-            f"Casas de apostas: {result['bookmakers']}\n"
-            f"Total de odds: {result['total_odds']}",
-            title="Snapshot de Odds", border_style="green",
+            f"Matches: {result['matches']}\n"
+            f"Bookmakers: {result['bookmakers']}\n"
+            f"Total odds: {result['total_odds']}",
+            title="Odds Snapshot", border_style="green",
         ))
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao buscar odds: {exc}[/red]")
+        console.print(f"[red]Error fetching odds: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1489,12 +1489,12 @@ def predict_all_cmd(
     competition: str = typer.Option("Brasileirão Série A", "--competition"),
     season: str = typer.Option("2026", "--season"),
 ) -> None:
-    """Preve todos os jogos pendentes da rodada."""
+    """Predict all pending matches of the matchday."""
     from football_moneyball.use_cases.predict_all import PredictAll
 
     repo = get_repository()
     try:
-        with console.status("[bold green]Prevendo partidas..."):
+        with console.status("[bold green]Predicting matches..."):
             result = PredictAll(repo).execute(competition, season)
 
         if "error" in result:
@@ -1503,18 +1503,18 @@ def predict_all_cmd(
 
         preds = result.get("predictions", [])
         if not preds:
-            console.print("[yellow]Nenhuma previsao gerada.[/yellow]")
+            console.print("[yellow]No predictions generated.[/yellow]")
             raise typer.Exit(0)
 
-        table = Table(title=f"Previsoes — {result['total']} partidas")
-        table.add_column("Partida", style="bold")
+        table = Table(title=f"Predictions — {result['total']} matches")
+        table.add_column("Match", style="bold")
         table.add_column("xG H", justify="right")
         table.add_column("xG A", justify="right")
         table.add_column("P(H)", justify="right")
         table.add_column("P(D)", justify="right")
         table.add_column("P(A)", justify="right")
         table.add_column("O/U 2.5", justify="right")
-        table.add_column("Placar", justify="center")
+        table.add_column("Score", justify="center")
 
         for p in preds:
             table.add_row(
@@ -1532,7 +1532,7 @@ def predict_all_cmd(
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro nas previsoes: {exc}[/red]")
+        console.print(f"[red]Prediction error: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1544,24 +1544,24 @@ def predict_all_cmd(
 
 @app.command("resolve")
 def resolve_cmd() -> None:
-    """Resolve previsoes pendentes com resultados reais."""
+    """Resolve pending predictions with actual results."""
     from football_moneyball.use_cases.resolve_predictions import ResolvePredictions
 
     repo = get_repository()
     try:
-        with console.status("[bold green]Resolvendo previsoes..."):
+        with console.status("[bold green]Resolving predictions..."):
             result = ResolvePredictions(repo).execute()
 
         console.print(Panel(
-            f"Resolvidos: {result['resolved']}\n"
-            f"Pendentes: {result['still_pending']}\n"
-            f"Erros: {result.get('errors', 0)}",
+            f"Resolved: {result['resolved']}\n"
+            f"Pending: {result['still_pending']}\n"
+            f"Errors: {result.get('errors', 0)}",
             title="Resolve", border_style="green",
         ))
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao resolver previsoes: {exc}[/red]")
+        console.print(f"[red]Error resolving predictions: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()
@@ -1569,7 +1569,7 @@ def resolve_cmd() -> None:
 
 @app.command("track-record")
 def track_record_cmd() -> None:
-    """Mostra track record do modelo."""
+    """Show the model's track record."""
     from football_moneyball.domain.track_record import calculate_track_record
 
     repo = get_repository()
@@ -1580,8 +1580,8 @@ def track_record_cmd() -> None:
         # Summary panel
         if tr["resolved"] == 0:
             console.print(Panel(
-                f"Total: {tr['total']} previsoes ({tr['pending']} pendentes)\n"
-                f"Nenhuma previsao resolvida ainda. Rode [bold]moneyball resolve[/bold] primeiro.",
+                f"Total: {tr['total']} predictions ({tr['pending']} pending)\n"
+                f"No predictions resolved yet. Run [bold]moneyball resolve[/bold] first.",
                 title="Track Record", border_style="yellow",
             ))
             return
@@ -1589,18 +1589,18 @@ def track_record_cmd() -> None:
         acc_color = "green" if tr["accuracy_1x2"] > 40 else "red"
         brier_color = "green" if tr["avg_brier"] < 0.25 else "yellow"
         console.print(Panel(
-            f"Total: {tr['total']} previsoes ({tr['resolved']} resolvidas, {tr['pending']} pendentes)\n"
-            f"[{acc_color}]Accuracy 1X2: {tr['accuracy_1x2']:.1f}%[/{acc_color}]\n"
-            f"Accuracy O/U: {tr['accuracy_over_under']:.1f}%\n"
+            f"Total: {tr['total']} predictions ({tr['resolved']} resolved, {tr['pending']} pending)\n"
+            f"[{acc_color}]1X2 accuracy: {tr['accuracy_1x2']:.1f}%[/{acc_color}]\n"
+            f"O/U accuracy: {tr['accuracy_over_under']:.1f}%\n"
             f"[{brier_color}]Brier: {tr['avg_brier']:.4f}[/{brier_color}]",
             title="Track Record", border_style="cyan",
         ))
 
         # By round table
         if tr["by_round"]:
-            round_table = Table(title="Acuracia por Rodada")
-            round_table.add_column("Rodada", justify="right")
-            round_table.add_column("Jogos", justify="right")
+            round_table = Table(title="Accuracy by Matchday")
+            round_table.add_column("Matchday", justify="right")
+            round_table.add_column("Games", justify="right")
             round_table.add_column("1X2 %", justify="right")
             round_table.add_column("O/U %", justify="right")
             round_table.add_column("Brier", justify="right")
@@ -1623,9 +1623,9 @@ def track_record_cmd() -> None:
                 reverse=True,
             )[:10]
 
-            team_table = Table(title="Acuracia por Time (Top 10)")
-            team_table.add_column("Time", style="bold")
-            team_table.add_column("Jogos", justify="right")
+            team_table = Table(title="Accuracy by Team (Top 10)")
+            team_table.add_column("Team", style="bold")
+            team_table.add_column("Games", justify="right")
             team_table.add_column("1X2 %", justify="right")
 
             for team, stats in sorted_teams:
@@ -1639,7 +1639,7 @@ def track_record_cmd() -> None:
     except typer.Exit:
         raise
     except Exception as exc:
-        console.print(f"[red]Erro ao exibir track record: {exc}[/red]")
+        console.print(f"[red]Error displaying track record: {exc}[/red]")
         raise typer.Exit(1)
     finally:
         repo.close()

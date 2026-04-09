@@ -8,51 +8,51 @@ tags:
   - cronjob
 ---
 
-# Pitch — v1.16.0: Calibração Monitorada
+# Pitch — v1.16.0: Monitored Calibration
 
-## Problema
+## Problem
 
-Após v1.11.0 ([[../postmortem/isotonic-calibration-v1.11|isotonic-calibration-v1.11]]) a calibração é um pickle estático — fittado uma vez, usado até alguém rodar `fit-calibration` de novo. Na prática isso degrada porque:
+After v1.11.0 ([[../postmortem/isotonic-calibration-v1.11|isotonic-calibration-v1.11]]) calibration is a static pickle — fitted once, used until someone runs `fit-calibration` again. In practice this degrades because:
 
-1. **Distribuição de jogos muda**: janela de transferências, troca de técnicos, lesões, fadiga de fim de temporada → confidences do CatBoost deslocam, ECE sobe.
-2. **Baseline v1.11 era n=409**. Com o backfill de v1.12 (1610 matches) e novas features de v1.14/v1.15, o pickle refittado captura mais sinal — mas só se alguém rodar o comando.
-3. **ECE invisível entre fits**: não há monitoramento contínuo. Só quando o usuário roda `backtest` ou `fit-calibration` é que se descobre o gap.
+1. **Match distribution shifts**: transfer window, coaching changes, injuries, end-of-season fatigue → CatBoost confidences drift, ECE rises.
+2. **v1.11 baseline was n=409**. With the v1.12 backfill (1610 matches) and new features in v1.14/v1.15, a re-fitted pickle captures more signal — but only if someone runs the command.
+3. **Invisible ECE between fits**: there is no continuous monitoring. The gap is only discovered when the user runs `backtest` or `fit-calibration`.
 
-Resultado: calibração estale é usada pra decidir apostas reais, e o degrade fica escondido até um re-fit manual acidental.
+Result: stale calibration is used to decide real bets, and the degradation stays hidden until an accidental manual re-fit.
 
-## Solução
+## Solution
 
-CronJob diário no K8s que:
+Daily K8s CronJob that:
 
-1. **Computa ECE_live** em predições resolvidas dos últimos 14 dias (usa [calibration.py:469](football_moneyball/domain/calibration.py#L469), já existente)
-2. **Compara** com baseline salvo no metadata do pickle
-3. **Dispara re-fit** se ECE > threshold **E** accuracy dropped, com cooldown de 7 dias
-4. **Valida novo pickle** em hold-out antes de promover — rollback automático se pior
-5. **Arquiva** pickles antigos em `/data/models/history/` pra rollback manual
-6. **Loga** métricas em tabela nova `calibration_health` pra histórico/dashboard
+1. **Computes ECE_live** on predictions resolved in the last 14 days (uses [calibration.py:469](football_moneyball/domain/calibration.py#L469), already in place)
+2. **Compares** to the baseline saved in the pickle metadata
+3. **Triggers a re-fit** if ECE > threshold **AND** accuracy has dropped, with a 7-day cooldown
+4. **Validates the new pickle** on a hold-out before promoting — automatic rollback if worse
+5. **Archives** old pickles in `/data/models/history/` for manual rollback
+6. **Logs** metrics in a new `calibration_health` table for history/dashboard
 
-## Arquitetura
+## Architecture
 
-### Novos módulos
+### New modules
 
-| Módulo | Responsabilidade |
+| Module | Responsibility |
 |---|---|
-| `domain/calibration_monitor.py` | Funções puras: `detect_drift(ece_live, ece_baseline, acc_live, acc_baseline) → Decision`, `validate_new_calibration(old, new, holdout) → bool` |
-| `use_cases/monitor_calibration.py` | Orquestra: pega predições resolvidas, computa ECE, decide, dispara re-fit, valida, promove ou rollback |
+| `domain/calibration_monitor.py` | Pure functions: `detect_drift(ece_live, ece_baseline, acc_live, acc_baseline) → Decision`, `validate_new_calibration(old, new, holdout) → bool` |
+| `use_cases/monitor_calibration.py` | Orchestrates: fetches resolved predictions, computes ECE, decides, triggers re-fit, validates, promotes or rolls back |
 | `adapters/postgres_repository.py` | `get_recent_resolved_predictions(days)`, `save_calibration_health(record)` |
 
-### Módulos modificados
+### Modified modules
 
-| Módulo | Mudança |
+| Module | Change |
 |---|---|
-| `domain/calibration.py` | `CalibrationBundle` ganha campos `baseline_ece`, `baseline_acc`, `fitted_at`, `n_training_samples` |
-| `use_cases/fit_calibration.py` | Salvar baseline metadata no pickle |
-| `cli.py` | Comando `monitor-calibration [--dry-run]` |
-| `k8s/` | Novo `CronJob: calibration-monitor` (schedule: `0 3 * * *`) |
+| `domain/calibration.py` | `CalibrationBundle` gains fields `baseline_ece`, `baseline_acc`, `fitted_at`, `n_training_samples` |
+| `use_cases/fit_calibration.py` | Save baseline metadata in the pickle |
+| `cli.py` | Command `monitor-calibration [--dry-run]` |
+| `k8s/` | New `CronJob: calibration-monitor` (schedule: `0 3 * * *`) |
 
 ### Schema
 
-Tabela nova:
+New table:
 
 ```sql
 CREATE TABLE calibration_health (
@@ -71,12 +71,12 @@ CREATE TABLE calibration_health (
 CREATE INDEX idx_calib_health_checked ON calibration_health(checked_at DESC);
 ```
 
-Ambos em [db.py](football_moneyball/adapters/orm.py) ORM **e** [k8s/configmap.yaml](k8s/configmap.yaml) init.sql (rule: schema sync).
+Both in [db.py](football_moneyball/adapters/orm.py) ORM **and** [k8s/configmap.yaml](k8s/configmap.yaml) init.sql (rule: schema sync).
 
-### Regras de decisão
+### Decision rules
 
 ```python
-# Pure function em domain/calibration_monitor.py
+# Pure function in domain/calibration_monitor.py
 def detect_drift(
     ece_live: float,
     ece_baseline: float,
@@ -102,7 +102,7 @@ def detect_drift(
     return Decision.OK
 ```
 
-Hold-out validation após re-fit:
+Hold-out validation after re-fit:
 
 ```python
 def validate_new_calibration(
@@ -110,46 +110,46 @@ def validate_new_calibration(
 ) -> bool:
     ece_old = compute_ece(old_pickle.apply(holdout_probs), holdout_labels)
     ece_new = compute_ece(new_pickle.apply(holdout_probs), holdout_labels)
-    # Aceita se novo for 10%+ melhor OU within 5% do antigo
+    # Accept if new is 10%+ better OR within 5% of the old one
     return ece_new <= 0.9 * ece_old or ece_new <= 1.05 * ece_old
 ```
 
 ## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] `domain/calibration_monitor.py` com `Decision` enum e funções puras
-- [ ] `CalibrationBundle` ganha metadata de baseline (`baseline_ece`, `baseline_acc`, `fitted_at`, `n_training_samples`)
-- [ ] `fit_calibration` salva metadata no pickle
-- [ ] `monitor_calibration` use case (orquestra detect → refit → validate → promote/rollback)
-- [ ] Tabela `calibration_health` em ORM + init.sql
+- [ ] `domain/calibration_monitor.py` with `Decision` enum and pure functions
+- [ ] `CalibrationBundle` gains baseline metadata (`baseline_ece`, `baseline_acc`, `fitted_at`, `n_training_samples`)
+- [ ] `fit_calibration` saves metadata in the pickle
+- [ ] `monitor_calibration` use case (orchestrates detect → refit → validate → promote/rollback)
+- [ ] `calibration_health` table in ORM + init.sql
 - [ ] CLI `monitor-calibration [--dry-run]`
-- [ ] K8s CronJob `calibration-monitor` (3h UTC daily)
-- [ ] History de pickles em `/data/models/history/<timestamp>.pkl` (manter últimos 5)
-- [ ] Testes unitários: `detect_drift` em 12 cenários (cooldown, insufficient, ok, warn, trigger, rollback)
+- [ ] K8s CronJob `calibration-monitor` (daily at 3h UTC)
+- [ ] Pickle history in `/data/models/history/<timestamp>.pkl` (keep last 5)
+- [ ] Unit tests: `detect_drift` across 12 scenarios (cooldown, insufficient, ok, warn, trigger, rollback)
 
-### Fora do Escopo
+### Out of Scope
 
-- Alertas externos (Slack, email) — só log + tabela
-- Dashboard frontend pra calibration health — só query SQL
-- Retrain automático do CatBoost (v1.17)
-- A/B testing entre calibrações — só validação com hold-out
+- External alerts (Slack, email) — only log + table
+- Frontend dashboard for calibration health — only SQL query
+- Automatic CatBoost retraining (v1.17)
+- A/B testing between calibrations — only hold-out validation
 
 ## Research
 
-Ver [[../research/calibration-monitoring|calibration-monitoring]]:
+See [[../research/calibration-monitoring|calibration-monitoring]]:
 
-- ECE + accuracy combined gate é mais robusto que ECE isolado
-- Thresholds absoluto (ECE > 0.05) + relativo (ECE > 2× baseline) cobrem drift gradual e súbito
-- Cooldown de 7 dias evita feedback loops
-- Hold-out validation antes de promover evita regressões
-- Min n ≥ 40 evita ruído amostral (Brasileirão: ~4 rodadas)
+- ECE + accuracy combined gate is more robust than ECE alone
+- Absolute threshold (ECE > 0.05) + relative threshold (ECE > 2× baseline) cover gradual and sudden drift
+- 7-day cooldown avoids feedback loops
+- Hold-out validation before promoting prevents regressions
+- Min n ≥ 40 avoids sample noise (Brasileirão: ~4 matchdays)
 
-Contexto histórico: v1.11.0 teve `ece_calibrated = 0.028` em 409 samples. Threshold `0.05` representa ~1.8× baseline — espaço pra flutuação normal sem alertar spurious.
+Historical context: v1.11.0 had `ece_calibrated = 0.028` on 409 samples. The `0.05` threshold represents ~1.8× baseline — room for normal fluctuation without spurious alerts.
 
 ## Testing
 
-### Unit (domain puro — zero mocks)
+### Unit (pure domain — zero mocks)
 
 ```python
 # tests/test_calibration_monitor.py
@@ -175,22 +175,22 @@ def test_monitor_full_flow_refit_rollback_on_regression()
 
 ### Manual
 
-- Rodar `monitor-calibration --dry-run` em dataset atual → verificar que não há drift (ECE baixo pós-v1.14)
-- Injetar predições com confidences shiftadas → verificar que trigger dispara
-- Simular re-fit com pickle pior → verificar rollback
+- Run `monitor-calibration --dry-run` on the current dataset → verify there is no drift (low ECE post-v1.14)
+- Inject predictions with shifted confidences → verify the trigger fires
+- Simulate a re-fit with a worse pickle → verify the rollback
 
 ## Success Criteria
 
-- [ ] `monitor-calibration --dry-run` roda em < 30s em dataset completo
-- [ ] 12+ testes unitários passando
-- [ ] Domain layer zero infra deps (`calibration_monitor.py` só importa numpy + `domain.calibration`)
-- [ ] CronJob K8s rodando, métricas em `calibration_health`
-- [ ] Pickle antigo arquivado em `history/` antes de qualquer re-fit
-- [ ] Rollback funcional: teste manual com pickle pior reverte automaticamente
-- [ ] Zero regressão em `fit-calibration` manual — backward compat
+- [ ] `monitor-calibration --dry-run` runs in < 30s on the full dataset
+- [ ] 12+ unit tests passing
+- [ ] Domain layer with zero infra deps (`calibration_monitor.py` only imports numpy + `domain.calibration`)
+- [ ] K8s CronJob running, metrics in `calibration_health`
+- [ ] Old pickle archived in `history/` before any re-fit
+- [ ] Functional rollback: manual test with a worse pickle reverts automatically
+- [ ] Zero regression in manual `fit-calibration` — backward compat
 
-## Próximos pitches ligados
+## Related upcoming pitches
 
-- v1.17.0 — CatBoost hyperopt + SHAP pruning (tuning do modelo base, não da calibração)
-- v1.18.0 (futuro) — Alertas externos (webhook) quando trigger ou rollback dispara
-- v1.19.0 (futuro) — Dashboard frontend pra calibration health timeline
+- v1.17.0 — CatBoost hyperopt + SHAP pruning (tuning the base model, not the calibration)
+- v1.18.0 (future) — External alerts (webhook) when a trigger or rollback fires
+- v1.19.0 (future) — Frontend dashboard for calibration health timeline

@@ -1,7 +1,7 @@
-"""Modulo de dominio para extracao de metricas individuais de jogadores.
+"""Modulo of dominio for extracao of metrics individuais of players.
 
-Contem a logica pura de calculo de ~30 metricas por jogador a partir de
-um DataFrame de eventos ja carregado. Nenhuma dependencia de I/O externo
+Contem a pure logic of calculo de ~30 metrics by player from
+a DataFrame of eventos already loaded. Nenhuma dependencia of I/O externo
 (statsbombpy, sqlalchemy, requests).
 """
 
@@ -21,14 +21,14 @@ from football_moneyball.domain.constants import POSITION_GROUP_MAP
 # ---------------------------------------------------------------------------
 
 def _safe_col(df: pd.DataFrame, col: str) -> pd.Series:
-    """Retorna a coluna se existir, caso contrario retorna Series de NaN."""
+    """Returns the column if existir, caso contrario returns Series of NaN."""
     if col in df.columns:
         return df[col]
     return pd.Series(np.nan, index=df.index)
 
 
 def _count_events(events: pd.DataFrame, mask: pd.Series, player_col: str = "player") -> pd.Series:
-    """Conta eventos agrupados por jogador aplicando uma mascara booleana."""
+    """Conta eventos agrupados by player aplicando a mascara booleana."""
     return events.loc[mask].groupby(player_col).size()
 
 
@@ -37,25 +37,25 @@ def _count_events(events: pd.DataFrame, mask: pd.Series, player_col: str = "play
 # ---------------------------------------------------------------------------
 
 def extract_match_metrics(events: pd.DataFrame) -> pd.DataFrame:
-    """Extrai metricas individuais de cada jogador para uma partida.
+    """Extract metrics individuais of each player for aa match.
 
-    Recebe um DataFrame de eventos ja carregado e calcula ~30 metricas
-    por jogador, retornando um DataFrame compativel com o schema do banco.
+    Receives a DataFrame of eventos already loaded and calcula ~30 metrics
+    by player, retornando a DataFrame compatible with the schema of the banco.
 
     Parameters
     ----------
     events : pd.DataFrame
-        DataFrame de eventos StatsBomb (retornado por sb.events() ou
+        DataFrame of eventos StatsBomb (retornado by sb.events() ou
         equivalente).
 
     Returns
     -------
     pd.DataFrame
-        DataFrame com colunas: ``player_id``, ``player_name``, ``team`` e
-        todas as metricas calculadas.
+        DataFrame with colunas: ``player_id``, ``player_name``, ``team`` e
+        todas as metrics calculadas.
     """
     if events.empty:
-        warnings.warn("DataFrame de eventos vazio recebido em extract_match_metrics")
+        warnings.warn("DataFrame of eventos vazio recebido in extract_match_metrics")
         return pd.DataFrame()
 
     # Ensure we have the columns we need; statsbombpy flattens nested fields
@@ -511,17 +511,17 @@ def extract_match_metrics(events: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def extract_player_positions(lineups: dict[str, pd.DataFrame]) -> dict[int, str]:
-    """Extrai a posicao primaria de cada jogador a partir dos lineups.
+    """Extract the posicao primaria of each player from the lineups.
 
-    Usa o primeiro registro de posicao (start_reason='Starting XI') para
+    Usa o first registro of posicao (start_reason='Starting XI') for
     determinar o grupo posicional (GK, DEF, MID, FWD).
 
     Parameters
     ----------
     lineups : dict[str, pd.DataFrame]
-        Dicionario de lineups por time, no formato retornado por
-        ``sb.lineups()`` (chave = nome do time, valor = DataFrame
-        com colunas player_id, positions, etc.).
+        Dicionario of lineups by time, in the formato retornado por
+        ``sb.lineups()`` (chave = nome of the time, value = DataFrame
+        with colunas player_id, positions, etc.).
 
     Returns
     -------

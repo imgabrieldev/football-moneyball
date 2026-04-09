@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.elo."""
+"""Tests for football_moneyball.domain.elo."""
 
 import pandas as pd
 
@@ -35,7 +35,7 @@ class TestExpectedScore:
         assert elo.expected_score(1500, 1700) < 0.5
 
     def test_large_gap(self):
-        # 400 Elo gap → 10:1 odds → ~0.909 expected
+        # 400 Elo gap -> 10:1 odds -> ~0.909 expected
         elo = EloRating()
         p = elo.expected_score(1900, 1500)
         assert 0.9 < p < 0.92
@@ -46,7 +46,7 @@ class TestUpdate:
         elo = EloRating(k=20, home_advantage=0)
         elo.set("A", 1500); elo.set("B", 1500)
         elo.update("A", "B", 1, 1)
-        # Draw com expected 0.5 → delta = 0
+        # Draw with expected 0.5 -> delta = 0
         assert abs(elo.get("A") - 1500) < 1e-6
         assert abs(elo.get("B") - 1500) < 1e-6
 
@@ -55,7 +55,7 @@ class TestUpdate:
         elo = EloRating(k=20, home_advantage=50)
         elo.set("A", 1500); elo.set("B", 1500)
         elo.update("A", "B", 1, 1)
-        # Home expected > 0.5, actual = 0.5 → home loses rating
+        # Home expected > 0.5, actual = 0.5 -> home loses rating
         assert elo.get("A") < 1500
         assert elo.get("B") > 1500
 
@@ -71,7 +71,7 @@ class TestUpdate:
         elo = EloRating(k=20, home_advantage=0)
         elo.set("Strong", 1700); elo.set("Weak", 1300)
         elo.update("Weak", "Strong", 1, 0)
-        # MoV dampens delta for big elo_diff, mas weak ganha ~10pts
+        # MoV dampens delta for big elo_diff, but weak gains ~10pts
         assert elo.get("Weak") > 1305
         assert elo.get("Strong") < 1695
 
@@ -115,7 +115,7 @@ class TestUpdate:
 
 class TestComputeEloTimeline:
     def _make_matches(self):
-        """3 matches sinteticos."""
+        """3 synthetic matches."""
         return pd.DataFrame([
             {"match_id": 1, "match_date": "2026-01-01",
              "home_team": "A", "away_team": "B", "home_goals": 2, "away_goals": 0},
@@ -137,7 +137,7 @@ class TestComputeEloTimeline:
         timeline = compute_elo_timeline(df)
         # Match 2: B played match 1 (lost to A), so B's elo should be < 1500
         assert timeline[(2, "B")] < 1500.0
-        # C played nothing yet → 1500
+        # C played nothing yet -> 1500
         assert timeline[(2, "C")] == 1500.0
 
     def test_final_ratings(self):
@@ -158,5 +158,5 @@ class TestComputeEloTimeline:
              "home_team": "A", "away_team": "B", "home_goals": None, "away_goals": None},
         ])
         ratings = final_elo_ratings(df)
-        # No matches resolved → empty
+        # No matches resolved -> empty
         assert ratings == {}

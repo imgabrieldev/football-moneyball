@@ -1,15 +1,15 @@
-"""Modulo de derivacao de mercados de apostas.
+"""Betting markets derivation module.
 
-A partir do output do Monte Carlo (probabilidades + score_matrix),
-deriva todos os mercados de apostas que a Betfair oferece sem
-precisar de modelo novo.
+Given the output of the Monte Carlo (probabilities + score_matrix),
+it derives all the betting markets that Betfair offers without
+needing a new model.
 """
 
 from __future__ import annotations
 
 
 def _poisson_prob(k: int, lam: float) -> float:
-    """P(X=k) pra Poisson."""
+    """P(X=k) for Poisson."""
     if lam <= 0 or k < 0:
         return 0.0
     from math import exp, factorial
@@ -17,7 +17,7 @@ def _poisson_prob(k: int, lam: float) -> float:
 
 
 def _generate_score_matrix_from_xg(home_xg: float, away_xg: float) -> dict:
-    """Gera score_matrix via Poisson analitico quando nao temos Monte Carlo."""
+    """Generate score_matrix via analytic Poisson when we have no Monte Carlo."""
     if not home_xg or not away_xg:
         return {}
     scores = {}
@@ -30,27 +30,27 @@ def _generate_score_matrix_from_xg(home_xg: float, away_xg: float) -> dict:
 
 
 def derive_all_markets(prediction: dict) -> dict:
-    """Deriva todos os mercados de apostas de uma previsao Monte Carlo.
+    """Derive all betting markets from a Monte Carlo prediction.
 
-    Recebe o dict de predict_match/simulate_match e retorna mercados
-    completos pra Betfair.
+    Receives the predict_match/simulate_match dict and returns complete
+    markets for Betfair.
 
     Parameters
     ----------
     prediction : dict
-        Output do Monte Carlo com home_win_prob, draw_prob, away_win_prob,
+        Monte Carlo output with home_win_prob, draw_prob, away_win_prob,
         over_05..over_35, btts_prob, score_matrix.
 
     Returns
     -------
     dict
-        Mercados: match_odds, over_under, btts, correct_score, asian_handicap.
+        Markets: match_odds, over_under, btts, correct_score, asian_handicap.
     """
     home = prediction.get("home_team", "?")
     away = prediction.get("away_team", "?")
     score_matrix = prediction.get("score_matrix", {})
 
-    # Se nao tem score_matrix (predictions pre-computadas), gerar via Poisson
+    # If there is no score_matrix (pre-computed predictions), generate via Poisson
     if not score_matrix:
         home_xg = prediction.get("home_xg") or prediction.get("home_xg_expected")
         away_xg = prediction.get("away_xg") or prediction.get("away_xg_expected")
@@ -67,21 +67,21 @@ def derive_all_markets(prediction: dict) -> dict:
 
 
 def _derive_match_odds(pred: dict, home: str, away: str) -> list[dict]:
-    """Mercado 1X2."""
+    """1X2 market."""
     return [
-        {"outcome": f"Vitória {home}", "prob": pred.get("home_win_prob", 0), "fair_odds": _prob_to_odds(pred.get("home_win_prob", 0))},
-        {"outcome": "Empate", "prob": pred.get("draw_prob", 0), "fair_odds": _prob_to_odds(pred.get("draw_prob", 0))},
-        {"outcome": f"Vitória {away}", "prob": pred.get("away_win_prob", 0), "fair_odds": _prob_to_odds(pred.get("away_win_prob", 0))},
+        {"outcome": f"{home} Win", "prob": pred.get("home_win_prob", 0), "fair_odds": _prob_to_odds(pred.get("home_win_prob", 0))},
+        {"outcome": "Draw", "prob": pred.get("draw_prob", 0), "fair_odds": _prob_to_odds(pred.get("draw_prob", 0))},
+        {"outcome": f"{away} Win", "prob": pred.get("away_win_prob", 0), "fair_odds": _prob_to_odds(pred.get("away_win_prob", 0))},
     ]
 
 
 def _derive_over_under(pred: dict) -> list[dict]:
     """Over/Under 0.5, 1.5, 2.5, 3.5.
 
-    Usa campos stored se disponiveis, senao deriva analiticamente de xG
+    Uses stored fields if available, otherwise derives analytically from xG
     via Poisson (P(total > line)).
     """
-    # Tentar usar campos armazenados
+    # Try using stored fields
     stored = {
         "0.5": pred.get("over_05"),
         "1.5": pred.get("over_15"),
@@ -89,15 +89,15 @@ def _derive_over_under(pred: dict) -> list[dict]:
         "3.5": pred.get("over_35"),
     }
 
-    # Se qualquer linha estiver faltando, derivar analiticamente
+    # If any line is missing, derive analytically
     home_xg = pred.get("home_xg") or pred.get("home_xg_expected")
     away_xg = pred.get("away_xg") or pred.get("away_xg_expected")
 
     def _over_prob_poisson(line: float, h_xg: float, a_xg: float) -> float:
-        """P(total_goals > line) via Poisson bivariado independente."""
+        """P(total_goals > line) via independent bivariate Poisson."""
         if not h_xg or not a_xg:
             return 0.0
-        # P(H=i) * P(A=j) onde i+j > line
+        # P(H=i) * P(A=j) where i+j > line
         prob = 0.0
         for i in range(10):
             for j in range(10):
@@ -138,7 +138,7 @@ def _derive_btts(pred: dict) -> dict:
 
 
 def _derive_correct_score(score_matrix: dict) -> list[dict]:
-    """Top placares mais provaveis com odds justos."""
+    """Top most likely scores with fair odds."""
     if not score_matrix:
         return []
 
@@ -153,9 +153,9 @@ def _derive_correct_score(score_matrix: dict) -> list[dict]:
 
 
 def _derive_asian_handicap(score_matrix: dict, home: str, away: str) -> list[dict]:
-    """Asian Handicap derivado do score matrix.
+    """Asian Handicap derived from the score matrix.
 
-    Calcula probabilidade de cada handicap somando os placares relevantes.
+    Computes the probability of each handicap by summing the relevant scores.
     """
     if not score_matrix:
         return []
@@ -170,16 +170,16 @@ def _derive_asian_handicap(score_matrix: dict, home: str, away: str) -> list[dic
         except (ValueError, IndexError):
             continue
 
-    # Extend: pegar TODOS os placares simulados, nao so top 10
-    # O score_matrix tem top 10, mas pra handicap precisamos de todos
-    # Vamos usar os que temos como aproximacao
+    # Extend: take ALL simulated scores, not just top 10
+    # The score_matrix has the top 10, but for the handicap we need all
+    # We will use what we have as an approximation
 
     handicaps = []
     for line in [-0.5, -1.5, -2.5, 0.5, 1.5, 2.5]:
         # Home handicap: home_goals + line > away_goals?
         home_prob = sum(prob for h, a, prob in parsed if (h + line) > a)
         away_prob = sum(prob for h, a, prob in parsed if (h + line) < a)
-        # Normalizar (score_matrix nao soma 100%)
+        # Normalize (score_matrix does not sum to 100%)
         total = home_prob + away_prob
         if total > 0:
             home_prob /= total
@@ -203,7 +203,7 @@ def _derive_asian_handicap(score_matrix: dict, home: str, away: str) -> list[dic
 
 
 def _prob_to_odds(prob: float) -> float:
-    """Converte probabilidade em odds decimais justos."""
+    """Convert probability into fair decimal odds."""
     if prob <= 0:
         return 99.0
     if prob >= 1:

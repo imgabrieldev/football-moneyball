@@ -9,32 +9,32 @@ tags:
 
 # Pitch — Hexagonal Architecture & Clean Code (v0.3.0)
 
-## Problema
+## Problem
 
-O codebase cresceu de 7 módulos (v0.1.0) para 11 módulos + scripts + testes (v0.2.0), e tem problemas estruturais que vão escalar mal:
+The codebase grew from 7 modules (v0.1.0) to 11 modules + scripts + tests (v0.2.0), and has structural problems that will scale poorly:
 
-1. **Acoplamento com providers externos** — `player_metrics.py`, `pressing.py`, `network_analysis.py`, `rapm.py` e `possession_value.py` todos importam `statsbombpy` diretamente. `scripts/ingest_sofascore.py` usa `requests` + API Sofascore. Adicionar um novo provider (API-Football, Opta) requer duplicar lógica de domínio.
+1. **Coupling with external providers** — `player_metrics.py`, `pressing.py`, `network_analysis.py`, `rapm.py` and `possession_value.py` all import `statsbombpy` directly. `scripts/ingest_sofascore.py` uses `requests` + Sofascore API. Adding a new provider (API-Football, Opta) requires duplicating domain logic.
 
-2. **Acoplamento com infraestrutura** — `player_embeddings.py`, `rapm.py` e `export.py` importam SQLAlchemy diretamente e fazem queries SQL raw. Domain logic (PCA, clustering, Ridge regression) está misturada com persistence logic (session, upsert, text queries).
+2. **Coupling with infrastructure** — `player_embeddings.py`, `rapm.py` and `export.py` import SQLAlchemy directly and make raw SQL queries. Domain logic (PCA, clustering, Ridge regression) is mixed with persistence logic (session, upsert, text queries).
 
-3. **Módulos com múltiplas responsabilidades** — `player_metrics.py` faz extração de dados StatsBomb + cálculo de métricas + extração de posições. `cli.py` faz orquestração + formatação + lógica de negócio (xG contribution, aggregation).
+3. **Modules with multiple responsibilities** — `player_metrics.py` does StatsBomb data extraction + metric computation + position extraction. `cli.py` does orchestration + formatting + business logic (xG contribution, aggregation).
 
-4. **Sem inversão de dependência** — Módulos de alto nível (analysis, embeddings) dependem diretamente de módulos de baixo nível (db, statsbombpy). Não há interfaces/protocolos entre camadas.
+4. **No dependency inversion** — High-level modules (analysis, embeddings) depend directly on low-level modules (db, statsbombpy). There are no interfaces/protocols between layers.
 
-5. **Testabilidade limitada** — Testes atuais mockam `sb.events()` porque não há abstração sobre o provider. Testes de integração requerem PostgreSQL real sem alternativa in-memory.
+5. **Limited testability** — Current tests mock `sb.events()` because there's no abstraction over the provider. Integration tests require real PostgreSQL with no in-memory alternative.
 
-6. **Script Sofascore solto** — `scripts/ingest_sofascore.py` duplica lógica de conversão e persistência que já existe nos módulos principais, sem compartilhar interfaces.
+6. **Loose Sofascore script** — `scripts/ingest_sofascore.py` duplicates conversion and persistence logic that already exists in the main modules, without sharing interfaces.
 
 Research: [[market-standard-analytics]], [[socceraction-statsbomb-api]], [[brasileirao-data-sources]]
 
-## Solução
+## Solution
 
-Refatorar para **Hexagonal Architecture (Ports & Adapters)** com 3 camadas claras:
+Refactor to **Hexagonal Architecture (Ports & Adapters)** with 3 clear layers:
 
 ```
 ┌─────────────────────────────────────────────────┐
 │                  Adapters (IN)                   │
-│  CLI (typer)  │  Scripts  │  API (futuro)        │
+│  CLI (typer)  │  Scripts  │  API (future)        │
 ├─────────────────────────────────────────────────┤
 │                  Use Cases                       │
 │  analyze_match │ analyze_season │ compare │ ...  │
@@ -51,28 +51,28 @@ Refatorar para **Hexagonal Architecture (Ports & Adapters)** com 3 camadas clara
 └─────────────────────────────────────────────────┘
 ```
 
-**Princípios:**
-- Domain layer não importa nada externo (nem pandas, nem sqlalchemy, nem statsbombpy)
-- Domain recebe e retorna dataclasses/dicts puros
-- Ports definem interfaces (Protocol classes) para data access e persistence
-- Adapters implementam os ports (StatsBomb, Sofascore, PostgreSQL, matplotlib)
-- Use cases orquestram domain + ports
-- Dependency Injection via construtor nos use cases
+**Principles:**
+- Domain layer doesn't import anything external (no pandas, no sqlalchemy, no statsbombpy)
+- Domain receives and returns pure dataclasses/dicts
+- Ports define interfaces (Protocol classes) for data access and persistence
+- Adapters implement the ports (StatsBomb, Sofascore, PostgreSQL, matplotlib)
+- Use cases orchestrate domain + ports
+- Dependency Injection via constructor in use cases
 
-## Arquitetura
+## Architecture
 
-### Estrutura de diretórios proposta
+### Proposed directory structure
 
 ```
 football_moneyball/
-├── domain/                    # Lógica de negócio pura — ZERO dependências externas
+├── domain/                    # Pure business logic — ZERO external dependencies
 │   ├── models.py              # Dataclasses: Player, Match, MatchMetrics, ActionValue, etc.
-│   ├── metrics.py             # Cálculo de métricas a partir de events (recebe listas/dicts)
-│   ├── pressing.py            # PPDA, success rate, counter-pressing (lógica pura)
-│   ├── possession_value.py    # xT model (numpy apenas — é math puro)
-│   ├── embeddings.py          # PCA, clustering, archetipos (sklearn)
+│   ├── metrics.py             # Metric computation from events (receives lists/dicts)
+│   ├── pressing.py            # PPDA, success rate, counter-pressing (pure logic)
+│   ├── possession_value.py    # xT model (numpy only — it's pure math)
+│   ├── embeddings.py          # PCA, clustering, archetypes (sklearn)
 │   ├── rapm.py                # Ridge regression, splints, SPM prior (sklearn + numpy)
-│   ├── network.py             # Grafo de passes, centralidade (networkx)
+│   ├── network.py             # Pass graph, centrality (networkx)
 │   └── constants.py           # POSITION_GROUP_MAP, grid sizes, thresholds
 │
 ├── ports/                     # Interfaces (Protocol classes)
@@ -80,42 +80,42 @@ football_moneyball/
 │   ├── repository.py          # Protocol: save_match(), get_player_metrics(), find_similar()
 │   └── visualizer.py          # Protocol: plot_pass_network(), plot_radar(), etc.
 │
-├── adapters/                  # Implementações dos ports
-│   ├── statsbomb_provider.py  # Implementa DataProvider via statsbombpy
-│   ├── sofascore_provider.py  # Implementa DataProvider via API Sofascore
-│   ├── postgres_repository.py # Implementa Repository via SQLAlchemy + pgvector
-│   ├── orm.py                 # ORM models (SQLAlchemy) — isolado do domain
-│   └── matplotlib_viz.py     # Implementa Visualizer via matplotlib + mplsoccer
+├── adapters/                  # Port implementations
+│   ├── statsbomb_provider.py  # Implements DataProvider via statsbombpy
+│   ├── sofascore_provider.py  # Implements DataProvider via Sofascore API
+│   ├── postgres_repository.py # Implements Repository via SQLAlchemy + pgvector
+│   ├── orm.py                 # ORM models (SQLAlchemy) — isolated from domain
+│   └── matplotlib_viz.py     # Implements Visualizer via matplotlib + mplsoccer
 │
-├── use_cases/                 # Orquestração — conecta domain + ports
-│   ├── analyze_match.py       # UseCase: extrair, calcular, persistir, exibir
-│   ├── analyze_season.py      # UseCase: processar temporada inteira
-│   ├── compare_players.py     # UseCase: comparar dois jogadores
-│   ├── find_similar.py        # UseCase: busca por similaridade
+├── use_cases/                 # Orchestration — connects domain + ports
+│   ├── analyze_match.py       # UseCase: extract, compute, persist, display
+│   ├── analyze_season.py      # UseCase: process full season
+│   ├── compare_players.py     # UseCase: compare two players
+│   ├── find_similar.py        # UseCase: similarity search
 │   ├── generate_report.py     # UseCase: scout report
-│   └── ingest_external.py     # UseCase: ingestão de fonte externa (Sofascore)
+│   └── ingest_external.py     # UseCase: external source ingestion (Sofascore)
 │
-├── cli.py                     # Adapter IN: CLI Typer (thin layer → use cases)
+├── cli.py                     # Adapter IN: Typer CLI (thin layer → use cases)
 └── config.py                  # DATABASE_URL, feature flags, provider selection
 ```
 
-### Módulos afetados
+### Affected modules
 
-**TODOS os módulos serão refatorados.** Mapeamento old → new:
+**ALL modules will be refactored.** old → new mapping:
 
-| Módulo atual | Destino | O que muda |
+| Current module | Destination | What changes |
 |---|---|---|
-| `db.py` (ORM + queries + session) | `adapters/orm.py` + `adapters/postgres_repository.py` | Split: ORM models separados de query logic |
-| `player_metrics.py` (StatsBomb + cálculos) | `domain/metrics.py` + `adapters/statsbomb_provider.py` | Split: extração de dados vs cálculo de métricas |
-| `pressing.py` (StatsBomb + cálculos) | `domain/pressing.py` + provider | Remove import de statsbombpy |
-| `possession_value.py` (StatsBomb + xT) | `domain/possession_value.py` + provider | xT vira math puro, dados vêm via port |
-| `network_analysis.py` (StatsBomb + networkx) | `domain/network.py` + provider | Grafo recebe dados, não busca |
-| `player_embeddings.py` (sklearn + SQLAlchemy) | `domain/embeddings.py` + repository | Remove SQLAlchemy, recebe dados via port |
-| `rapm.py` (StatsBomb + sklearn + SQLAlchemy) | `domain/rapm.py` + provider + repository | Remove ambos, recebe dados via port |
-| `viz.py` | `adapters/matplotlib_viz.py` | Renomear, implementar port |
-| `export.py` (SQLAlchemy + formatação) | `use_cases/generate_report.py` + repository | Report logic via use case |
-| `cli.py` (tudo) | `cli.py` (thin) + `use_cases/*.py` | CLI vira fina: parseia args → chama use case |
-| `scripts/ingest_sofascore.py` | `adapters/sofascore_provider.py` + `use_cases/ingest_external.py` | Provider implementa interface, use case orquestra |
+| `db.py` (ORM + queries + session) | `adapters/orm.py` + `adapters/postgres_repository.py` | Split: ORM models separated from query logic |
+| `player_metrics.py` (StatsBomb + computations) | `domain/metrics.py` + `adapters/statsbomb_provider.py` | Split: data extraction vs metric computation |
+| `pressing.py` (StatsBomb + computations) | `domain/pressing.py` + provider | Remove statsbombpy import |
+| `possession_value.py` (StatsBomb + xT) | `domain/possession_value.py` + provider | xT becomes pure math, data comes via port |
+| `network_analysis.py` (StatsBomb + networkx) | `domain/network.py` + provider | Graph receives data, doesn't fetch |
+| `player_embeddings.py` (sklearn + SQLAlchemy) | `domain/embeddings.py` + repository | Remove SQLAlchemy, receive data via port |
+| `rapm.py` (StatsBomb + sklearn + SQLAlchemy) | `domain/rapm.py` + provider + repository | Remove both, receive data via port |
+| `viz.py` | `adapters/matplotlib_viz.py` | Rename, implement port |
+| `export.py` (SQLAlchemy + formatting) | `use_cases/generate_report.py` + repository | Report logic via use case |
+| `cli.py` (everything) | `cli.py` (thin) + `use_cases/*.py` | CLI becomes thin: parses args → calls use case |
+| `scripts/ingest_sofascore.py` | `adapters/sofascore_provider.py` + `use_cases/ingest_external.py` | Provider implements interface, use case orchestrates |
 
 ### Domain Models (`domain/models.py`)
 
@@ -149,7 +149,7 @@ class PlayerMatchMetrics:
     assists: int = 0
     xg: float = 0.0
     xa: float = 0.0
-    # ... todos os ~45 campos como atributos tipados
+    # ... all ~45 fields as typed attributes
     
 @dataclass
 class ActionValue:
@@ -180,28 +180,28 @@ class PressingProfile:
 from typing import Protocol
 
 class DataProvider(Protocol):
-    """Interface para fontes de dados de futebol."""
+    """Interface for football data sources."""
     
     def get_match_events(self, match_id: int) -> list[dict]:
-        """Retorna eventos de uma partida em formato normalizado."""
+        """Return events of a match in normalized format."""
         ...
     
     def get_lineups(self, match_id: int) -> dict[str, list[dict]]:
-        """Retorna lineups com posições."""
+        """Return lineups with positions."""
         ...
     
     def get_competitions(self) -> list[dict]:
-        """Lista competições disponíveis."""
+        """List available competitions."""
         ...
     
     def get_matches(self, competition_id: int, season_id: int) -> list[dict]:
-        """Lista partidas de uma competição/temporada."""
+        """List matches of a competition/season."""
         ...
 ```
 
 ```python
 class Repository(Protocol):
-    """Interface para persistência de dados."""
+    """Interface for data persistence."""
     
     def save_match(self, match: MatchInfo) -> None: ...
     def save_player_metrics(self, metrics: list[PlayerMatchMetrics], match_id: int) -> None: ...
@@ -212,83 +212,83 @@ class Repository(Protocol):
 
 ### Schema
 
-**Sem mudanças no PostgreSQL.** As tabelas e colunas ficam idênticas — apenas o código que interage com elas muda de lugar (de `db.py` para `adapters/postgres_repository.py`).
+**No changes in PostgreSQL.** Tables and columns stay identical — only the code that interacts with them moves (from `db.py` to `adapters/postgres_repository.py`).
 
 ### Infra (K8s)
 
-Sem mudanças. Manifestos Kubernetes ficam iguais.
+No changes. Kubernetes manifests stay the same.
 
-## Escopo
+## Scope
 
-### Dentro do Escopo
+### In Scope
 
-- [ ] Criar `domain/models.py` com dataclasses para todas as entidades
-- [ ] Criar `domain/constants.py` com POSITION_GROUP_MAP, thresholds, grid sizes
-- [ ] Criar `ports/data_provider.py` com Protocol DataProvider
-- [ ] Criar `ports/repository.py` com Protocol Repository
-- [ ] Criar `ports/visualizer.py` com Protocol Visualizer
-- [ ] Criar `adapters/statsbomb_provider.py` — implementa DataProvider
-- [ ] Criar `adapters/sofascore_provider.py` — implementa DataProvider (migrar de scripts/)
-- [ ] Criar `adapters/orm.py` — mover ORM models de db.py
-- [ ] Criar `adapters/postgres_repository.py` — implementa Repository
-- [ ] Criar `adapters/matplotlib_viz.py` — implementa Visualizer (migrar de viz.py)
-- [ ] Refatorar `domain/metrics.py` — remover statsbombpy, receber events como list[dict]
-- [ ] Refatorar `domain/pressing.py` — remover statsbombpy
-- [ ] Refatorar `domain/possession_value.py` — remover statsbombpy
-- [ ] Refatorar `domain/network.py` — remover statsbombpy
-- [ ] Refatorar `domain/embeddings.py` — remover SQLAlchemy
-- [ ] Refatorar `domain/rapm.py` — remover statsbombpy e SQLAlchemy
-- [ ] Criar use cases: analyze_match, analyze_season, compare_players, find_similar, generate_report, ingest_external
-- [ ] Refatorar `cli.py` — thin layer que parseia args e chama use cases
-- [ ] Criar `config.py` — configuration centralizada com DI
-- [ ] Migrar testes para nova estrutura
-- [ ] Manter 100% backward compatibility nos comandos CLI
-- [ ] `pyproject.toml` — atualizar package discovery
+- [ ] Create `domain/models.py` with dataclasses for all entities
+- [ ] Create `domain/constants.py` with POSITION_GROUP_MAP, thresholds, grid sizes
+- [ ] Create `ports/data_provider.py` with DataProvider Protocol
+- [ ] Create `ports/repository.py` with Repository Protocol
+- [ ] Create `ports/visualizer.py` with Visualizer Protocol
+- [ ] Create `adapters/statsbomb_provider.py` — implements DataProvider
+- [ ] Create `adapters/sofascore_provider.py` — implements DataProvider (migrate from scripts/)
+- [ ] Create `adapters/orm.py` — move ORM models from db.py
+- [ ] Create `adapters/postgres_repository.py` — implements Repository
+- [ ] Create `adapters/matplotlib_viz.py` — implements Visualizer (migrate from viz.py)
+- [ ] Refactor `domain/metrics.py` — remove statsbombpy, receive events as list[dict]
+- [ ] Refactor `domain/pressing.py` — remove statsbombpy
+- [ ] Refactor `domain/possession_value.py` — remove statsbombpy
+- [ ] Refactor `domain/network.py` — remove statsbombpy
+- [ ] Refactor `domain/embeddings.py` — remove SQLAlchemy
+- [ ] Refactor `domain/rapm.py` — remove statsbombpy and SQLAlchemy
+- [ ] Create use cases: analyze_match, analyze_season, compare_players, find_similar, generate_report, ingest_external
+- [ ] Refactor `cli.py` — thin layer that parses args and calls use cases
+- [ ] Create `config.py` — centralized configuration with DI
+- [ ] Migrate tests to new structure
+- [ ] Keep 100% backward compatibility in CLI commands
+- [ ] `pyproject.toml` — update package discovery
 
-### Fora do Escopo
+### Out of Scope
 
-- Novas features ou métricas (isso é refactor puro)
-- Mudanças no schema PostgreSQL
-- Mudanças nos manifests K8s
-- Novos comandos CLI
+- New features or metrics (this is pure refactor)
+- PostgreSQL schema changes
+- K8s manifest changes
+- New CLI commands
 - Performance optimization
 - Async/await
-- API REST (será pitch separado quando tiver frontend)
+- REST API (will be a separate pitch when there's a frontend)
 
-## Research Necessária
+## Research Needed
 
-- [ ] Validar que Protocol classes do Python funcionam como interfaces para DI sem framework
-- [ ] Confirmar que sklearn/numpy são aceitáveis no domain layer (são math libraries, não infra)
+- [ ] Validate that Python Protocol classes work as interfaces for DI without a framework
+- [ ] Confirm that sklearn/numpy are acceptable in the domain layer (they are math libraries, not infra)
 
-## Estratégia de Testes
+## Testing Strategy
 
-### Unitários (domain layer)
-- Testes de `domain/metrics.py` com dicts puros (sem mock de StatsBomb)
-- Testes de `domain/pressing.py` com eventos fabricados (sem mock)
-- Testes de `domain/possession_value.py` — xT com arrays numpy
-- Testes de `domain/embeddings.py` — PCA/clustering com DataFrames sintéticos
-- Testes de `domain/rapm.py` — Ridge com matrizes numpy
+### Unit (domain layer)
+- `domain/metrics.py` tests with pure dicts (no StatsBomb mock)
+- `domain/pressing.py` tests with fabricated events (no mock)
+- `domain/possession_value.py` tests — xT with numpy arrays
+- `domain/embeddings.py` tests — PCA/clustering with synthetic DataFrames
+- `domain/rapm.py` tests — Ridge with numpy matrices
 
-### Unitários (adapters)
-- `adapters/statsbomb_provider.py` — mock statsbombpy, verificar conversão
-- `adapters/sofascore_provider.py` — mock requests, verificar conversão
-- `adapters/postgres_repository.py` — mock session, verificar queries
+### Unit (adapters)
+- `adapters/statsbomb_provider.py` — mock statsbombpy, verify conversion
+- `adapters/sofascore_provider.py` — mock requests, verify conversion
+- `adapters/postgres_repository.py` — mock session, verify queries
 
-### Integração
-- Use cases com mocks dos ports
-- End-to-end: CLI → use case → domain → adapters (com PG de teste)
+### Integration
+- Use cases with mocked ports
+- End-to-end: CLI → use case → domain → adapters (with test PG)
 
-### Regressão
-- Todos os 42 testes existentes devem continuar passando (adaptados)
-- CLI commands produzem mesmos outputs
+### Regression
+- All 42 existing tests must keep passing (adapted)
+- CLI commands produce the same outputs
 
-## Critérios de Sucesso
+## Success Criteria
 
-- [ ] `domain/` não importa statsbombpy, sqlalchemy, requests, typer, rich, matplotlib
-- [ ] `domain/` pode ser testado sem banco de dados e sem API externa
-- [ ] Adicionar novo DataProvider (ex: API-Football) requer apenas 1 arquivo novo em `adapters/`
-- [ ] Todos os 42+ testes passam
-- [ ] Todos os 8 comandos CLI funcionam identicamente
-- [ ] `python3 -m py_compile` passa em todos os módulos
-- [ ] Nenhuma mudança no schema PostgreSQL
-- [ ] Nenhuma mudança nos manifests K8s
+- [ ] `domain/` does not import statsbombpy, sqlalchemy, requests, typer, rich, matplotlib
+- [ ] `domain/` can be tested without a database and without an external API
+- [ ] Adding a new DataProvider (e.g., API-Football) requires only 1 new file in `adapters/`
+- [ ] All 42+ tests pass
+- [ ] All 8 CLI commands work identically
+- [ ] `python3 -m py_compile` passes on all modules
+- [ ] No changes to PostgreSQL schema
+- [ ] No changes to K8s manifests

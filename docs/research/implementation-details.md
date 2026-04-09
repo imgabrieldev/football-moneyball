@@ -8,54 +8,56 @@ tags:
   - referee
 ---
 
-# Research — Detalhes de Implementação do Framework 5-Camadas
+# Research — Implementation Details for the 5-Layer Framework
 
 > Research date: 2026-04-04
-> Complementa: [[comprehensive-prediction-models]]
+> Complements: [[comprehensive-prediction-models]]
 
 ## Context
 
-O pitch [[comprehensive-predictor]] propõe 5 camadas. Esse doc coleta os detalhes técnicos específicos de cada peça: distribuições a usar, hiperparâmetros validados na literatura, padrões de imputação pra pré-escalação.
+The [[comprehensive-predictor]] pitch proposes 5 layers. This doc collects the specific technical details for each piece: distributions to use, hyperparameters validated in the literature, imputation patterns for pre-lineup prediction.
 
 ## Findings
 
-### 1. Distribuições por Mercado
+### 1. Distributions by Market
 
-Cada métrica tem distribuição adequada diferente — Poisson puro não serve pra tudo.
+Each metric has a different appropriate distribution — pure Poisson does not fit everything.
 
-| Métrica | Distribuição | Por quê | Paper |
-|---------|:---:|---|---|
-| Gols | Poisson ou Dixon-Coles | eventos raros independentes, ajuste pra 0×0/1×0/0×1 | Dixon-Coles 1997 |
-| Escanteios | **Compound Poisson** (Geometric-Poisson) | chegam em batch (cluster), serial correlation entre partidas | arxiv 2112.13001 |
-| Cartões | **Zero-Inflated Poisson (ZIP)** | excesso de jogos com 0 amarelos (early game fouls, ref rigor) | statsmodels |
-| Chutes | Poisson | eventos mais independentes, shape mais regular | consenso |
-| Chutes no gol | Poisson condicional | P(on target \| chute) × total chutes | consenso |
-| Faltas | Poisson | ok como baseline, overdispersion pode existir | Bayesian NB |
-| HT gols | Poisson(λ × 0.45) | 45% dos gols saem no 1T (consolidado) | Dixon-Coles |
+| Metric | Distribution | Why | Paper |
+|--------|:---:|---|---|
+| Goals | Poisson or Dixon-Coles | rare independent events, adjustment for 0×0/1×0/0×1 | Dixon-Coles 1997 |
+| Corners | **Compound Poisson** (Geometric-Poisson) | arrive in batches (clusters), serial correlation between phases | arxiv 2112.13001 |
+| Cards | **Zero-Inflated Poisson (ZIP)** | excess of matches with 0 yellows (early-game fouls, ref strictness) | statsmodels |
+| Shots | Poisson | more independent events, more regular shape | consensus |
+| Shots on target | Conditional Poisson | P(on target \| shot) × total shots | consensus |
+| Fouls | Poisson | ok as baseline, overdispersion may exist | Bayesian NB |
+| HT goals | Poisson(λ × 0.45) | 45% of goals happen in the 1st half (consolidated) | Dixon-Coles |
 
-**Decisão de implementação:** começar com Poisson simples pra tudo (baseline), depois trocar pros específicos onde calibração falhar.
+**Implementation decision:** start with simple Poisson for everything (baseline), then swap to the specific ones where calibration fails.
 
-### 2. Compound Poisson pra Escanteios
+### 2. Compound Poisson for Corners
 
-**Por quê Compound:** escanteios vêm em sequência (time pressiona → vários escanteios seguidos). Poisson simples assume independência → subestima variância → errar Over 10.5 / Under 8.5.
+**Why Compound:** corners come in sequence (team presses → several corners in a row). Simple Poisson assumes independence → underestimates variance → misses Over 10.5 / Under 8.5.
 
 **Geometric-Poisson (Bayesian):**
+
 ```
 N_batches ~ Poisson(λ_match)
 corners_per_batch ~ Geometric(p)
 Total_corners = Σ corners_per_batch
 ```
 
-**Parâmetros típicos (Premier League 2020-22):**
+**Typical parameters (Premier League 2020-22):**
+
 - λ_match ≈ 3.5 batches
-- p ≈ 0.65 (média ~1.5 corners por batch)
-- Total corners ≈ 10-11/jogo
+- p ≈ 0.65 (average ~1.5 corners per batch)
+- Total corners ≈ 10-11/match
 
-**Implementação simples no início:** rodar Poisson e comparar variância empírica. Se var >> mean, migrar pra Negative Binomial (que é Compound Poisson com gamma).
+**Simple implementation at first:** run Poisson and compare empirical variance. If var >> mean, migrate to Negative Binomial (which is a Compound Poisson with gamma).
 
-### 3. Zero-Inflated Poisson pra Cartões
+### 3. Zero-Inflated Poisson for Cards
 
-**Por quê ZIP:** cartões têm "excesso de zeros" — muitos jogos sem cartão certo jogador, certo time, certo tempo.
+**Why ZIP:** cards have "excess zeros" — many matches without cards for a given player, team, or time interval.
 
 ```python
 # statsmodels
@@ -63,60 +65,67 @@ from statsmodels.discrete.count_model import ZeroInflatedPoisson
 
 # Fit
 model = ZeroInflatedPoisson(
-    endog=y_cards,              # cartões totais
+    endog=y_cards,              # total cards
     exog=X,                      # features
-    exog_infl=X_infl,           # features pro inflation model
+    exog_infl=X_infl,           # features for the inflation model
     inflation='logit',
 ).fit()
 ```
 
-**Features pra λ (parte count):**
-- Faltas/90 do mandante + visitante (EMA 5 jogos)
-- Referee card rate (histórico desse juiz)
-- Is_derby (clássico → +20-30% cartões)
-- Home advantage (menos cartões em casa)
+**Features for λ (count part):**
 
-**Features pra π (parte inflation — prob de 0 cartões):**
-- Time pacífico (média < 1 cartão/jogo)
-- Juiz tolerante (média < 2.5 cartões/jogo)
+- Fouls/90 of home + away teams (EMA 5 matches)
+- Referee card rate (history of that referee)
+- Is_derby (derby → +20-30% cards)
+- Home advantage (fewer cards at home)
 
-**Hiperparâmetros Brasileirão (estimados):**
-- λ_base ≈ 4.5 cartões/jogo
-- Referee factor: 0.7 a 1.4 (tolerante até rigoroso)
+**Features for π (inflation part — prob of 0 cards):**
+
+- Peaceful team (average < 1 card/match)
+- Tolerant referee (average < 2.5 cards/match)
+
+**Brasileirão hyperparameters (estimated):**
+
+- λ_base ≈ 4.5 cards/match
+- Referee factor: 0.7 to 1.4 (tolerant to strict)
 - Derby: × 1.25
 
-### 4. Referee Strictness — Como Calcular
+### 4. Referee Strictness — How to Compute
 
-**Problema:** juízes apitam quantidades muito diferentes de cartões. O mesmo time recebe 2.5 cards com um juiz e 4.5 com outro.
+**Problem:** referees call very different amounts of cards. The same team gets 2.5 cards with one referee and 4.5 with another.
 
-**Fórmula Bayesiana com shrinkage:**
+**Bayesian formula with shrinkage:**
+
 ```
 ref_card_rate = (n_cards + prior_weight × league_avg) / (n_matches + prior_weight)
 ```
 
-Com `prior_weight = 5`:
-- Juiz com 1 jogo → quase só league_avg
-- Juiz com 20 jogos → quase todo próprio histórico
-- Interpolação suave em entre
+With `prior_weight = 5`:
 
-**Alternativa: Bayesian Hierarchical**
+- Referee with 1 match → almost entirely league_avg
+- Referee with 20 matches → almost entirely own history
+- Smooth interpolation in between
+
+**Alternative: Bayesian Hierarchical**
+
 ```
 μ_ref ~ Normal(μ_league, σ_league)  # prior
 cards_i ~ Poisson(μ_ref × feats_i)  # likelihood
 ```
 
-Fit via PyMC ou simples conjugate update com Gamma-Poisson.
+Fit via PyMC or a simple conjugate update with Gamma-Poisson.
 
-**Pra MVP:** usar fórmula de shrinkage simples (empirical Bayes). Reservar Bayesian hierarchical pra v1.3.0+.
+**For MVP:** use simple shrinkage formula (empirical Bayes). Reserve Bayesian hierarchical for v1.3.0+.
 
-### 5. Pre-Lineup Prediction (Imputação de Escalação)
+### 5. Pre-Lineup Prediction (Lineup Imputation)
 
-**Cenário:** 24h antes do jogo, Sofascore não publicou lineup. Precisamos prever sem saber os 11.
+**Scenario:** 24h before the match, Sofascore has not published the lineup. We need to predict without knowing the 11.
 
-**Estratégia 1: Most Frequent XI**
+**Strategy 1: Most Frequent XI**
+
 ```python
 def probable_lineup(team: str, last_n: int = 5) -> list[int]:
-    """Retorna top 11 jogadores por minutos nos últimos N jogos."""
+    """Returns the top 11 players by minutes over the last N matches."""
     recent = get_team_matches(team, last=last_n)
     minutes = defaultdict(int)
     for match in recent:
@@ -125,62 +134,69 @@ def probable_lineup(team: str, last_n: int = 5) -> list[int]:
     return sorted(minutes, key=minutes.get, reverse=True)[:11]
 ```
 
-**Estratégia 2: Position-Aware**
-- 1 GK: máx minutos na posição G
-- 4 DEF: top 4 em minutos em posição D
-- 3-4 MID: top 3-4 em M
-- 2-3 FWD: top 2-3 em F
+**Strategy 2: Position-Aware**
 
-Considera formação mais frequente do time (4-3-3, 4-4-2, 3-5-2) dos últimos jogos.
+- 1 GK: max minutes at position G
+- 4 DEF: top 4 in minutes at position D
+- 3-4 MID: top 3-4 at M
+- 2-3 FWD: top 2-3 at F
 
-**Estratégia 3: Confidence-Weighted**
-Alguns titulares são certeza (100% jogos), outros são rotação. Ponderar features pelo "prob de ser titular":
+Considers the team's most frequent formation (4-3-3, 4-4-2, 3-5-2) over the last matches.
+
+**Strategy 3: Confidence-Weighted**
+
+Some starters are a certainty (100% of matches), others are rotation. Weight features by the "prob of being a starter":
 
 ```python
 for player in probable_xi:
-    weight = player.matches_started / last_n_matches  # 0.0 a 1.0
+    weight = player.matches_started / last_n_matches  # 0.0 to 1.0
     team_lambda += player.xg_per90 * weight
 ```
 
-**Decisão:** começar com Most Frequent XI simples. Adicionar position-aware quando tivermos a formação.
+**Decision:** start with simple Most Frequent XI. Add position-aware when we have the formation.
 
-### 6. ML → Poisson Pipeline (XGBoost pra λ)
+### 6. ML → Poisson Pipeline (XGBoost for λ)
 
-**Arquitetura:**
+**Architecture:**
+
 ```
-Features (team + player + context) → XGBoost Regressor → λ → Poisson → score matrix → mercados
+Features (team + player + context) → XGBoost Regressor → λ → Poisson → score matrix → markets
 ```
 
-**Features por time (últimos 6 jogos, EMA com decay=0.9):**
-- Gols marcados/sofridos
+**Team features (last 6 matches, EMA with decay=0.9):**
+
+- Goals for/against
 - xG for/against
-- Chutes/chutes no alvo
-- Cruzamentos
-- Escanteios, cartões, faltas
+- Shots/shots on target
+- Crosses
+- Corners, cards, fouls
 - PPDA (pressing)
 - Possession %
-- Passes progressivos/completos
+- Progressive/completed passes
 
-**Features derivadas:**
-- xG overperformance (gols - xG nos últimos 10)
-- Forma H2H (3 últimos confrontos)
-- Rest days (fadiga)
-- Home/away form separado
+**Derived features:**
 
-**Features contextuais:**
+- xG overperformance (goals - xG in the last 10)
+- H2H form (last 3 meetings)
+- Rest days (fatigue)
+- Home/away form separately
+
+**Contextual features:**
+
 - Is_home
 - League avg xG (baseline)
 - Opponent defense rating
 - Is_derby
 - Referee card rate
 
-**Target:** λ_gols empírico (média de gols marcados em jogos similares). Alternativamente, treinar **contra xG observado** (supervisão fraca) ou gols reais (supervisão forte com mais ruído).
+**Target:** empirical λ_goals (average goals scored in similar matches). Alternatively, train **against observed xG** (weak supervision) or real goals (strong supervision with more noise).
 
-**Hiperparâmetros XGBoost (Beat the Bookie + papers):**
+**XGBoost hyperparameters (Beat the Bookie + papers):**
+
 ```python
 xgb.XGBRegressor(
     n_estimators=500,
-    max_depth=4,           # shallow trees, previne overfit
+    max_depth=4,           # shallow trees, prevents overfit
     learning_rate=0.03,
     subsample=0.8,
     colsample_bytree=0.7,
@@ -192,53 +208,63 @@ xgb.XGBRegressor(
 ```
 
 **Pipeline:**
+
 ```python
 X_train, y_train = build_features(historical_matches)
 model.fit(X_train, y_train)
 
-# Cross-validation temporal (não aleatório)
+# Temporal cross-validation (not random)
 from sklearn.model_selection import TimeSeriesSplit
 tscv = TimeSeriesSplit(n_splits=5)
 ```
 
-**Performance esperada (literatura):**
-- XGBoost 67% accuracy em 1X2
-- ML Poisson: 5.3% ROI médio em simulação (Beat the Bookie)
+**Expected performance (literature):**
 
-**Calibração é mais importante que accuracy:**
+- XGBoost 67% accuracy on 1X2
+- ML Poisson: 5.3% average ROI in simulation (Beat the Bookie)
+
+**Calibration matters more than accuracy:**
+
 > "calibration-optimized model generated 69.86% higher average returns"
 > — ScienceDirect 2024
 
-Usar `sklearn.calibration.CalibratedClassifierCV` ou Platt scaling após XGBoost.
+Use `sklearn.calibration.CalibratedClassifierCV` or Platt scaling after XGBoost.
 
-### 7. Integração ML + Poisson: Padrões
+### 7. ML + Poisson Integration: Patterns
 
-**Padrão A: ML prediz λ diretamente**
+**Pattern A: ML predicts λ directly**
+
 ```
 features → XGBoost → λ → Poisson(λ) → score matrix
 ```
-Simples. Erra se λ ML desvia de λ real.
 
-**Padrão B: ML prediz resíduo do Poisson baseline**
+Simple. Fails if ML's λ deviates from real λ.
+
+**Pattern B: ML predicts residual of baseline Poisson**
+
 ```
 features → Dixon-Coles → λ_base
 features → XGBoost → δ
 λ_final = λ_base + δ
 → Poisson(λ_final) → score matrix
 ```
-Mais robusto. XGBoost aprende "o que Dixon-Coles erra".
 
-**Padrão C: Ensemble**
+More robust. XGBoost learns "what Dixon-Coles gets wrong".
+
+**Pattern C: Ensemble**
+
 ```
 λ_final = 0.5 × λ_DC + 0.5 × λ_XGB
 ```
-Simples, combina os dois mundos.
 
-**Decisão:** começar com Padrão A (v1.3.0). Migrar pra B se Dixon-Coles calibrado continuar competitivo.
+Simple, combines both worlds.
 
-### 8. Monte Carlo Multi-Dimensional
+**Decision:** start with Pattern A (v1.3.0). Migrate to B if calibrated Dixon-Coles remains competitive.
 
-**Simulação conjunta de todos mercados:**
+### 8. Multi-Dimensional Monte Carlo
+
+**Joint simulation of all markets:**
+
 ```python
 def simulate_match_full(
     home_xg, away_xg,
@@ -249,7 +275,7 @@ def simulate_match_full(
 ):
     rng = np.random.default_rng(42)
     
-    # Independentes por simplicidade (real: correlação entre gols e chutes)
+    # Independent for simplicity (real: correlation between goals and shots)
     home_goals = rng.poisson(home_xg, n_sims)
     away_goals = rng.poisson(away_xg, n_sims)
     home_corners = rng.poisson(home_corners_lambda, n_sims)
@@ -258,47 +284,49 @@ def simulate_match_full(
     home_shots = rng.poisson(home_shots_lambda, n_sims)
     away_shots = rng.poisson(away_shots_lambda, n_sims)
     
-    # HT goals: 45% do total (aprox)
+    # HT goals: 45% of total (approx)
     ht_home = rng.poisson(home_xg * 0.45, n_sims)
     ht_away = rng.poisson(away_xg * 0.45, n_sims)
     
-    return simulate_df  # cada linha = 1 jogo simulado completo
+    return simulate_df  # each row = 1 complete simulated match
 ```
 
-**Correlações importantes (ignorar no MVP):**
-- Gols ↔ Chutes (time que faz gol chuta mais)
-- Gols ↔ Escanteios (pressão → escanteios → gols)
-- Cartões ↔ Gols (perder → gols tardios → faltas duras)
+**Important correlations (ignore in MVP):**
 
-Implementação com correlação: Copulas Gaussianas (complexo). **Pra v1.0: simular independente e ver se Brier degrada.**
+- Goals ↔ Shots (team that scores shoots more)
+- Goals ↔ Corners (pressure → corners → goals)
+- Cards ↔ Goals (losing → late goals → harder fouls)
 
-### 9. Derivação de Mercados da Matriz Simulada
+Implementation with correlation: Gaussian Copulas (complex). **For v1.0: simulate independently and see if Brier degrades.**
 
-Do DataFrame de 10K simulações, extrair TUDO:
+### 9. Market Derivation from the Simulated Matrix
+
+From the 10K simulation DataFrame, extract EVERYTHING:
 
 ```python
-# Ja temos 1X2, O/U, BTTS, correct score, asian handicap
+# We already have 1X2, O/U, BTTS, correct score, asian handicap
 
-# Novos:
-escanteios_over_95 = (sim_df.home_corners + sim_df.away_corners > 9.5).mean()
-cartoes_over_35 = (sim_df.cards > 3.5).mean()
-chutes_home_over_125 = (sim_df.home_shots > 12.5).mean()
+# New:
+corners_over_95 = (sim_df.home_corners + sim_df.away_corners > 9.5).mean()
+cards_over_35 = (sim_df.cards > 3.5).mean()
+home_shots_over_125 = (sim_df.home_shots > 12.5).mean()
 ht_result_home = (sim_df.ht_home > sim_df.ht_away).mean()
 ht_ft_h_h = ((sim_df.ht_home > sim_df.ht_away) & 
              (sim_df.home_goals > sim_df.away_goals)).mean()
 
-# Score matrix HT
+# HT score matrix
 ht_scores = Counter(zip(sim_df.ht_home, sim_df.ht_away))
 
-# Margem de vitória
-margem_home_2 = (sim_df.home_goals - sim_df.away_goals == 2).mean()
+# Winning margin
+margin_home_2 = (sim_df.home_goals - sim_df.away_goals == 2).mean()
 ```
 
-**Total de mercados deriváveis:** 80-100+ da matriz única.
+**Total derivable markets:** 80-100+ from the single matrix.
 
-### 10. Schema de Banco — Campos Novos
+### 10. Database Schema — New Fields
 
-**match_stats (novo):**
+**match_stats (new):**
+
 - match_id PK
 - home_corners, away_corners
 - home_yellow, away_yellow, home_red, away_red
@@ -306,10 +334,11 @@ margem_home_2 = (sim_df.home_goals - sim_df.away_goals == 2).mean()
 - home_shots, away_shots, home_sot, away_sot
 - ht_home_score, ht_away_score
 - referee_name
-- attendance (opcional)
-- weather (opcional)
+- attendance (optional)
+- weather (optional)
 
-**referee_stats (novo):**
+**referee_stats (new):**
+
 - referee_name PK
 - matches INTEGER
 - avg_yellow_per_match, avg_red_per_match
@@ -317,7 +346,8 @@ margem_home_2 = (sim_df.home_goals - sim_df.away_goals == 2).mean()
 - avg_corners_per_match
 - strictness_factor (card_rate / league_avg)
 
-**team_form (materialized view? ou calculado on-the-fly):**
+**team_form (materialized view? or computed on-the-fly):**
+
 - team, competition, season
 - last_5_goals_for, last_5_goals_against
 - last_5_xg_for, last_5_xg_against
@@ -325,42 +355,45 @@ margem_home_2 = (sim_df.home_goals - sim_df.away_goals == 2).mean()
 - last_5_cards
 - last_updated
 
-**prediction_history — adicionar campos:**
+**prediction_history — add fields:**
+
 - home_lambda_corners, away_lambda_corners REAL
 - home_lambda_cards, away_lambda_cards REAL
 - home_lambda_shots, away_lambda_shots REAL
-- model_version VARCHAR (ex: "v1.1.0-player-aware")
+- model_version VARCHAR (e.g. "v1.1.0-player-aware")
 - lineup_type VARCHAR ("pre" | "post")
 
 ## Implications for Football Moneyball
 
-### Stack de libs necessárias
+### Required libraries
 
-Já temos:
+Already have:
+
 - numpy, pandas, scikit-learn, xgboost
 - sqlalchemy, psycopg2, pgvector
 - requests, typer, rich
 
-**Adicionar:**
-- `statsmodels` (ZIP, GLM) — ~5MB
-- Opcional: `pymc` pra Bayesian hierarchical (depois)
+**To add:**
 
-### Ordem de implementação (matching risco/valor)
+- `statsmodels` (ZIP, GLM) — ~5MB
+- Optional: `pymc` for Bayesian hierarchical (later)
+
+### Implementation order (matching risk/value)
 
 1. **v1.1.0 — Player-Aware λ** (2 weeks)
-   - Sofascore já tem os dados
+   - Sofascore already has the data
    - Backward compatible
-   - Salto grande de accuracy esperado
+   - Big accuracy jump expected
 
 2. **v1.2.0 — Multi-Output Poisson** (2 weeks)
-   - Novos λ pra corners, cards, shots, HT
+   - New λ for corners, cards, shots, HT
    - Referee module
-   - Monte Carlo multi-dim
+   - Multi-dim Monte Carlo
 
 3. **v1.3.0 — ML → λ** (2 weeks)
-   - XGBoost pra cada λ
-   - Calibração + backtest
-   - A/B test contra v1.2.0
+   - XGBoost for each λ
+   - Calibration + backtest
+   - A/B test against v1.2.0
 
 ## Sources
 

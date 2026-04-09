@@ -17,7 +17,7 @@ export function ValueBets() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Value Bets — Betfair</h1>
-      <p className="text-gray-500">Apostas onde nosso modelo encontra vantagem sobre a Betfair</p>
+      <p className="text-gray-500">Bets where our model finds an edge over Betfair</p>
 
       {/* Filters */}
       <div className="flex gap-4 items-end">
@@ -27,7 +27,7 @@ export function ValueBets() {
             className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm w-32" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Edge mínimo</label>
+          <label className="block text-xs text-gray-500 mb-1">Minimum edge</label>
           <select value={minEdge} onChange={(e) => setMinEdge(Number(e.target.value))}
             className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm">
             <option value={0.02}>2%</option>
@@ -38,17 +38,17 @@ export function ValueBets() {
           </select>
         </div>
         <div className="text-sm text-gray-500">
-          {data?.total_matches || 0} partidas • {bets.length} value bets
+          {data?.total_matches || 0} matches • {bets.length} value bets
         </div>
       </div>
 
       {isLoading ? (
         <div className="flex items-center gap-3 justify-center py-20 text-gray-500">
-          <Loader2 size={24} className="animate-spin" /> Buscando value bets...
+          <Loader2 size={24} className="animate-spin" /> Searching for value bets...
         </div>
       ) : bets.length === 0 ? (
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-12 text-center text-gray-500">
-          Nenhuma value bet com edge {'>'} {(minEdge * 100).toFixed(0)}%
+          No value bets with edge {'>'} {(minEdge * 100).toFixed(0)}%
         </div>
       ) : (
         <div className="space-y-2">
@@ -60,19 +60,19 @@ export function ValueBets() {
                 <div className="flex-1">
                   <div className="font-medium text-base">{vb.match}</div>
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="bg-gray-800 rounded px-2 py-0.5 text-xs">{vb.market === 'h2h' ? '1X2' : vb.market === 'totals' ? 'Gols' : vb.market}</span>
+                    <span className="bg-gray-800 rounded px-2 py-0.5 text-xs">{vb.market === 'h2h' ? '1X2' : vb.market === 'totals' ? 'Goals' : vb.market}</span>
                     <span className="text-sm font-medium">
-                      {vb.outcome === 'Over' ? 'Mais de 2.5 gols' :
-                       vb.outcome === 'Under' ? 'Menos de 2.5 gols' :
-                       vb.outcome === 'Draw' ? 'Empate' :
-                       `Vitória ${vb.outcome}`}
+                      {vb.outcome === 'Over' ? 'Over 2.5 goals' :
+                       vb.outcome === 'Under' ? 'Under 2.5 goals' :
+                       vb.outcome === 'Draw' ? 'Draw' :
+                       `${vb.outcome} win`}
                     </span>
-                    <span className="text-xs text-gray-500">Modelo: {(vb.model_prob * 100).toFixed(0)}%</span>
+                    <span className="text-xs text-gray-500">Model: {(vb.model_prob * 100).toFixed(0)}%</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-5 text-sm">
                   <div className="text-center">
-                    <div className="text-gray-500 text-xs">Odds Betfair</div>
+                    <div className="text-gray-500 text-xs">Betfair odds</div>
                     <div className="font-mono text-lg">{vb.best_odds?.toFixed(2)}</div>
                   </div>
                   <div className="text-center">

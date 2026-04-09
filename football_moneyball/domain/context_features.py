@@ -1,32 +1,32 @@
-"""Features contextuais: tecnico, lesoes, fadiga, posicao.
+"""Context features: coach, injuries, fatigue, standings.
 
-Logica pura — recebe dicts de contexto e retorna features numericas.
-Sem deps de infra.
+Pure logic — receives context dicts and returns numeric features.
+No infra deps.
 
 Research-backed (v1.6.0):
-- "New manager bounce" modesto (~10 jogos) — regressao a media predomina
-- Interim coaches NAO sao piores → usar win_rate real
-- Fixture congestion afeta injury risk > performance direta
-- Player Impact Metric: top-N ausentes reduz outcome
+- Modest "new manager bounce" (~10 matches) — regression to the mean dominates
+- Interim coaches are NOT worse -> use real win_rate
+- Fixture congestion affects injury risk > direct performance
+- Player Impact Metric: top-N absences reduce outcome
 """
 
 from __future__ import annotations
 
 
 def coach_features(coach_info: dict | None) -> dict:
-    """Converte dict de coach em features ML-ready.
+    """Convert coach dict into ML-ready features.
 
     Parameters
     ----------
     coach_info : dict | None
         {games_since_change, coach_change_recent, coach_win_rate}
-        None = sem info, usa defaults neutros.
+        None = no info, uses neutral defaults.
 
     Returns
     -------
     dict
-        Chaves: coach_win_rate (0-1), games_since_change (0-100),
-        coach_change_recent (0 ou 1).
+        Keys: coach_win_rate (0-1), games_since_change (0-100),
+        coach_change_recent (0 or 1).
     """
     if not coach_info:
         return {
@@ -35,11 +35,11 @@ def coach_features(coach_info: dict | None) -> dict:
             "coach_change_recent": 0,
         }
 
-    # Clamp win_rate em [0.0, 1.0]
+    # Clamp win_rate to [0.0, 1.0]
     win_rate = float(coach_info.get("coach_win_rate", 0.5) or 0.5)
     win_rate = max(0.0, min(win_rate, 1.0))
 
-    # Clamp games_since em [0, 100]
+    # Clamp games_since to [0, 100]
     games_since = int(coach_info.get("games_since_change", 10) or 10)
     games_since = max(0, min(games_since, 100))
 
@@ -53,7 +53,7 @@ def coach_features(coach_info: dict | None) -> dict:
 
 
 def injury_features(injury_info: dict | None) -> dict:
-    """Converte dict de desfalques em features.
+    """Convert injury dict into features.
 
     Parameters
     ----------
@@ -84,7 +84,7 @@ def fixture_features(
     games_last_7d: int = 0,
     games_next_7d: int = 0,
 ) -> dict:
-    """Features de fadiga/calendario apertado.
+    """Fatigue/congested-fixture features.
 
     Returns
     -------
@@ -98,7 +98,7 @@ def fixture_features(
 
 
 def position_features(gap_info: dict | None) -> dict:
-    """Features de contexto de tabela.
+    """Standings context features.
 
     Parameters
     ----------
@@ -109,7 +109,7 @@ def position_features(gap_info: dict | None) -> dict:
     Returns
     -------
     dict
-        home_position (1-20), away_position (1-20), position_gap (-19 a 19),
+        home_position (1-20), away_position (1-20), position_gap (-19 to 19),
         both_in_relegation (0/1).
     """
     if not gap_info:

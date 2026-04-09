@@ -1,8 +1,8 @@
-"""Testes para football_moneyball.domain.embeddings — embeddings hexagonais.
+"""Tests for football_moneyball.domain.embeddings — hexagonal embeddings.
 
-Estes testes ja eram puros (generate_embeddings, cluster_players, _find_optimal_k
-nao dependem de I/O), entao a migracao e troca de import paths e rename de
-_GROUP_ARCHETYPES -> GROUP_ARCHETYPES (agora em constants).
+These tests were already pure (generate_embeddings, cluster_players, _find_optimal_k
+have no I/O dependencies), so the migration is a swap of import paths and rename of
+_GROUP_ARCHETYPES -> GROUP_ARCHETYPES (now in constants).
 """
 
 import numpy as np
@@ -47,7 +47,7 @@ class TestFindOptimalK:
 
 class TestGenerateEmbeddings:
     def _make_profiles(self) -> pd.DataFrame:
-        """Cria perfis sinteticos com posicao."""
+        """Build synthetic profiles with position."""
         rng = np.random.RandomState(42)
         rows = []
         for i in range(30):

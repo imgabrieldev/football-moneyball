@@ -1,4 +1,4 @@
-"""Testes para football_moneyball.domain.feature_engineering."""
+"""Tests for football_moneyball.domain.feature_engineering."""
 
 import numpy as np
 import pandas as pd
@@ -47,7 +47,7 @@ class TestBuildTeamFeatures:
                "xg_against": 1.8, "corners_for": 3.0, "cards_for": 1.5}
         league = {"goals_per_team": 1.3, "corners_per_team": 5.0}
         features = build_team_features(team, opp, league, is_home=True)
-        # Primeiros 6 sao do team, proximos 4 do opponent
+        # First 6 belong to team, next 4 to opponent
         assert features[0] == 2.0  # team_goals_for
         assert features[4] == 7.0  # team_corners_for
         assert features[6] == 0.5  # opp_goals_for
@@ -122,7 +122,7 @@ class TestBuildTeamFeatures:
 
 class TestTeamRollingStats:
     def _make_history(self):
-        """Histórico: Team A joga 3 jogos."""
+        """History: Team A plays 3 games."""
         return pd.DataFrame([
             {"match_id": 1, "home_team": "A", "away_team": "B",
              "home_goals": 2, "away_goals": 1, "home_xg": 1.8, "away_xg": 0.9,
@@ -138,13 +138,13 @@ class TestTeamRollingStats:
     def test_team_A_goals_for_avg(self):
         hist = self._make_history()
         stats = _team_rolling_stats(hist, "A", last_n=5)
-        # A: 2 (home vs B), 1 (away @ C), 3 (home vs D) → 2.0 avg
+        # A: 2 (home vs B), 1 (away @ C), 3 (home vs D) -> 2.0 avg
         assert abs(stats["goals_for"] - 2.0) < 1e-9
 
     def test_team_A_goals_against(self):
         hist = self._make_history()
         stats = _team_rolling_stats(hist, "A", last_n=5)
-        # A sofreu: 1, 0, 0 → 0.33
+        # A conceded: 1, 0, 0 -> 0.33
         assert abs(stats["goals_against"] - 1/3) < 1e-9
 
     def test_empty_history(self):
@@ -154,7 +154,7 @@ class TestTeamRollingStats:
 
 class TestBuildTrainingDataset:
     def _make_matches(self, n=10):
-        """n matches alternando times A/B vs C/D."""
+        """n matches alternating teams A/B vs C/D."""
         teams = [("A", "B"), ("C", "D"), ("A", "C"), ("B", "D"), ("A", "D"),
                  ("B", "C"), ("C", "A"), ("D", "B"), ("D", "A"), ("C", "B")]
         rows = []
@@ -179,21 +179,21 @@ class TestBuildTrainingDataset:
         assert len(X) > 0
 
     def test_two_samples_per_match(self):
-        # Com min_prior=0, cada match gera 2 samples
+        # With min_prior=0, each match generates 2 samples
         matches = self._make_matches(n=10)
         X, y = build_training_dataset(matches, target="goals", min_prior=0)
-        assert len(X) == 20  # 10 partidas × 2
+        assert len(X) == 20  # 10 matches x 2
 
     def test_min_prior_filters(self):
         matches = self._make_matches(n=5)
-        # Com min_prior=10, nenhum jogo tem histórico suficiente
+        # With min_prior=10, no game has enough history
         X, y = build_training_dataset(matches, target="goals", min_prior=10)
         assert len(X) == 0
 
     def test_corners_target(self):
         matches = self._make_matches(n=10)
         X, y = build_training_dataset(matches, target="corners", min_prior=2)
-        # y deve ter valores de corners (5-8)
+        # y should have corner values (5-8)
         assert y.min() >= 0
         assert y.max() < 20
 

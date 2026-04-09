@@ -9,43 +9,44 @@ tags:
   - brasileirao
 ---
 
-# Research — Fontes de Odds para o Brasileirão
+# Research — Odds Sources for the Brasileirão
 
 > Research date: 2026-04-03
-> Sources: [listadas ao final]
+> Sources: [listed at the end]
 
 ## Context
 
-Precisamos de odds reais de casas de apostas brasileiras para substituir as odds sintéticas no backtesting e para o value-bets scanner funcionar com dados de mercado.
+We need real odds from Brazilian bookmakers to replace the synthetic odds in backtesting and to make the value-bets scanner work with market data.
 
 ## Findings
 
-### Ranking das opções (melhor → pior)
+### Ranking of options (best → worst)
 
-| # | Fonte | Tipo | Brasileirão | Grátis | Odds históricas | Manutenção |
-|---|-------|------|-------------|--------|-----------------|------------|
-| 1 | **Betfair Exchange API** | API oficial | Sim | Sim (conta) | Sim | Ativa |
-| 2 | **OddsHarvester** (OddsPortal) | Scraper Python | Provável (100+ ligas) | Sim | Sim | Ativa (2025) |
-| 3 | **The Odds API** | API comercial | Sim | 500 req/mês | Sim | Ativa |
-| 4 | **Betano scraper** | Selenium | Sim (feito pra isso) | Sim | Não | Abandonado (2023) |
-| 5 | **soccerapi** | Wrapper Python | Sim (Bet365, 888) | Sim | Não | Abandonado |
+| # | Source | Type | Brasileirão | Free | Historical odds | Maintenance |
+|---|--------|------|-------------|------|-----------------|-------------|
+| 1 | **Betfair Exchange API** | Official API | Yes | Yes (account) | Yes | Active |
+| 2 | **OddsHarvester** (OddsPortal) | Python scraper | Likely (100+ leagues) | Yes | Yes | Active (2025) |
+| 3 | **The Odds API** | Commercial API | Yes | 500 req/month | Yes | Active |
+| 4 | **Betano scraper** | Selenium | Yes (built for it) | Yes | No | Abandoned (2023) |
+| 5 | **soccerapi** | Python wrapper | Yes (Bet365, 888) | Yes | No | Abandoned |
 
 ---
 
-### 1. Betfair Exchange API — Melhor opção
+### 1. Betfair Exchange API — Best option
 
-**A única API oficial, gratuita e com dados de exchange (odds reais de mercado).**
+**The only official, free API with exchange data (real market odds).**
 
-- **Grátis** para uso pessoal (precisa de conta Betfair + app key)
-- Lib Python: `betfairlightweight` (pip install)
+- **Free** for personal use (requires a Betfair account + app key)
+- Python library: `betfairlightweight` (pip install)
 - Soccer = event_type_id `1`
 - Endpoints: `list_competitions`, `list_market_catalogue`, `list_market_book`
-- **Odds de exchange** (não de bookmaker) — refletem probabilidade real do mercado
-- **Brasileirão**: disponível se tiver mercado ativo na Betfair (principais jogos sim)
-- **Dados ao vivo** + pré-jogo
-- Autenticação: username + password + app_key + certificado SSL
+- **Exchange odds** (not bookmaker odds) — reflect the real market probability
+- **Brasileirão**: available if there is an active market on Betfair (main matches, yes)
+- **Live data** + pre-match
+- Authentication: username + password + app_key + SSL certificate
 
-**Como usar:**
+**How to use:**
+
 ```python
 import betfairlightweight
 
@@ -55,11 +56,11 @@ trading = betfairlightweight.APIClient(
 )
 trading.login()
 
-# Listar competições de futebol
+# List football competitions
 comps = trading.betting.list_competitions(
     filter=betfairlightweight.filters.market_filter(event_type_ids=[1])
 )
-# Buscar odds
+# Fetch odds
 books = trading.betting.list_market_book(
     market_ids=["1.150038686"],
     price_projection=betfairlightweight.filters.price_projection(
@@ -68,78 +69,80 @@ books = trading.betting.list_market_book(
 )
 ```
 
-**Vantagem:** Odds de exchange são mais eficientes que de bookmaker — se nosso modelo bater o exchange, temos edge real.
+**Advantage:** Exchange odds are more efficient than bookmaker odds — if our model beats the exchange, we have real edge.
 
-**Limitação:** Nem todo jogo do Brasileirão tem mercado na Betfair (jogos menores podem não ter liquidez).
+**Limitation:** Not every Brasileirão match has a market on Betfair (smaller matches may lack liquidity).
 
 ---
 
-### 2. OddsHarvester (OddsPortal scraper) — Melhor pra histórico
+### 2. OddsHarvester (OddsPortal scraper) — Best for historical data
 
-- Scraper de OddsPortal.com via Playwright
-- **100+ ligas** (Brasileirão provável, precisa verificar slug)
-- Coleta odds de **dezenas de casas** (Bet365, Betano, Pinnacle, 1xBet, etc.)
-- **Odds históricas** por temporada inteira
-- Output: JSON ou CSV
+- OddsPortal.com scraper via Playwright
+- **100+ leagues** (Brasileirão likely, need to check the slug)
+- Collects odds from **dozens of bookmakers** (Bet365, Betano, Pinnacle, 1xBet, etc.)
+- **Historical odds** for entire seasons
+- Output: JSON or CSV
 - CLI: `oddsharvester historic -s football -l brazil-serie-a --season 2025-2026 -m 1x2`
-- Ativo em 2025, 100+ stars no GitHub
+- Active in 2025, 100+ stars on GitHub
 
-**Perfeito pra backtesting** — pega odds de abertura e fechamento de todas as casas por partida.
+**Perfect for backtesting** — gets opening and closing odds from all bookmakers per match.
 
 ---
 
-### 3. The Odds API — Já integrado (v0.4.0)
+### 3. The Odds API — Already integrated (v0.4.0)
 
-- 500 req/mês grátis, Brasileirão coberto
+- 500 req/month free, Brasileirão covered
 - h2h, totals, btts, spreads
-- Odds históricas desde 2020
-- Já temos adapter implementado
+- Historical odds since 2020
+- Adapter already implemented
 
 ---
 
-### 4. Betano Scraper — Específico pro Brasileirão
+### 4. Betano Scraper — Specific to the Brasileirão
 
-- Tutorial em PT-BR: `hansalemaos/tutorial_raspagem_de_dados_betano`
+- Tutorial in PT-BR: `hansalemaos/tutorial_raspagem_de_dados_betano`
 - Selenium + SeleniumBase
-- Feito especificamente para Brasileirão Série A
-- Coleta odds de apostas do site da Betano
-- **Abandonado** (2023), pode não funcionar com site atual
-- Abordagem frágil (Selenium quebrável com mudanças no site)
+- Built specifically for Brasileirão Série A
+- Collects betting odds from the Betano site
+- **Abandoned** (2023), may not work with the current site
+- Fragile approach (Selenium breaks with site changes)
 
 ---
 
-### 5. soccerapi — Wrapper simples
+### 5. soccerapi — Simple wrapper
 
 - `pip install soccerapi`
-- Suporta Bet365, 888sport, Unibet
-- Brasil listado como região suportada
-- **Não mantido** — "some functionality may be broken"
-- Simples de usar mas pouco confiável
+- Supports Bet365, 888sport, Unibet
+- Brazil listed as a supported region
+- **Not maintained** — "some functionality may be broken"
+- Simple to use but unreliable
 
 ---
 
-## Recomendação
+## Recommendation
 
-### Abordagem em 2 camadas:
+### 2-layer approach:
 
-**1. Betfair Exchange API** (tempo real + previsão)
+**1. Betfair Exchange API** (real time + prediction)
+
 - Adapter `adapters/betfair_provider.py`
-- Odds de exchange = benchmark de mercado mais eficiente
-- Grátis, API estável, lib Python madura
-- Pra jogos com mercado ativo
+- Exchange odds = most efficient market benchmark
+- Free, stable API, mature Python library
+- For matches with an active market
 
-**2. OddsHarvester** (backtesting + histórico)
-- Script de coleta: baixar odds históricas do OddsPortal
-- Dezenas de bookmakers por partida
-- Comparar odds de abertura vs fechamento
-- Calcular edge retroativo com odds REAIS
+**2. OddsHarvester** (backtesting + history)
 
-### O que isso melhora no modelo:
+- Collection script: download historical odds from OddsPortal
+- Dozens of bookmakers per match
+- Compare opening vs closing odds
+- Compute retroactive edge with REAL odds
 
-1. **Backtesting real** — trocar odds sintéticas por odds históricas reais de Bet365/Betano/Pinnacle
-2. **Calibração** — comparar Brier score com odds de exchange (benchmark)
-3. **Value bet scanning** — usar odds de exchange Betfair como "fair price" e comparar com bookmakers
-4. **Arbitragem informacional** — se nosso xG diz algo diferente da Betfair, há oportunidade
+### What this improves in the model:
+
+1. **Real backtesting** — replace synthetic odds with real historical odds from Bet365/Betano/Pinnacle
+2. **Calibration** — compare Brier score with exchange odds (benchmark)
+3. **Value bet scanning** — use Betfair exchange odds as "fair price" and compare against bookmakers
+4. **Informational arbitrage** — if our xG says something different from Betfair, there is an opportunity
 
 ## Sources
 
