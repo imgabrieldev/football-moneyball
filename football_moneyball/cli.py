@@ -968,6 +968,7 @@ def predict(
 def value_bets(
     bankroll: float = typer.Option(1000.0, "--bankroll", help="Bankroll atual"),
     min_edge: float = typer.Option(0.05, "--min-edge", help="Edge minimo (0.05 = 5%)"),
+    bookmaker: str = typer.Option("betfair", "--bookmaker", help="Filtro de bookmaker (default: betfair)"),
 ) -> None:
     """Busca value bets nas proximas partidas via Betfair Exchange."""
     from football_moneyball.config import get_odds_provider
@@ -976,9 +977,9 @@ def value_bets(
     repo = get_repository()
     try:
         odds_provider = get_odds_provider()
-        with console.status("[bold green]Buscando odds na Betfair Exchange..."):
+        with console.status(f"[bold green]Buscando odds ({bookmaker})..."):
             result = FindValueBets(odds_provider, repo).execute(
-                bankroll=bankroll, min_edge=min_edge
+                bankroll=bankroll, min_edge=min_edge, bookmaker_filter=bookmaker,
             )
 
         if not result.get("value_bets"):

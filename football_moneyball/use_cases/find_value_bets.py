@@ -28,7 +28,7 @@ class FindValueBets:
         bankroll: float = 1000.0,
         min_edge: float = 0.05,
         markets: list[str] | None = None,
-        bookmaker_filter: str | None = None,
+        bookmaker_filter: str | None = "betfair",
     ) -> dict[str, Any]:
         """Busca value bets nas proximas partidas.
 
