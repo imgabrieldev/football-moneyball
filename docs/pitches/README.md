@@ -10,16 +10,20 @@ Propostas de features em design ou implementação.
 
 ## Ativos
 
-- [[isotonic-calibration-v1.11]] — v1.11.0: Isotonic + Temperature + auto-select via CV Brier (shipped 2026-04-05)
+- [[context-features-v1.15]] — v1.15.0: xG Form + Coach Profile + Rest Days + Standings como features do CatBoost
 
 ## Backlog
 
 - [[ux-polish]] — v0.8.0: Deduplicar value bets, cards com interpretação textual, filtro de bookmaker, datas, responsivo
-- **v1.12.0 — Backfill 2022/2023** — ingestão histórica extra (~760 matches) pra destravar isotonic (precisa n≥1000)
-- **v1.13.0 — Calibração monitorada** — cron de re-fit automático quando ECE > 0.015
-- **v1.14.0 — Beta calibration / hybrid** — se isotonic sozinho não atingir meta Brier 0.20
+- **v1.15.0 — UX polish** — melhorias gerais de UX
+- **v1.16.0 — Calibração monitorada** — cron de re-fit automático quando ECE > threshold
+- **v1.17.0 — CatBoost hyperopt** — Optuna + SHAP feature pruning
 
 ## Finalizados → `docs/postmortem/`
+
+- [[isotonic-calibration-v1.11]] — shipped 2026-04-05
+- [[bivariate-poisson-draws]] — shipped v1.12.0
+- [[catboost-1x2-predictor]] — shipped v1.14.0
 
 Ver índice completo em [[../postmortem/README|postmortem/README]].
 
