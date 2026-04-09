@@ -18,6 +18,7 @@ aliases:
 - [[advanced-predictor]] — v0.5.0: Monte Carlo + Poisson
 - [[infra-automation]] — v0.6.0: K8s cronjobs (ingest, predict, snapshot)
 - [[frontend-dashboard]] — v0.7.0: React frontend (moneyball-frontend pod)
+- [[ux-polish]] — v0.8.0: Dedup value bets + cards com interpretação + filtro bookmaker
 - [[track-record]] — v0.9.0: Resolve/verify + track-record CLI
 
 ## Core Predictor (v1.x)
@@ -28,8 +29,9 @@ aliases:
 - [[context-aware-predictor]] — v1.6.0: Features contextuais (técnico, desfalques, standings, fadiga) — 16 features, FEATURE_DIM 24→40
 - [[calibration-dixon-coles-platt]] — v1.9.0: Dixon-Coles ρ correction + Platt scaling 1x2
 - [[v1.10-h2h-referee-market]] — v1.10.0: H2H + Referee features + market blending (65/35)
-- **v1.11.0** — Isotonic/Temperature calibration + auto method selection
-- **v1.12.0** — Bivariate Poisson + diagonal inflation + backfill 2022-2025 (1610 matches)
+- [[isotonic-calibration-v1.11]] — v1.11.0: Isotonic/Temperature calibration + auto method selection
+- [[bivariate-poisson-draws]] — v1.12.0: Bivariate Poisson + diagonal inflation + backfill 2022-2025 (1610 matches)
 - **v1.13.0** — Market blend inversion + draw floor + odds features
-- **v1.14.0** — CatBoost 1x2 + Pi-Rating (end-to-end predictor)
+- [[catboost-1x2-predictor]] — v1.14.0: CatBoost 1x2 + Pi-Rating (end-to-end predictor)
 - **v1.14.1** — Expanded features infra + edge 5% + Pi-Rating probs
+- [[context-features-v1.15]] — v1.15.0: xG Form + Coach Profile + Rest Days + Standings como features do CatBoost
