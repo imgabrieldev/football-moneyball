@@ -61,12 +61,16 @@ def _stable_match_key(home: str, away: str) -> int:
     """Gera match_key estavel (deterministico entre processos) de home+away.
 
     Normaliza acentos antes pra ter 'Grêmio' e 'Gremio' como mesma chave.
+    Chave é simétrica: 'A vs B' e 'B vs A' geram a mesma chave pra evitar
+    duplicatas quando odds API e Sofascore divergem no mando de campo.
     """
     def _norm(s: str) -> str:
         nfkd = unicodedata.normalize("NFKD", s.strip())
         return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
 
-    key_str = f"{_norm(home)}-{_norm(away)}"
+    # Ordenar alfabeticamente pra chave ser independente de home/away
+    pair = sorted([_norm(home), _norm(away)])
+    key_str = f"{pair[0]}-{pair[1]}"
     digest = hashlib.md5(key_str.encode("utf-8")).hexdigest()
     return int(digest[:12], 16) % (10**9)
 
@@ -1012,14 +1016,23 @@ class PostgresRepository:
         rows = query.all()
         columns = [c.key for c in PredictionHistory.__table__.columns]
 
-        # Dedup por match_key: manter apenas a mais recente
-        seen_keys = set()
+        # Dedup por par de times (simétrico): manter apenas a mais recente
+        # Exclui entradas de rehis/backtest (round=0 ou commence_time contém "rehis")
+        seen_matchups: set[frozenset] = set()
         deduped = []
         for r in rows:
-            mk = r.match_key
-            if mk in seen_keys:
+            # Filtra rehis/backtest contaminando track-record
+            ct = r.commence_time or ""
+            if "rehis" in ct or (r.round is not None and r.round == 0):
                 continue
-            seen_keys.add(mk)
+            # Dedup simétrico: "A vs B" e "B vs A" = mesmo jogo
+            matchup = frozenset([
+                (r.home_team or "").strip().lower(),
+                (r.away_team or "").strip().lower(),
+            ])
+            if matchup in seen_matchups:
+                continue
+            seen_matchups.add(matchup)
             deduped.append({col: getattr(r, col) for col in columns})
 
         # Ordenar deduped por commence_time (proximas primeiro)

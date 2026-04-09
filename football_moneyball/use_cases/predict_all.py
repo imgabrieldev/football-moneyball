@@ -125,6 +125,7 @@ class PredictAll:
             return {"error": "Sem odds. Rode snapshot-odds primeiro.", "predictions": []}
 
         predictions = []
+        seen_matchups: set[frozenset] = set()
         for game in cached_odds:
             home = game.get("home_team", "")
             away = game.get("away_team", "")
@@ -143,6 +144,13 @@ class PredictAll:
 
             if not home or not away:
                 continue
+
+            # v1.14.2: Dedup fixtures — evita prever mesmo jogo com mando invertido
+            matchup = frozenset([home.strip().lower(), away.strip().lower()])
+            if matchup in seen_matchups:
+                logger.debug(f"Skipping duplicate fixture: {home} vs {away}")
+                continue
+            seen_matchups.add(matchup)
 
             try:
                 # v1.1.0: tentar path player-aware se tiver dados suficientes
@@ -233,6 +241,10 @@ class PredictAll:
 
                 # v1.10.0/v1.13.0: Market blending (pós-calibração/CatBoost)
                 self._apply_market_blending(pred, home, away)
+
+                # v1.14.2: Reaplicar floors/caps pós-blending (blend pode desfazer)
+                self._apply_draw_floor(pred)
+                self._apply_confidence_cap(pred)
 
                 predictions.append(pred)
 
@@ -390,11 +402,11 @@ class PredictAll:
                 self._apply_calibration(pred)
             self._apply_draw_floor(pred)
 
-    def _apply_draw_floor(self, pred: dict, min_draw: float = 0.22) -> None:
-        """v1.13.0: Garante draw probability mínima baseada em taxa empírica.
+    def _apply_draw_floor(self, pred: dict, min_draw: float = 0.26) -> None:
+        """v1.13.0/v1.14.2: Garante draw probability mínima baseada em taxa empírica.
 
         Brasileirão histórico: 25-26% draws. Modelo Poisson sistematicamente
-        subestima. Floor de 22% é conservador (abaixo da taxa real).
+        subestima. Floor de 26% alinhado com taxa real.
         """
         d = pred.get("draw_prob", 0.0)
         if d >= min_draw:
@@ -409,6 +421,25 @@ class PredictAll:
         pred["draw_prob"] = round(min_draw, 4)
         pred["home_win_prob"] = round(h - deficit * (h / total_ha), 4)
         pred["away_win_prob"] = round(a - deficit * (a / total_ha), 4)
+
+    def _apply_confidence_cap(self, pred: dict, max_prob: float = 0.75) -> None:
+        """v1.14.2: Limita probabilidade máxima pra evitar overconfidence.
+
+        Brasileirão é volátil — probs acima de 75% sao irrealistas.
+        Redistribui excesso proporcionalmente entre os outros outcomes.
+        """
+        for key in ("home_win_prob", "draw_prob", "away_win_prob"):
+            p = pred.get(key, 0.0)
+            if p <= max_prob:
+                continue
+            excess = p - max_prob
+            pred[key] = round(max_prob, 4)
+            # Redistribui excesso proporcionalmente
+            others = [k for k in ("home_win_prob", "draw_prob", "away_win_prob") if k != key]
+            other_sum = sum(pred.get(k, 0.0) for k in others)
+            for k in others:
+                share = pred.get(k, 0.0) / other_sum if other_sum > 0 else 0.5
+                pred[k] = round(pred.get(k, 0.0) + excess * share, 4)
 
     def _apply_market_blending(self, pred: dict, home: str, away: str) -> None:
         """v1.10.0/v1.13.0: Blenda probs do modelo com consensus devigged.
